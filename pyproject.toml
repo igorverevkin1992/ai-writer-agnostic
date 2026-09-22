@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "konveyer"
+version = "1.6.0"
+description = "КОНВЕЙЕР — производственный конвейер главы книжной серии (ТЗ v1.0)"
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.12",
+    "pydantic>=2.7",
+    "Jinja2>=3.1",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# Верхние границы — по мажорным версиям (аудит 2, п. 31): смена мажора SDK меняет HTTP-стек и типы;
+# точные версии проверенной установки — requirements.lock, порядок обновления — ЗАПУСК.md, шаг 7.
+llm = ["google-genai>=1.0,<3", "anthropic>=0.40,<2"]
+docx = ["python-docx>=1.1"]   # рукопись тома в .docx (`konveyer volume close`); без неё — только .md
+dev = ["pytest>=7.4", "ruff>=0.5"]
+
+[project.scripts]
+konveyer = "konveyer.cli:app"
+
+[tool.setuptools]
+packages = ["konveyer"]
+
+[tool.setuptools.package-data]
+konveyer = ["data/**/*", "шаблоны/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py311"
+
+[tool.ruff.lint]
+# минимальный набор, чистый сегодня: синтаксис/неиспользуемое (F), zip без strict (B905)
+select = ["E9", "F", "B905"]

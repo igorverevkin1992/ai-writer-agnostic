@@ -1,0 +1,195 @@
+"""Регрессионный корпус золотых тестов (FR-R1…FR-R4).
+
+Пропуск любого ожидаемого флага блокирует смену конфигурации (FR-R3):
+предупреждение при `accept`, запрет при фиксации `retest`.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+
+from . import adapters, exporter, guard, verifier1, verifier2
+from .config import Config
+from .paths import Workspace
+from .schemas import Brief, GoldenTest
+
+
+def golden_dir(ws: Workspace) -> Path:
+    return ws.regression / "золотые"
+
+
+def load_tests(ws: Workspace) -> list[GoldenTest]:
+    tests = []
+    for path in sorted(golden_dir(ws).glob("*.json")):
+        tests.append(GoldenTest.model_validate(json.loads(path.read_text(encoding="utf-8"))))
+    return tests
+
+
+def safe_file_stem(test_id: str) -> str:
+    """test_id → безопасное имя файла: без разделителей путей и служебных символов (2.11)."""
+    stem = re.sub(r"[^\w.\-]+", "_", test_id.strip(), flags=re.UNICODE).strip("._")
+    if not stem:
+        raise ValueError(f"test_id «{test_id}» не годится для имени файла — используйте буквы, цифры, «_» и «-».")
+    return stem[:120]
+
+
+def add_test(ws: Workspace, test: GoldenTest) -> Path:
+    """FR-R1: пополнение корпуса из ошибки, пропущенной эшелонами и пойманной автором."""
+    path = golden_dir(ws) / f"{safe_file_stem(test.test_id)}.json"
+    guard.write_text(path, json.dumps(test.model_dump(), ensure_ascii=False, indent=2) + "\n")
+    return path
+
+
+def environment_hashes(ws: Workspace) -> dict[str, str]:
+    """Отпечаток конфигурации, к которой относится отчёт регрессии (2.8):
+    конфиг.yaml, папка шаблонов, выгрузки/norms.json. Изменилось — отчёт устарел."""
+
+    def sha(data: bytes) -> str:
+        return hashlib.sha256(data).hexdigest()
+
+    def file_hash(path: Path) -> str:
+        return sha(path.read_bytes()) if path.exists() else ""
+
+    h = hashlib.sha256()
+    if ws.templates.exists():
+        for f in sorted(p for p in ws.templates.rglob("*") if p.is_file()):
+            h.update(f.relative_to(ws.templates).as_posix().encode("utf-8"))
+            h.update(b"\0")
+            h.update(f.read_bytes())
+            h.update(b"\0")
+    return {
+        "конфиг.yaml": file_hash(ws.root / "конфиг.yaml"),
+        "шаблоны": h.hexdigest(),
+        "norms.json": file_hash(ws.exports / "norms.json"),
+    }
+
+
+def _brief_from_context(ctx: dict) -> Brief:
+    return Brief(
+        chapter=int(ctx.get("chapter", 1)),
+        volume=int(ctx.get("volume", 1)),
+        year=ctx.get("year"),
+        focal=ctx.get("focal", ""),
+        volume_words=ctx.get("volume_words"),
+        not_knows=ctx.get("not_knows", []),
+    )
+
+
+def run_e1_test(ws: Workspace, test: GoldenTest) -> tuple[list[str], list[str], list[str]]:
+    """Прогон Э1 по фрагменту: (поймано, пропущено, лишние flag-и по check_id)."""
+    norms = exporter.load_norms(ws.exports)
+    stoplists = exporter.load_stoplists(ws.exports)
+    checks = verifier1.analyze(
+        test.fragment,
+        test.context_slice.get("window", ""),
+        _brief_from_context(test.context_slice),
+        norms,
+        stoplists,
+        corpus_dir=ws.corpus if test.context_slice.get("use_corpus") else None,
+    )
+    raised = {c.check_id for c in checks if c.status != "PASS"}
+    expected = set(test.expected_flags)
+    caught = sorted(raised & expected)
+    missed = sorted(expected - raised)
+    extra = sorted(raised - expected)
+    return caught, missed, extra
+
+
+def run_e2_test(ws: Workspace, cfg: Config, test: GoldenTest) -> tuple[list[str], list[str], list[str]]:
+    """Прогон Э2 по фрагменту через API Верификатора-2; ожидания — типы флагов."""
+    system = verifier2._template(ws, "верификатор2_система.md")
+    ctx = test.context_slice
+    user = "\n".join(
+        [
+            f"# Регрессионный тест {test.test_id}",
+            f"- Фокал: {ctx.get('focal', '')}",
+            f"- Год: {ctx.get('year', '')}",
+            "- Бриф: фрагмент вне брифа; любые факты, мотивировки и сентенции, "
+            "отсутствующие в этом контексте, — самоволка или нарушение брифа.",
+            "",
+            "## ТЕКСТ",
+            "",
+            test.fragment,
+        ]
+    )
+    raw = adapters.call_anthropic(
+        system, user, cfg.verifier2, cfg.api, ws.logs, role="верификатор-2 (регрессия)"
+    )
+    flags = verifier2.parse_flags(raw)
+    raised = {f.type for f in flags} | {"самоволка" for f in flags if f.kind == "samovolka"}
+    expected = set(test.expected_flags)
+    return sorted(raised & expected), sorted(expected - raised), sorted(raised - expected)
+
+
+def run_regression(ws: Workspace, llm: bool = False, cfg: Config | None = None) -> dict:
+    """FR-R2: Э1 всегда; Э2 — по флагу --llm (при недоступном API — пропуск с пометкой)."""
+    tests = load_tests(ws)
+    results = []
+    for test in tests:
+        if test.echelon == "Э2":
+            if not llm:
+                results.append({"test_id": test.test_id, "skipped": "Э2 (запустите с --llm)"})
+                continue
+            try:
+                caught, missed, extra = run_e2_test(ws, cfg or Config(), test)
+            except adapters.ManualModeNeeded as e:
+                results.append({"test_id": test.test_id, "skipped": f"Э2: API недоступен ({e.reason})"})
+                continue
+        else:
+            caught, missed, extra = run_e1_test(ws, test)
+        results.append(
+            {"test_id": test.test_id, "поймано": caught, "пропущено": missed, "лишние": extra}
+        )
+    missed_total = [r["test_id"] for r in results if r.get("пропущено")]
+    executed = [r["test_id"] for r in results if not r.get("skipped")]
+    # «зелёная» — только когда что-то действительно проверено (2.8): пустой корпус или
+    # сплошь пропущенные Э2-тесты доказательством ничего не являются (FR-R3)
+    green = bool(executed) and not missed_total
+    if not tests:
+        reason = "корпус пуст"
+    elif not executed:
+        reason = "все тесты пропущены (Э2 без --llm/API)"
+    elif missed_total:
+        reason = "пропущены ожидаемые флаги"
+    else:
+        reason = ""
+    report = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "всего": len(tests),
+        "выполнено": len(executed),
+        "зелёная": green,
+        "причина": reason,
+        "провалено": missed_total,
+        "результаты": results,
+        "хэши": environment_hashes(ws),
+    }
+    guard.write_text(
+        ws.regression / "report.json", json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+    )
+    return report
+
+
+def load_report(ws: Workspace) -> dict | None:
+    path = ws.regression / "report.json"
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def is_stale(ws: Workspace) -> bool:
+    """Отчёт есть, но конфигурация (config/шаблоны/нормы) с тех пор изменилась."""
+    report = load_report(ws)
+    return report is not None and report.get("хэши") != environment_hashes(ws)
+
+
+def is_green(ws: Workspace) -> bool | None:
+    """None — регрессия ещё не запускалась ИЛИ отчёт устарел (изменились конфиг.yaml,
+    шаблоны или нормы — FR-R3 требует нового прогона)."""
+    report = load_report(ws)
+    if report is None or report.get("хэши") != environment_hashes(ws):
+        return None
+    return bool(report.get("зелёная"))
