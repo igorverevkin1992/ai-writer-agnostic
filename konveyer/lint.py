@@ -1160,13 +1160,21 @@ def estimate_llm_cost(cfg: Config, n_docs: int, avg_chars: int = 12_000) -> floa
 
 
 def run_lint_llm(ws: Workspace, cfg: Config, library: Path, files: list[Path] | None = None,
-                 max_calls: int | None = None) -> tuple[list[LintFinding], list[str]]:
-    """Смысловые противоречия по документам (по одному вызову на документ), с лимитом вызовов (FR-LT-3)."""
+                 max_calls: int | None = None, max_cost_usd: float | None = None) -> tuple[list[LintFinding], list[str]]:
+    """Смысловые противоречия по документам (по одному вызову на документ), с лимитом вызовов и бюджетом
+    стоимости по ценам конфига (FR-LT-3): превышение — отказ до первого вызова."""
     docs = files or _library_docs(library)
     if max_calls is not None and len(docs) > max_calls:
         raise ValueError(f"документов {len(docs)}, лимит вызовов модели {max_calls}: укажите --файл или поднимите --лимит")
     system = _template(ws.root)
     context = _context_slices(ws.exports)
+    if max_cost_usd is not None:
+        mc = cfg.role("линтер")
+        total = sum(adapters.estimate_cost_before(mc, len(system) + len(context) + len(d.read_text(encoding="utf-8", errors="replace")), 800) or 0.0
+                    for d in docs)
+        if total > max_cost_usd:
+            raise ValueError(f"оценка стоимости модельного слоя {total:.2f} $ выше бюджета {max_cost_usd:.2f} $: "
+                             f"сузьте список --файл или поднимите бюджет")
     findings: list[LintFinding] = []
     prompts: list[str] = []
     for doc in docs:
