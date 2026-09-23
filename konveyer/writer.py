@@ -10,7 +10,7 @@ from importlib import resources
 
 from jinja2 import Environment, StrictUndefined
 
-from . import adapters, cancel, guard
+from . import adapters, cancel, catalog, guard, manifest as manifest_mod
 from .config import Config
 from .paths import Workspace
 from .schemas import Edit
@@ -40,7 +40,7 @@ def _save_draft(ws: Workspace, chapter: int, k: int, text: str, cfg: Config, mod
 def write_chapter(ws: Workspace, cfg: Config, chapter: int, k: int) -> None:
     """FR-W1: отправляет окно, сохраняет ответ как черновик_k.md. Контекст — только окно."""
     window = ws.window_path(chapter).read_text(encoding="utf-8")
-    text = adapters.call_gemini(window, cfg.writer, cfg.api, ws.logs, chapter=chapter)
+    text = adapters.call_model(cfg.writer, cfg.api, "", window, ws.logs, role="писатель", chapter=chapter)
     _save_draft(ws, chapter, k, text, cfg, mode="генерация")
 
 
@@ -66,7 +66,7 @@ def write_variants(ws: Workspace, cfg: Config, chapter: int, k: int, n: int) -> 
     for i, label in enumerate(labels):
         if i:
             cancel.check(f"вариант {label}")
-        text = adapters.call_gemini(window, cfg.writer, cfg.api, ws.logs, chapter=chapter)
+        text = adapters.call_model(cfg.writer, cfg.api, "", window, ws.logs, role="писатель", chapter=chapter)
         _save_draft(ws, chapter, k, text, cfg, mode=f"генерация (вариант {label})",
                     extra={"вариант": label, "вариантов": n}, suffix=variant_suffix(label))
         saved.append(label)
@@ -189,14 +189,18 @@ def apply_edits_locally(ws: Workspace, cfg: Config, chapter: int, чернови
 def edit_prompt(ws: Workspace, chapter: int, черновик_k: int, edits: list[Edit], draft_text: str | None = None) -> str:
     """FR-W2: принятый черновик + правки + инструкция «внести точно» (шаблон в шаблоны/).
     `draft_text` — промежуточный текст после правок кодом (Р-023); без него — сам черновик_k."""
-    override = ws.templates / "правки.md.j2"
-    if override.exists():
-        tpl = override.read_text(encoding="utf-8")
-    else:
+    tpl = None
+    for cand in (ws.root / "промпты" / "правки.md.j2", ws.templates / "правки.md.j2"):
+        if cand.exists():
+            tpl = cand.read_text(encoding="utf-8")
+            break
+    if tpl is None:
         tpl = resources.files("konveyer").joinpath("шаблоны/правки.md.j2").read_text(encoding="utf-8")
     draft = draft_text if draft_text is not None else ws.draft_path(chapter, черновик_k).read_text(encoding="utf-8")
+    lib = guard._library() or ws.root / "Библиотека"
+    series = manifest_mod.effective(ws.root, lib, catalog.load_types(ws.root)).проект.имя
     env = Environment(undefined=StrictUndefined)
-    return env.from_string(tpl).render(edits=edits, draft=draft)
+    return env.from_string(tpl).render(edits=edits, draft=draft, series=series)
 
 
 def apply_edits(ws: Workspace, cfg: Config, chapter: int, черновик_k: int, edits: list[Edit], new_k: int | None = None,
@@ -205,7 +209,7 @@ def apply_edits(ws: Workspace, cfg: Config, chapter: int, черновик_k: in
     `base_text` — текст с уже применёнными кодом правками (Писателю уходят только `edits`)."""
     prompt = edit_prompt(ws, chapter, черновик_k, edits, draft_text=base_text)
     guard.write_text(ws.chapter_dir(chapter) / "промпт_правок.md", prompt)
-    text = adapters.call_gemini(prompt, cfg.writer, cfg.api, ws.logs, chapter=chapter)
+    text = adapters.call_model(cfg.writer, cfg.api, "", prompt, ws.logs, role="писатель (правки)", chapter=chapter)
     new_k = new_k or черновик_k + 1
     extra = {"база": черновик_k}
     if applied_locally:

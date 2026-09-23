@@ -25,9 +25,7 @@ from .fsm import ChapterState, StatusFileError, all_states
 from .paths import Workspace
 from .schemas import Act, Brief, Verdict
 
-SNAPSHOT_DOC = "35_Снапшот_Том{volume}.md"
 TAG = "том-{volume}"
-_PROSE_RE = re.compile(r"Том0*(\d+)_Глава0*(\d+)")
 # метрики Э1, у которых «actual» — число (усредняются по актам в статистике тома)
 _NUMERIC_CHECKS = {
     "V1.2a_средняя_длина": "средняя длина фразы",
@@ -39,8 +37,13 @@ _NUMERIC_CHECKS = {
 }
 
 
-def snapshot_doc_name(volume: int) -> str:
-    return SNAPSHOT_DOC.format(volume=int(volume))
+def snapshot_doc_name(volume: int, root: Path | None = None) -> str:
+    """Имя документа снапшота тома — из каталога типов (`снапшоты.имя_по_умолчанию`)."""
+    from . import catalog
+
+    spec = catalog.load_types(root).get("снапшоты")
+    pattern = spec.default_name if spec and spec.default_name else "35_Снапшот_Том{том}.md"
+    return pattern.format(том=int(volume))
 
 
 def tag_name(volume: int) -> str:
@@ -50,16 +53,9 @@ def tag_name(volume: int) -> str:
 # ------------------------------------------------------------------ рукопись и статистика
 
 
-def prose_files(library: Path, volume: int) -> list[tuple[int, Path]]:
-    """Принятые главы тома в `Проза/` по возрастанию номера: [(N, путь)]. Макеты («_МАКЕТ») не берутся."""
-    out: list[tuple[int, Path]] = []
-    prose = library / "Проза"
-    for p in sorted(prose.glob("*.md")) if prose.exists() else []:
-        m = _PROSE_RE.search(p.stem)
-        if not m or int(m.group(1)) != volume or "МАКЕТ" in p.stem.upper():
-            continue
-        out.append((int(m.group(2)), p))
-    return sorted(out)
+def prose_files(library: Path, volume: int, root: Path | None = None) -> list[tuple[int, Path]]:
+    """Принятые главы тома по документам типа «проза»: [(N, путь)]; макеты не берутся."""
+    return exporter.prose_files(library, volume, root)
 
 
 def _chapter_body(text: str) -> tuple[str, list[str]]:
@@ -79,7 +75,7 @@ def _word_count(text: str) -> int:
 def build_manuscript(ws: Workspace, library: Path, volume: int) -> tuple[Path, Path | None, str | None]:
     """Собирает `рукопись/ТомN.md` (главы по порядку с заголовками) и, если установлен python-docx,
     `рукопись/ТомN.docx`. Возвращает (md, docx | None, подсказка | None)."""
-    chapters = prose_files(library, volume)
+    chapters = prose_files(library, volume, ws.root)
     if not chapters:
         raise FileNotFoundError(f"в библиотеке нет принятых глав тома {volume} (Проза/Том{volume}_ГлаваNN.md).")
     briefs = {b.chapter: b for b in _briefs_of(ws, volume)}
@@ -176,7 +172,7 @@ def volume_stats(ws: Workspace, library: Path, volume: int | None = None) -> Vol
         v = _verdict(vws, st.chapter)
         if v is not None:
             verdicts[st.chapter] = v
-    words = {n: _word_count(_chapter_body(p.read_text(encoding="utf-8"))[0]) for n, p in prose_files(library, volume)}
+    words = {n: _word_count(_chapter_body(p.read_text(encoding="utf-8"))[0]) for n, p in prose_files(library, volume, ws.root)}
     acts = _acts_of(ws) if volume == ws.volume else []
 
     def averages(lo: int, hi: int) -> dict[str, float]:
@@ -196,7 +192,7 @@ def volume_stats(ws: Workspace, library: Path, volume: int | None = None) -> Vol
     return VolumeStats(
         volume=volume, chapters_total=len(briefs), fixed=sorted(fixed), in_work=dict(sorted(in_work.items())),
         words=words, acts=acts, act_metrics=act_metrics, total_metrics=averages(0, 10**6),
-        cost=round(cost, 2), calls=calls, missing_docs=exporter.missing_volume_docs(library, volume),
+        cost=round(cost, 2), calls=calls, missing_docs=exporter.missing_volume_docs(library, volume, ws.root),
     )
 
 
@@ -284,31 +280,31 @@ def close_volume(ws: Workspace, cfg: Config, library: Path, volume: int, *, agai
     if volume != ws.volume:
         raise RuntimeError(
             f"закрывается только текущий том рабочей области (сейчас том {ws.volume}); "
-            f"переключитесь: `konveyer volume open {volume}`."
+            f"переключитесь: `konveyer том открыть {volume}`."
         )
-    exporter.run_export(library, ws.exports, ws.logs, volume)
+    exporter.run_export(library, ws.exports, ws.logs, volume, ws.root)
     pending = unfixed_chapters(ws, volume)
     if pending:
         raise RuntimeError(
             f"том {volume} нельзя закрыть: не зафиксированы {', '.join(pending)}. "
-            "Доведите главы до «зафиксировано» (`konveyer canonize N --apply`)."
+            "Доведите главы до «зафиксировано» (`konveyer канон N --применить`)."
         )
     if not _briefs_of(ws, volume):
         raise RuntimeError(f"в поглавнике нет глав тома {volume} — закрывать нечего.")
-    doc = library / snapshot_doc_name(volume)
+    doc = library / snapshot_doc_name(volume, ws.root)
     messages: list[str] = []
     if doc.exists() and not again:
         raise RuntimeError(
-            f"снапшот {doc.name} уже есть в библиотеке; чтобы переписать его — `konveyer volume close {volume} --заново`."
+            f"снапшот {doc.name} уже есть в библиотеке; чтобы переписать его — `konveyer том закрыть {volume} --заново`."
         )
     draft = snapshot.build_snapshot(ws, volume)
     text = draft.read_text(encoding="utf-8").replace(
-        "Черновик сгенерирован конвейером; вносится в канон правкой библиотеки + `konveyer canon-commit`.",
-        f"Внесён в канон командой `konveyer volume close {volume}` (реестр 3.5, срез мира на конец тома).",
+        "Черновик сгенерирован конвейером; вносится в канон правкой библиотеки + `konveyer канон-коммит`.",
+        f"Внесён в канон командой `konveyer том закрыть {volume}` (срез мира на конец тома).",
     )
     result = canonchange.canon_change(
         ws, cfg, library, lambda: guard.write_text(doc, text),
-        f"[том {volume}] снапшот 3.5: {doc.name} (закрытие тома)",
+        f"[том {volume}] снапшот: {doc.name} (закрытие тома)",
         commit=True, author_confirmed=True, action=f"закрытие тома {volume}",
     )
     messages.append(result.message)
@@ -338,8 +334,14 @@ def close_volume(ws: Workspace, cfg: Config, library: Path, volume: int, *, agai
 
 
 def open_volume(ws: Workspace, library: Path, volume: int) -> list[str]:
-    """Проверяет, что документы тома есть в библиотеке; возвращает список недостающих (пусто — можно
-    переключать `config.volume`, это делает CLI через `config.set_volume`)."""
+    """Проверяет, что обязательные документы тома есть в библиотеке; возвращает список недостающих (пусто — можно
+    переключать `config.volume`, это делает CLI через `config.set_volume`). Документы модулей — см. `volume_warnings`."""
     if int(volume) < 1:
         raise ValueError(f"номер тома должен быть ≥ 1, получено: {volume}.")
-    return exporter.missing_volume_docs(library, int(volume))
+    return exporter.missing_volume_docs(library, int(volume), ws.root, only_required=True)
+
+
+def volume_warnings(ws: Workspace, library: Path, volume: int) -> list[str]:
+    """Потомные документы включённых модулей, которых у тома нет (предупреждение, не отказ)."""
+    required = set(open_volume(ws, library, volume))
+    return [m for m in exporter.missing_volume_docs(library, int(volume), ws.root) if m not in required]

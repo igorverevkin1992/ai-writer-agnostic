@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from konveyer import compiler, exporter, guard, realcanon
+from konveyer import compiler, exporter, guard
+from tests import профиль
+from tests.профиль import realcanon
 from konveyer.paths import Workspace
 from konveyer.schemas import Brief, Scene
 
@@ -90,6 +92,12 @@ def test_поглавник_карточки_и_поля_главы(tmp_path):
 
 
 # ------------------------------------------------------ 1.10 фильтр клауз для Писателя
+
+
+@pytest.fixture(autouse=True)
+def _ugar_markers():
+    with профиль.markers():
+        yield
 
 
 def test_фильтр_клауз_читателю_и_инструменту():

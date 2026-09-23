@@ -49,7 +49,7 @@ def test_стоп_листы_участников_и_года(ws, library):
 
 def test_информрежим_как_не_упоминать(ws, library):
     w, _ = _window(ws, library, chapter=1)
-    assert "НЕ упоминать (информрежим B-001)" in w  # FR-C3
+    assert "НЕ упоминать (информрежим B-002)" in w and "тайна B-001" in w  # FR-C3
 
 
 def test_превышение_лимита_окна(ws, library):

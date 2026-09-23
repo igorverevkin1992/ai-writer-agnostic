@@ -54,9 +54,9 @@ def test_хронология_глав(ws, library):
 
 
 def test_ссылки_на_главы_вне_тома(ws, library):
-    _edit(library / "31_Матрица_знаний.md", "| M-002 | у Зои есть ключ от гаража №14 | Каширин | 4 |",
+    _edit(library / "31_Матрица_знаний.md", "| M-002 | у Зои есть ключ от гаража №14 | Каширин | 5 |",
           "| M-002 | у Зои есть ключ от гаража №14 | Каширин | 40 |")
-    _edit(library / "32_Реестр_закладок.md", "| P-001 | записка без подписи на столе | т1 гл1 | т1 гл9 |",
+    _edit(library / "32_Реестр_закладок.md", "| P-001 | записка без подписи на столе | т1 гл1 | т1 гл6 |",
           "| P-001 | записка без подписи на столе | т1 гл9 | т1 гл1 |")
     report = lint.run_lint(library, ws.exports, ws.logs)
     codes = [f.code for f in report.findings]
@@ -283,10 +283,10 @@ def test_cli_lint(ws, library, monkeypatch):
 
 
 def test_сбой_линтера_становится_находкой_а_не_циклом(ws, library, monkeypatch):
-    """Файл не в UTF-8 в библиотеке: наблюдатель/панель не зацикливаются, автор видит ЛИНТ-0 с причиной."""
+    """Файл не в UTF-8 в библиотеке: наблюдатель/панель не зацикливаются, автор видит находку с причиной (NFR-2)."""
     (library / "Досье" / "Персонаж_Плохой.md").write_bytes("# Досье\n\nТекст в cp1251: ёж".encode("cp1251"))
-    with pytest.raises(UnicodeDecodeError):
-        lint.run_lint(library, ws.exports, ws.logs)
+    report = lint.run_lint(library, ws.exports, ws.logs)
+    assert report.errors == 1 and report.findings[0].code == "РАЗМ-1" and "UTF-8" in report.findings[0].message
     monkeypatch.chdir(ws.root)
     srv = server.serve(ws, Config(), library, port=0, watch=False)
     api = srv.api  # type: ignore[attr-defined]
@@ -294,17 +294,17 @@ def test_сбой_линтера_становится_находкой_а_не_�
         api.request_lint(["Досье/Персонаж_Плохой.md"], wait=10.0)
         assert api.lint_report and api.lint_report.errors == 1
         f = api.lint_report.findings[0]
-        assert f.code == "ЛИНТ-0" and "UTF-8" in f.message and not api.lint_pending and not api.lint_running
+        assert f.code == "РАЗМ-1" and "UTF-8" in f.message and not api.lint_pending and not api.lint_running
         # GET /api/lint — без побочных эффектов: выгрузки не пересобираются, отчёт тот же
         stamp = (ws.exports / "индекс.json").stat().st_mtime_ns
-        assert api.lint()["report"]["findings"][0]["code"] == "ЛИНТ-0"
+        assert api.lint()["report"]["findings"][0]["code"] == "РАЗМ-1"
         assert (ws.exports / "индекс.json").stat().st_mtime_ns == stamp
     finally:
         api.stop_lint_worker()
         srv.server_close()
     # CLI: тот же сбой — находка и код возврата 1, без трейсбека
     r = CliRunner().invoke(app, ["lint"])
-    assert r.exit_code == 1 and "ЛИНТ-0" in r.output and "Traceback" not in r.output
+    assert r.exit_code == 1 and "РАЗМ-1" in r.output and "Traceback" not in r.output
 
 
 def test_очередь_линтера_ждёт_занятый_сервер(ws, library, monkeypatch):
@@ -342,7 +342,7 @@ def test_модельный_слой_сбой_одного_документа_н
 
     calls = []
 
-    def fake_call(system, user, mc, api, logs_dir, *, role):
+    def fake_call(system, user, mc, api, logs_dir, *, role, **kw):
         calls.append(user.split("\n", 1)[0])
         if len(calls) == 1:
             return "никакого JSON тут нет"
@@ -372,7 +372,7 @@ def test_панель_lint_с_ошибками_не_помечается_сбо�
 
 def test_хронология_стык_года_не_ошибка(ws, library):
     """«30 декабря» → «2 января» без явного года — переход через Новый год, а не нарушение хронологии."""
-    _edit(library / "23_Поглавник_Том1.md", "- Дата: 12 июня 1995", "- Дата: 30 декабря")
-    _edit(library / "23_Поглавник_Том1.md", "- Дата: 3 июля 1995", "- Дата: 2 января")
+    _edit(library / "23_Поглавник_Том1.md", "- Дата: 3 июля 1995", "- Дата: 30 декабря")
+    _edit(library / "23_Поглавник_Том1.md", "- Дата: 18 июля 1995", "- Дата: 2 января")
     report = lint.run_lint(library, ws.exports, ws.logs)
     assert not any(f.code == "ХРОН-2" for f in report.findings)

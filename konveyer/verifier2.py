@@ -1,8 +1,8 @@
-"""Верификатор-2 (Э2): смысловые проверки LLM (FR-V2.1…FR-V2.5).
+"""Верификатор-2 (Э2): смысловые проверки моделью (FR-V2-1…FR-V2-7).
 
-Вход — текст + релевантные срезы выгрузок (не полные файлы канона).
-Выход — флаги.json. При недоступности API промпт сохраняется в
-главы/N/промпт_э2.md для ручного прогона (NFR-3).
+Вход — текст + только релевантные срезы выгрузок (не полные документы). Чек-листы определяются включёнными
+модулями (`модули/*.yaml: э2` → `модули/э2/<имя>.md`; методика драматургии даёт свой текст). Текст главы
+огорожен маркерами (FR-V2-2, FR-SC-8). Выход — `флаги.json`. Без API промпт сохраняется для ручного прогона.
 """
 
 from __future__ import annotations
@@ -10,24 +10,70 @@ from __future__ import annotations
 import json
 import re
 from importlib import resources
+from pathlib import Path
 
+from jinja2 import Environment
 from pydantic import ValidationError
 
-from . import adapters, circles, compiler, exporter, guard, llmjson
+from . import adapters, catalog, circles, compiler, exporter, guard, llmjson, manifest as manifest_mod, mdparse
 from .config import Config
 from .paths import Workspace
 from .schemas import Flag
 
+FENCE_OPEN = "<текст_главы>"
+FENCE_CLOSE = "</текст_главы>"
+
 
 def _template(ws: Workspace, name: str) -> str:
-    override = ws.templates / name
-    if override.exists():
-        return override.read_text(encoding="utf-8")
+    """Шаблон роли: `промпты/` проекта → `шаблоны/` проекта → движок (FR-RL-2, FR-AD-8)."""
+    for cand in (ws.root / "промпты" / name, ws.templates / name):
+        if cand.exists():
+            return cand.read_text(encoding="utf-8")
     return resources.files("konveyer").joinpath(f"шаблоны/{name}").read_text(encoding="utf-8")
 
 
+def _checklist_text(ws: Workspace, name: str) -> str:
+    for cand in (ws.root / "модули" / "э2" / f"{name}.md",):
+        if cand.exists():
+            return cand.read_text(encoding="utf-8").strip()
+    path = resources.files("konveyer").joinpath(f"модули/э2/{name}.md")
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return ""
+
+
+def _manifest(ws: Workspace) -> manifest_mod.Manifest:
+    from .config import library_dir, load_config
+
+    lib = guard._library() or library_dir(ws, load_config(ws))
+    return manifest_mod.effective(ws.root, lib, catalog.load_types(ws.root))
+
+
+def checklists(ws: Workspace) -> list[str]:
+    """Пункты проверок по включённым модулям (FR-V2-3): базовые всегда; методика — свой текст."""
+    man = _manifest(ws)
+    mods = catalog.load_modules(ws.root)
+    items: list[str] = []
+    seen: set[str] = set()
+    for m in sorted(mods.values(), key=lambda m: (not m.base, m.name)):
+        if not (m.base or man.module_enabled(m.name, mods)):
+            continue
+        for name in m.e2_checks:
+            if name in seen:
+                continue
+            seen.add(name)
+            text = _checklist_text(ws, name)
+            if name == "драматургия":
+                extra = circles.e2_text(ws)
+                if extra:
+                    text = f"**Драматургия.** {extra} Тип флага — \"драматургия\"."
+            if text:
+                items.append(text)
+    return items
+
+
 def _chapter_month(brief) -> int | None:
-    """Месяц главы из даты брифа («12.04», «ночь 18.04», «12 июня 1995») — для среза хроники."""
     from .lint import parse_date
 
     d = parse_date(brief.date or "")
@@ -35,7 +81,6 @@ def _chapter_month(brief) -> int | None:
 
 
 def chronicle_slice(events: list, brief) -> list[str]:
-    """Хроника 1926 за месяц главы ± 1 (чек-лист 4.2: анахронизмы). Без даты главы — весь год."""
     month = _chapter_month(brief)
     out = []
     for e in events:
@@ -46,10 +91,22 @@ def chronicle_slice(events: list, brief) -> list[str]:
     return out
 
 
-def build_prompt(ws: Workspace, chapter: int, draft: int) -> tuple[str, str]:
-    """(system, user): срезы матрицы участников, досье, бриф, закладки, информрежим, доза/документ,
-    континуити, хроника (FR-V2.1, чек-листы 4.1–4.3)."""
+def system_prompt(ws: Workspace, cfg: Config) -> str:
+    man = _manifest(ws)
+    project_checks = "\n\n".join(c.text for c in exporter.load_checklists(ws.exports) if c.text)
+    return Environment().from_string(_template(ws, "верификатор2_система.md")).render(
+        series=man.проект.имя, checks=checklists(ws), project_checklists=project_checks,
+        quote_words=cfg.e2_quote_words, max_flags=cfg.e2_max_flags,
+    )
+
+
+def build_prompt(ws: Workspace, chapter: int, draft: int, cfg: Config | None = None) -> tuple[str, str]:
+    """(system, user): срезы по включённым модулям (FR-V2-1), текст в ограждении (FR-V2-2)."""
+    cfg = cfg or Config()
     exports_dir = ws.exports
+    man = _manifest(ws)
+    mods = catalog.load_modules(ws.root)
+    on = {m: man.module_enabled(m, mods) for m in mods}
     brief = exporter.load_brief(exports_dir, chapter)
     briefs = exporter.load_briefs(exports_dir)
     matrix = exporter.load_matrix(exports_dir)
@@ -62,21 +119,21 @@ def build_prompt(ws: Workspace, chapter: int, draft: int) -> tuple[str, str]:
     doses = compiler.chapter_doses(exports_dir, brief)
     documents = compiler.chapter_documents(exports_dir, brief)
     text = ws.draft_path(chapter, draft).read_text(encoding="utf-8")
+    compiler.configure_markers(ws.root)
     try:
         drama = circles.frame_for_chapter(exporter.load_circles(exports_dir), exporter.load_acts(exports_dir), chapter)
     except FileNotFoundError:
         drama = circles.frame_for_chapter([], [], chapter)
-    drama_lines = circles.frame_lines(drama, with_weak_spot=True) or [
+    required = circles.required_steps(ws, "глава") if drama.get("has_any") else None
+    optional = circles.methodic_for(ws, "глава").optional_steps("глава", man) if drama.get("has_any") else set()
+    drama_lines = circles.frame_lines(drama, with_weak_spot=True, required=required, optional=optional) or [
         "- (каркас в канон не внесён — проверка драматургии ограничивается собственным движением главы)"
     ]
-
     participants = sorted(set([brief.focal, *brief.participants]) - {""})
-    # запреты линий участников: и словарные (0.3), и прозаические («канцелярит — панцирь страха»)
     line_rules = [
         f"- [{r.rule_id}] {r.applies_to.get('focal', 'все линии')}: {'; '.join(sorted(r.items))} ({r.action})"
         for r in stoplists
-        if r.kind == "лексика" and r.scope == "0.3"
-        and ("focal" not in r.applies_to or r.applies_to["focal"] in participants)
+        if r.kind == "лексика" and r.scope == "0.3" and ("focal" not in r.applies_to or r.applies_to["focal"] in participants)
     ]
     prose_rules = [
         f"- [{r.rule_id}] {r.applies_to.get('focal', 'все линии')}: {item}"
@@ -84,95 +141,68 @@ def build_prompt(ws: Workspace, chapter: int, draft: int) -> tuple[str, str]:
         if r.kind == "проза" and ("focal" not in r.applies_to or r.applies_to["focal"] in participants)
         for item in r.items
     ]
-    # досье участников — та же проекция, что в окне Писателя (FR-C3): без тайн, недоступных фокалу
     dossier_slice: list[str] = []
-    for d in sorted((compiler.safe_dossier(d, brief, infobans, participants)
-                     for d in dossiers if d.name in participants), key=lambda d: d.name):
+    for d in sorted((compiler.safe_dossier(d, brief, infobans, participants) for d in dossiers if d.name in participants), key=lambda d: d.name):
         parts = [f"физика: {d.physique}" if d.physique else "", f"речевой паспорт: {d.speech}" if d.speech else "",
-                 f"опознавательный код: {d.code}" if getattr(d, "code", "") else ""]
+                 f"опознавательный код: {d.code}" if d.code else ""]
         body = "; ".join(x for x in parts if x)
         dossier_slice.append(f"- {d.name}: {body}" if body else f"- {d.name}: (карточка без физики и речевого паспорта)")
     matrix_slice = [
         f"- [{f.fact_id}] {f.subject}: {f.fact} "
-        + ("(знает всегда)" if f.from_chapter == 0 else
-           f"(узнаёт в гл. {f.from_chapter})" if f.from_chapter is not None else "(НЕ знает)")
+        + ("(знает всегда)" if f.from_chapter == 0 else f"(узнаёт в гл. {f.from_chapter})" if f.from_chapter is not None else "(НЕ знает)")
         + (f" — {f.note}" if f.note.startswith("частично") else "")
-        for f in matrix
-        if f.subject in participants
+        for f in matrix if f.subject in participants
     ]
-    dose_lines = [
-        f"- Доза {d.dose_id} (гл. {d.chapter}): триггер — {d.trigger}; читатель получает: {d.reader_gets}; "
-        f"НЕ получает: {d.reader_not_gets}. {d.rule}" for d in doses
-    ]
-    document_lines = [
-        f"- Документ №{d.number} ({d.style}): расхождение с правдой — {d.divergence}. Языковая шкала: {d.scale}"
-        for d in documents
-    ]
-    user = "\n".join(
-        [
-            f"# Проверка главы {chapter} (том {brief.volume}, фокал: {brief.focal}, дата: {brief.date})",
-            "",
-            "## Срез матрицы знаний (участники сцены)",
-            *matrix_slice,
-            "",
-            "## Досье участников сцены (что обязано совпасть)",
-            *dossier_slice,
-            "",
-            "## Бриф главы",
-            f"- Сцены: {'; '.join(brief.scenes)}",
-            f"- Биты: {'; '.join(brief.beats)}",
-            f"- Запреты: {'; '.join(brief.bans)}",
-            f"- Фокал НЕ знает: {'; '.join(brief.not_knows)}",
-            *([f"- Что нового должен узнать читатель (реестр 2.2): {brief.reader_learns}"] if brief.reader_learns else []),
-            "",
-            "## Закладки, назначенные главе",
-            *[f"- [{p.plant_id}] {p.what}" for p in plants],
-            "",
-            *(["## Доза прошлого этой главы (реестр §5)", *dose_lines, ""] if dose_lines else []),
-            *(["## Документ-вставка этой главы (реестр §6) — блок `→ ДОКУМЕНТ` … `← КОНЕЦ ДОКУМЕНТА` обязателен",
-               *document_lines, ""] if document_lines else []),
-            "## Запреты информрежима (резервы будущих томов)",
-            *[
-                f"- [{b.ban_id}] {b.text}"
-                for b in infobans
-                if compiler.ban_active(b, brief)  # тот же фильтр, что у компилятора: раскрытое — не нарушение
-            ],
-            "",
-            "## Стоп-листы линий (фокализация, 0.3)",
-            *line_rules,
-            "",
-            "## Прозаические запреты линий (03 «Персональные запреты линий»)",
-            *prose_rules,
-            "",
-            "## Драматургия: каркас круга истории (2.1, Р-020)",
-            *drama_lines,
-            "",
-            "## Континуити 3.3 (детали, которые обязаны совпасть)",
-            *[f"- {c}" for c in compiler.prior_continuity(continuity, brief, infobans, participants, briefs)],
-            "",
-            "## Хроника 1926 (анахронизмы, 4.2) — месяц главы ± 1",
-            *chronicle_slice(chronicle, brief),
-            "",
-            "## ТЕКСТ ГЛАВЫ",
-            "",
-            "<текст_главы>",
-            text,
-            "</текст_главы>",
-        ]
-    )
-    return _template(ws, "верификатор2_система.md"), user
+    dose_lines = [f"- Доза {d.dose_id} (гл. {d.chapter}): триггер — {d.trigger}; читатель получает: {d.reader_gets}; "
+                  f"НЕ получает: {d.reader_not_gets}. {d.rule}" for d in doses]
+    document_lines = [f"- Документ №{d['number']} ({d['style']}): расхождение с правдой — {d['divergence']}. Языковая шкала: {d['scale']}"
+                      for d in documents]
+    blocks: list[list[str]] = [[f"# Проверка главы {chapter} (том {brief.volume}, фокал: {brief.focal}, дата: {brief.date})", ""]]
+    if on.get("эпистемика") and matrix_slice:
+        blocks.append(["## Срез знаний (участники сцены)", *matrix_slice, ""])
+    if dossier_slice:
+        blocks.append(["## Карточки участников сцены (что обязано совпасть)", *dossier_slice, ""])
+    blocks.append(["## Бриф главы", f"- Сцены: {'; '.join(brief.scenes)}", f"- Биты: {'; '.join(brief.beats)}",
+                   f"- Запреты: {'; '.join(brief.bans)}", f"- Фокал НЕ знает: {'; '.join(brief.not_knows)}",
+                   *([f"- Что нового должен узнать читатель: {brief.reader_learns}"] if brief.reader_learns else []), ""])
+    if on.get("закладки"):
+        blocks.append(["## Закладки, назначенные главе", *[f"- [{p.plant_id}] {p.what}" for p in plants], ""])
+    if on.get("дозы_прошлого") and dose_lines:
+        blocks.append(["## Доза прошлого этой главы", *dose_lines, ""])
+    if on.get("документы_вставки") and document_lines:
+        blocks.append(["## Документ-вставка этой главы — блок `→ ДОКУМЕНТ` … `← КОНЕЦ ДОКУМЕНТА` обязателен", *document_lines, ""])
+    if on.get("информрежим"):
+        blocks.append(["## Запреты информрежима (резервы будущих томов)",
+                       *[f"- [{b.ban_id}] {b.text}" for b in infobans if compiler.ban_active(b, brief)], ""])
+    if on.get("фокализация"):
+        blocks.append(["## Стоп-листы линий (фокализация)", *line_rules, ""])
+        if prose_rules:
+            blocks.append(["## Прозаические запреты линий", *prose_rules, ""])
+    if on.get("драматургия"):
+        blocks.append(["## Драматургия: каркас", *drama_lines, ""])
+    if on.get("континуити"):
+        blocks.append(["## Континуити (детали, которые обязаны совпасть)",
+                       *[f"- {c}" for c in compiler.prior_continuity(continuity, brief, infobans, participants, briefs)], ""])
+    if on.get("хроника_эпохи") and chronicle:
+        blocks.append(["## Хроника эпохи (анахронизмы) — месяц главы ± 1", *chronicle_slice(chronicle, brief), ""])
+    blocks.append(["## ТЕКСТ ГЛАВЫ", "", FENCE_OPEN, text, FENCE_CLOSE])
+    user = "\n".join(line for block in blocks for line in block)
+    return system_prompt(ws, cfg), user
 
 
-def parse_flags(raw: str) -> list[Flag]:
+def parse_flags(raw: str, max_words: int | None = None) -> list[Flag]:
     try:
         data = llmjson.extract_json(raw, list)
     except ValueError as e:
         raise ValueError(f"Ответ Верификатора-2: {e}") from e
     flags = []
     for i, item in enumerate(data, start=1):
-        # идентификатор попадает в разметку (id/href): всё, что не [\w.-], заменяется порядковым
         if not isinstance(item.get("flag_id"), str) or not re.fullmatch(r"[\w.\-]+", item["flag_id"]):
             item["flag_id"] = f"F-{i:03d}"
+        if max_words and isinstance(item.get("quote"), str):
+            words = item["quote"].split()
+            if len(words) > max_words:
+                item["quote"] = " ".join(words[:max_words])
         try:
             flags.append(Flag.model_validate(item))
         except ValidationError as e:
@@ -180,14 +210,20 @@ def parse_flags(raw: str) -> list[Flag]:
     return flags
 
 
+def _call_and_parse(ws: Workspace, cfg: Config, chapter: int, system: str, user: str, *, role: str, raw_name: str) -> list[Flag]:
+    raw = adapters.call_role(cfg, "верификатор2", system, user, ws.logs, role=role, chapter=chapter)
+    try:
+        return parse_flags(raw, cfg.e2_quote_words)
+    except ValueError:
+        # FR-AD-3: неразбираемый ответ сохраняется целиком и предъявляется автору
+        guard.write_text(ws.chapter_dir(chapter) / raw_name, raw)
+        raise ValueError(f"ответ модели не разобран — сохранён целиком в {ws.chapter_rel(chapter)}/{raw_name}") from None
+
+
 def run_verify2(ws: Workspace, cfg: Config, chapter: int, draft: int) -> list[Flag]:
-    system, user = build_prompt(ws, chapter, draft)
-    prompt_path = ws.chapter_dir(chapter) / "промпт_э2.md"
-    guard.write_text(prompt_path, f"<!-- system -->\n{system}\n\n<!-- user -->\n{user}\n")
-    raw = adapters.call_anthropic(
-        system, user, cfg.verifier2, cfg.api, ws.logs, role="верификатор-2", chapter=chapter
-    )
-    flags = parse_flags(raw)
+    system, user = build_prompt(ws, chapter, draft, cfg)
+    guard.write_text(ws.chapter_dir(chapter) / "промпт_э2.md", f"<!-- system -->\n{system}\n\n<!-- user -->\n{user}\n")
+    flags = _call_and_parse(ws, cfg, chapter, system, user, role="верификатор-2", raw_name="ответ_э2_сырой.md")
     save_flags(ws, chapter, flags)
     return flags
 
@@ -197,27 +233,19 @@ AGAIN_PROMPT = "промпт_э2_повторно.md"
 
 
 def run_verify2_again(ws: Workspace, cfg: Config, chapter: int, draft: int) -> list[Flag]:
-    """Повторный Э2 после правок (аудит 2, п. 24а) — совещательный: тот же промпт по текущему
-    черновику, результат в флаги_повторно.json; флаги.json, решения.json и FSM не трогает."""
-    system, user = build_prompt(ws, chapter, draft)
+    system, user = build_prompt(ws, chapter, draft, cfg)
     guard.write_text(ws.chapter_dir(chapter) / AGAIN_PROMPT, f"<!-- system -->\n{system}\n\n<!-- user -->\n{user}\n")
-    raw = adapters.call_anthropic(
-        system, user, cfg.verifier2, cfg.api, ws.logs, role="верификатор-2 (повторно)", chapter=chapter
-    )
-    flags = parse_flags(raw)
+    flags = _call_and_parse(ws, cfg, chapter, system, user, role="верификатор-2 (повторно)", raw_name="ответ_э2_повторно_сырой.md")
     save_flags_again(ws, chapter, flags, draft)
     return flags
 
 
 def save_flags_again(ws: Workspace, chapter: int, flags: list[Flag], draft: int) -> None:
-    guard.write_text(
-        ws.chapter_dir(chapter) / AGAIN_FLAGS,
-        json.dumps({"черновик": draft, "флаги": [f.model_dump() for f in flags]}, ensure_ascii=False, indent=2) + "\n",
-    )
+    guard.write_text(ws.chapter_dir(chapter) / AGAIN_FLAGS,
+                     json.dumps({"черновик": draft, "флаги": [f.model_dump() for f in flags]}, ensure_ascii=False, indent=2) + "\n")
 
 
 def load_flags_again(ws: Workspace, chapter: int) -> tuple[int | None, list[Flag]]:
-    """(черновик, флаги) повторного Э2; файл может быть и голым списком (ручной режим)."""
     path = ws.chapter_dir(chapter) / AGAIN_FLAGS
     if not path.exists():
         return None, []
@@ -227,32 +255,39 @@ def load_flags_again(ws: Workspace, chapter: int) -> tuple[int | None, list[Flag
     return data.get("черновик"), [Flag.model_validate(r) for r in data.get("флаги", [])]
 
 
-def build_taste_prompt(ws: Workspace, chapter: int, draft: int) -> tuple[str, str]:
-    """Совещательный проход «вкус» (02 §6.1–6.2): правила вкуса автора + текст главы."""
-    from . import mdparse
-
+def taste_rules(ws: Workspace) -> str:
+    """Правила вкуса автора — секции документа стиля по образцу типа (`окно.секции_вкуса`)."""
     from .config import library_dir, load_config
 
     library = guard._library() or library_dir(ws, load_config(ws))
-    sections = mdparse.parse_sections(sorted(library.glob("02_*.md"))[0])
-    wanted = [s for s in sections if re.match(r"(?:§\s*)?6\.[12]\.?\s", s.title + " ")]
-    rules = "\n\n".join(f"### {s.title}\n{s.body}" for s in wanted) or "(правила вкуса в 02 §6.1–6.2 ещё не заполнены)"
+    spec = catalog.load_types(ws.root).get("стиль")
+    pattern = (spec.window.get("секции_вкуса") if spec else None) or r"^(?:§\s*)?6\.[12]\.?\s|[Вв]кус"
+    rx = re.compile(pattern)
+    wanted: list[str] = []
+    for path in exporter.docs_of_type(library, "стиль", None, ws.root):
+        for s in mdparse.parse_sections(path):
+            if s.level and rx.search(s.title + " "):
+                wanted.append(f"### {s.title}\n{s.body}")
+    return "\n\n".join(wanted) or "(правила вкуса в документе стиля ещё не заполнены)"
+
+
+def build_taste_prompt(ws: Workspace, chapter: int, draft: int, cfg: Config | None = None) -> tuple[str, str]:
+    cfg = cfg or Config()
+    man = _manifest(ws)
     text = ws.draft_path(chapter, draft).read_text(encoding="utf-8")
-    user = f"# Вкус: глава {chapter}\n\n## Правила вкуса автора (02 §6.1–6.2)\n\n{rules}\n\n## ТЕКСТ ГЛАВЫ\n\n<текст_главы>\n{text}\n</текст_главы>\n"
-    return _template(ws, "верификатор2_вкус_система.md"), user
+    user = (f"# Вкус: глава {chapter}\n\n## Правила вкуса автора\n\n{taste_rules(ws)}\n\n## ТЕКСТ ГЛАВЫ\n\n"
+            f"{FENCE_OPEN}\n{text}\n{FENCE_CLOSE}\n")
+    system = Environment().from_string(_template(ws, "верификатор2_вкус_система.md")).render(
+        series=man.проект.имя, quote_words=cfg.e2_quote_words)
+    return system, user
 
 
 def run_taste(ws: Workspace, cfg: Config, chapter: int, draft: int) -> list[Flag]:
-    """Советы по вкусу — отдельный файл вкус.json: приёмку не блокируют, в флаги.json не попадают."""
-    system, user = build_taste_prompt(ws, chapter, draft)
-    prompt_path = ws.chapter_dir(chapter) / "промпт_вкуса.md"
-    guard.write_text(prompt_path, f"<!-- system -->\n{system}\n\n<!-- user -->\n{user}\n")
-    raw = adapters.call_anthropic(system, user, cfg.verifier2, cfg.api, ws.logs, role="вкус", chapter=chapter)
+    system, user = build_taste_prompt(ws, chapter, draft, cfg)
+    guard.write_text(ws.chapter_dir(chapter) / "промпт_вкуса.md", f"<!-- system -->\n{system}\n\n<!-- user -->\n{user}\n")
+    raw = adapters.call_role(cfg, "верификатор2", system, user, ws.logs, role="вкус", chapter=chapter)
     flags = [f.model_copy(update={"severity": "мелочь", "type": "вкус", "kind": "violation"}) for f in parse_flags(raw)]
-    guard.write_text(
-        ws.chapter_dir(chapter) / "вкус.json",
-        json.dumps([f.model_dump() for f in flags], ensure_ascii=False, indent=2) + "\n",
-    )
+    guard.write_text(ws.chapter_dir(chapter) / "вкус.json", json.dumps([f.model_dump() for f in flags], ensure_ascii=False, indent=2) + "\n")
     return flags
 
 
@@ -264,10 +299,7 @@ def load_taste(ws: Workspace, chapter: int) -> list[Flag]:
 
 
 def save_flags(ws: Workspace, chapter: int, flags: list[Flag]) -> None:
-    guard.write_text(
-        ws.chapter_dir(chapter) / "флаги.json",
-        json.dumps([f.model_dump() for f in flags], ensure_ascii=False, indent=2) + "\n",
-    )
+    guard.write_text(ws.chapter_dir(chapter) / "флаги.json", json.dumps([f.model_dump() for f in flags], ensure_ascii=False, indent=2) + "\n")
 
 
 def load_flags(ws: Workspace, chapter: int) -> list[Flag]:

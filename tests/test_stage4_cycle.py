@@ -207,7 +207,7 @@ def _chapter_with_samovolki(ws, n: int = 2):
         Flag(flag_id="F-003", type="самоволка", quote="Дверь скрипнула.", rule="—", kind="samovolka"),
     ])
     review.save_resolutions(ws, n, [
-        Resolution(flag_id="F-001", decision="канонизировать", target_registry="3.1"),
+        Resolution(flag_id="F-001", decision="канонизировать", target_registry="эпистемика"),
         Resolution(flag_id="F-002"),
         Resolution(flag_id="F-003"),
     ])
@@ -219,7 +219,7 @@ def test_resolve_all_вычёркивает_только_нерешённые(pa
     code, data = _req(port, "POST", "/api/chapter/2/resolve-all", {"decision": "вычеркнуть"})
     assert code == 200 and data["resolved"] == 2 and data["flag_ids"] == ["F-002", "F-003"]
     rs = {r.flag_id: r for r in review.load_resolutions(ws, 2)}
-    assert rs["F-001"].decision == "канонизировать" and rs["F-001"].target_registry == "3.1"
+    assert rs["F-001"].decision == "канонизировать" and rs["F-001"].target_registry == "эпистемика"
     assert rs["F-002"].decision == "вычеркнуть" and rs["F-002"].target_registry is None
     assert rs["F-003"].decision == "вычеркнуть"
     assert review.unresolved_samovolki(ws, 2) == []

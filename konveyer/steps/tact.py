@@ -36,7 +36,7 @@ def export() -> dict[str, str]:
     """Перегенерировать все выгрузки из MD-библиотеки (FR-X1…FR-X3). Возвращает хэши файлов выгрузок."""
     ws, cfg, lib = _ctx()
     try:
-        hashes = exporter.run_export(lib, ws.exports, ws.logs, ws.volume)
+        hashes = exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
     except MarkupError as e:
         raise StepError(f"структура MD расходится с соглашениями Д-1 → {e}") from e
     secho(f"Выгрузки обновлены (том {ws.volume}): {len(hashes)} файлов в {ws.exports}/", fg=colors.GREEN)
@@ -47,7 +47,7 @@ def compile(chapter: int) -> Path:  # noqa: A001 — имя команды `konv
     """Собрать окно контекста главы N (FR-C1…FR-C6). Экспорт выполняется автоматически (риск R-5)."""
     ws, cfg, lib = _ctx()
     try:
-        exporter.run_export(lib, ws.exports, ws.logs, ws.volume)
+        exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
         path, breakdown = compiler.compile_window(ws, lib, chapter, cfg.window_soft_limit_chars)
     except MarkupError as e:
         raise StepError(str(e)) from e

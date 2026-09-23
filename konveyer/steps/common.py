@@ -32,7 +32,10 @@ def _ctx() -> tuple[Workspace, Config, Path]:
     документы канона и журнал API привязаны к нему."""
     ws = find_workspace()
     cfg = load_config(ws)
-    ws = ws.for_volume(cfg.volume)
+    from .. import manifest as manifest_mod
+
+    man = manifest_mod.load(ws.root)
+    ws = ws.for_volume(man.проект.текущий_том if man is not None else cfg.volume)
     lib = library_dir(ws, cfg)
     guard.set_library_dir(lib)
     apilog.current_volume = ws.volume

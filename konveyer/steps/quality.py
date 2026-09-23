@@ -62,7 +62,7 @@ def circles(
     from .. import circles as circles_mod
 
     ws, cfg, lib = _ctx()
-    exporter.run_export(lib, ws.exports, ws.logs)
+    exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
     if to_canon:
         n = len(circles_mod.drafts(ws))
         if not n:

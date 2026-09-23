@@ -153,27 +153,34 @@ def doctor() -> None:
              "`konveyer backup --архив`")
     manifest = ws.exports / "индекс.json"
     item(manifest.exists(), "выгрузки выгрузки/", "выполните `konveyer export`")
-    item(bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")),
-         "GEMINI_API_KEY (Писатель)", "задайте в .env — иначе ручной режим (NFR-3)")
-    item(bool(os.environ.get("ANTHROPIC_API_KEY")), "ANTHROPIC_API_KEY (Верификатор-2/Канонист)",
-         "задайте в .env — иначе ручной режим (NFR-3)")
+    providers = {m.provider for m in cfg.roles().values() if not m.manual}
+    for provider in sorted(providers):
+        names = adapters.KEY_ENV.get(provider, ())
+        roles_of = ", ".join(r for r, m in cfg.roles().items() if m.provider == provider)
+        item(bool(adapters.api_key_for(provider)) if names else None, f"ключ провайдера {provider} ({roles_of})",
+             f"задайте {' или '.join(names) or 'ключ'} в .env — иначе ручной режим")
     def has_module(name: str) -> bool:
         try:
             return importlib.util.find_spec(name) is not None
         except ModuleNotFoundError:  # нет пакета-родителя (google.*)
             return False
 
-    item(has_module("google.genai"), "SDK google-genai", "pip install 'konveyer[llm]'")
-    item(has_module("anthropic"), "SDK anthropic", "pip install 'konveyer[llm]'")
+    if "gemini" in providers:
+        item(has_module("google.genai"), "SDK google-genai", "pip install 'konveyer[llm]'")
+    if "anthropic" in providers:
+        item(has_module("anthropic"), "SDK anthropic", "pip install 'konveyer[llm]'")
     # пины моделей против API (п. 31): только чтение метаданных, ни одной генерации
     seen: set[tuple[str, str]] = set()
-    for role, mc in (("Писатель", cfg.writer), ("Верификатор-2", cfg.verifier2), ("Канонист", cfg.canonist)):
-        if (mc.provider, mc.model) in seen:
+    labels = {"писатель": "Писатель", "верификатор2": "Верификатор-2", "канонист": "Канонист",
+              "аналитик": "аналитик", "линтер": "линтер", "архивариус": "архивариус"}
+    explicit = {r: m for r, m in cfg.roles().items()
+                if r in ("писатель", "верификатор2", "канонист") or getattr(cfg, {"аналитик": "analyst", "линтер": "linter", "архивариус": "archivist"}[r], None) is not None}
+    for role, mc in explicit.items():
+        if (mc.provider, mc.model) in seen or mc.manual:
             continue
         seen.add((mc.provider, mc.model))
         ok, note = adapters.probe_model(mc)
-        roles = "/".join(r for r, m in (("Писатель", cfg.writer), ("Верификатор-2", cfg.verifier2), ("Канонист", cfg.canonist))
-                         if (m.provider, m.model) == (mc.provider, mc.model))
+        roles = "/".join(labels.get(r, r) for r, m in explicit.items() if (m.provider, m.model) == (mc.provider, mc.model))
         label = f"модель {mc.model} ({roles}): " + (f"есть в API ({note})" if ok else note)
         item(ok, label, "смените пин в конфиг.yaml через пере-тест (`konveyer retest`, сценарий В, Д-11)" if ok is False else "")
     green = regression_mod.is_green(ws)

@@ -26,8 +26,11 @@ def _window(ws: Workspace, library: Path, chapter: int) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _section(window: str, start: str, end: str) -> str:
-    return window[window.index(start):window.index(end)]
+def _section(window: str, start: str, end: str | None = None) -> str:
+    """Секция окна от маркера `start` до следующего маркера секции (`end` оставлен для читаемости вызовов)."""
+    i = window.index(start)
+    j = window.find("<!-- СЕКЦИЯ", i + len(start))
+    return window[i:j if j >= 0 else len(window)]
 
 
 def test_демо_секция_было_раньше(ws, library):

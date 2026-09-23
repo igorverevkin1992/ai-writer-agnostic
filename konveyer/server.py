@@ -403,7 +403,8 @@ class PanelAPI:
             "chapters": chapters,
             "briefs": briefs,
             "regression_green": self._regression_green(),
-            "models": {"writer": self.cfg.writer.model, "verifier2": self.cfg.verifier2.model},
+            "models": {"writer": self.cfg.writer.model, "verifier2": self.cfg.verifier2.model,
+                       **{r: m.model for r, m in self.cfg.roles().items()}},
             "job": self.jobs.summary(),
             "lint": self.lint_summary(),
             "author_today_min": round(author_today_s / 60, 1),
@@ -449,7 +450,7 @@ class PanelAPI:
             "diff_report": read_json("дифф.json"),
             "text": text,
             "drafts": sorted(
-                int(m.group(1)) for p in chdir.glob("черновик_*.md") if (m := re.match(r"draft_(\d+)\.md", p.name))
+                int(m.group(1)) for p in chdir.glob("черновик_*.md") if (m := re.match(r"черновик_(\d+)\.md", p.name))
             ) if chdir.exists() else [],
             "edits_md": edits_md_path.read_text(encoding="utf-8") if edits_md_path.exists() else None,
             "edits_parsed": edits_parsed,
@@ -534,12 +535,13 @@ class PanelAPI:
 
     @staticmethod
     def _check_decision(decision: str, registry: str | None) -> None:
-        from .canonist import REGISTRY_GLOBS
+        from .canonist import registries
 
+        regs = registries()
         if decision not in ("вычеркнуть", "канонизировать"):
             raise ValueError("решение: «вычеркнуть» или «канонизировать»")
-        if decision == "канонизировать" and registry not in REGISTRY_GLOBS:
-            raise ValueError(f"реестр: один из {', '.join(REGISTRY_GLOBS)}")
+        if decision == "канонизировать" and registry not in regs:
+            raise ValueError(f"реестр: один из {', '.join(regs)}")
 
     @staticmethod
     def _decide(r, decision: str, registry: str | None) -> None:
@@ -698,7 +700,7 @@ class PanelAPI:
                             self.lint_running = True
                             self.lint_pending = False
                         try:
-                            report = lint_mod.run_lint(self.library, self.ws.exports, self.ws.logs, volume=self.ws.volume)
+                            report = lint_mod.run_lint(self.library, self.ws.exports, self.ws.logs, volume=self.ws.volume, root=self.ws.root, use_cache=False)
                         except Exception as e:  # noqa: BLE001 — сбой виден как находка
                             report = lint_mod.error_report(e, self.ws.logs)
                         finally:

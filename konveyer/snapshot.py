@@ -1,7 +1,7 @@
-"""Снапшот тома (реестр 3.5, резерв риска R-3): срез мира на конец тома.
+"""Снапшот тома (FR-VL-2): срез мира на конец тома.
 
 Генерирует ЧЕРНОВИК среза в рабочей области (снапшоты/) — в канон его вносит
-автор через правку библиотеки и `konveyer canon-commit` (FR-K3 не нарушается).
+автор через правку библиотеки и `konveyer канон-коммит` (FR-K3 не нарушается).
 """
 
 from __future__ import annotations
@@ -24,12 +24,12 @@ def build_snapshot(ws: Workspace, volume: int) -> Path:
     states = {st.chapter: st.state for st in all_states(ws, volume)}
 
     lines = [
-        f"# Снапшот · Том {volume} (реестр 3.5)",
+        f"# Снапшот · Том {volume}",
         "",
         f"Срез состояния мира на конец тома {volume} (главы ≤ {last_chapter}).",
-        "Черновик сгенерирован конвейером; вносится в канон правкой библиотеки + `konveyer canon-commit`.",
+        "Черновик сгенерирован конвейером; вносится в канон правкой библиотеки + `konveyer канон-коммит`.",
         "",
-        "## Кто что знает (по матрице 3.1)",
+        "## Кто что знает (по эпистемике)",
         "",
     ]
     subjects = sorted({f.subject for f in matrix})
@@ -43,7 +43,7 @@ def build_snapshot(ws: Workspace, volume: int) -> Path:
             lines.append(f"- ✗ [{f.fact_id}] НЕ знает: {f.fact}")
         lines.append("")
 
-    lines += ["## Закладки тома (по реестру 3.2)", ""]
+    lines += ["## Закладки тома", ""]
     for p in plants:
         if p.placed.get("vol") != volume:
             continue
@@ -52,7 +52,7 @@ def build_snapshot(ws: Workspace, volume: int) -> Path:
         )
         lines.append(f"- [{p.plant_id}] {p.what} — положена гл. {p.placed.get('ch', '?')}; выстрел: {fires or '—'}; статус: {p.status or '—'}")
 
-    lines += ["", "## Хронология (реестр 3.3)", ""]
+    lines += ["", "## Континуити", ""]
     for c in continuity:
         lines.append(f"- {c.date}: {c.event}" + (f" (гл. {c.chapters})" if c.chapters else ""))
 

@@ -35,7 +35,7 @@ def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False,
 
     def once() -> int:
         try:
-            report = lint_mod.run_lint(lib, ws.exports, ws.logs, volume=ws.volume)
+            report = lint_mod.run_lint(lib, ws.exports, ws.logs, volume=ws.volume, root=ws.root, use_cache=False)
         except Exception as e:  # noqa: BLE001 — сбой линтера виден как находка, не как трейсбек
             report = lint_mod.error_report(e, ws.logs)
         if llm:
@@ -100,7 +100,7 @@ def snapshot(volume: int | None = None) -> Path:
     volume = volume or ws.volume
     if volume != ws.volume:
         raise StepError(f"выгрузки — тома {ws.volume}; для среза тома {volume} переключитесь: `konveyer volume open {volume}`.")
-    exporter.run_export(lib, ws.exports, ws.logs, ws.volume)
+    exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
     path = snapshot_mod.build_snapshot(ws, volume)
     secho(f"Срез тома {volume}: {path}", fg=colors.GREEN)
     echo("Внесите его в библиотеку правкой канона и `konveyer canon-commit` (FR-K3 соблюдён).")
@@ -143,7 +143,7 @@ def rollback(chapter: int, to: str | None = None, yes: bool = False, confirm: Co
         )
         st._save()
         try:
-            exporter.run_export(lib, ws.exports, ws.logs, ws.volume)
+            exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
         except MarkupError as e:
             secho(f"⚠ Откат выполнен, но выгрузки не пересчитаны: {e}. Поправьте канон и `konveyer export`.", fg=colors.YELLOW)
         if to != "принято":
@@ -174,24 +174,21 @@ def retest(chapter: int = 1, fix: bool = False) -> Path:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
         guard.write_text(
             ws.root / "пере-тест" / stamp / "журнал_запись.md",
-            f"# Запись в журнал 3.6 (внесите в библиотеку через правку канона)\n\n"
-            f"- Дата: {stamp}\n- Событие: пере-тест моделей, результаты приняты автором.\n"
-            f"- Конфигурация: писатель {cfg.writer.model}, верификатор {cfg.verifier2.model}.\n",
+            f"# Запись в журнал решений (внесите в библиотеку через правку канона)\n\n"
+            f"- Дата: {stamp}\n- Решение: пере-тест моделей, результаты приняты автором.\n"
+            f"- Конфигурация: " + "; ".join(f"{r} — {m.provider}/{m.model}" for r, m in cfg.roles().items()) + "\n",
         )
-        secho(f"Черновик записи журнала: пере-тест/{stamp}/журнал_запись.md — внесите в 3.6 (сценарий Б).", fg=colors.GREEN)
+        secho(f"Черновик записи журнала: пере-тест/{stamp}/журнал_запись.md — внесите в журнал решений.", fg=colors.GREEN)
         return ws.root / "пере-тест" / stamp
-    exporter.run_export(lib, ws.exports, ws.logs, ws.volume)
+    exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     dest = ws.root / "пере-тест" / stamp
     # 2.10: окно собирается во временную рабочую область — окно.md главы в работе не трогается
     _compile_window_to(ws, cfg, lib, chapter, _ensure_dir(dest / "ПРОМПТ_раунд1.md"))
-    proto = sorted(lib.glob("Тест_Писателя/ПРОТОКОЛ_ОТБОРА.md"))
-    if proto:
-        shutil.copyfile(proto[0], dest / "ПРОТОКОЛ_ОТБОРА.md")
     guard.write_text(
         dest / "РЕЗУЛЬТАТЫ.md",
         "# Результаты раунда 1\n\nПоложите ответы моделей файлами `ответ_<модель>.md` в эту папку;\n"
-        "решение — записью в журнал 3.6 (`konveyer retest --зафиксировать`).\n",
+        "решение — записью в журнал решений (`konveyer пере-тест --зафиксировать`).\n",
     )
     secho(f"Пакет пере-теста готов: {dest}/ (прогон по сторонним моделям — полуручной, Д-10).", fg=colors.GREEN)
     return dest

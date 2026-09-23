@@ -64,7 +64,7 @@ def _wait_job(base: str, timeout: float = 15.0) -> dict:
 def test_state_и_статика(panel):
     status, state = _get(f"{panel}/api/state")
     assert status == 200
-    assert {b["chapter"] for b in state["briefs"]} == {1, 5}
+    assert {b["chapter"] for b in state["briefs"]} == {1, 2, 3, 4, 5, 6}
     assert state["models"]["writer"]
 
     status, body = _get(f"{panel}/")
@@ -125,7 +125,7 @@ def test_карточка_правки_и_решения(panel, ws):
     assert detail["edits_parsed"][0]["found"] is True
 
     # решение по самоволке
-    code, _ = _post(f"{panel}/api/chapter/2/resolve", {"flag_id": "F-009", "decision": "канонизировать", "registry": "3.1"})
+    code, _ = _post(f"{panel}/api/chapter/2/resolve", {"flag_id": "F-009", "decision": "канонизировать", "registry": "эпистемика"})
     assert code == 200
     assert review.load_resolutions(ws, 2)[0].decision == "канонизировать"
     code, data = _post(f"{panel}/api/chapter/2/resolve", {"flag_id": "F-009", "decision": "сжечь"})

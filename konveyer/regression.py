@@ -10,6 +10,7 @@ import hashlib
 import json
 import re
 from datetime import datetime, timezone
+from importlib import resources
 from pathlib import Path
 
 from . import adapters, exporter, guard, verifier1, verifier2
@@ -55,17 +56,37 @@ def environment_hashes(ws: Workspace) -> dict[str, str]:
         return sha(path.read_bytes()) if path.exists() else ""
 
     h = hashlib.sha256()
-    if ws.templates.exists():
-        for f in sorted(p for p in ws.templates.rglob("*") if p.is_file()):
-            h.update(f.relative_to(ws.templates).as_posix().encode("utf-8"))
-            h.update(b"\0")
-            h.update(f.read_bytes())
-            h.update(b"\0")
+    for folder in (ws.templates, ws.root / "промпты", ws.root / "методики"):
+        if folder.exists():
+            for f in sorted(p for p in folder.rglob("*") if p.is_file()):
+                h.update(f.relative_to(folder).as_posix().encode("utf-8"))
+                h.update(b"\0")
+                h.update(f.read_bytes())
+                h.update(b"\0")
+    engine = hashlib.sha256()
+    for f in sorted(p for p in Path(str(resources.files("konveyer").joinpath("шаблоны"))).glob("*") if p.is_file()):
+        engine.update(f.read_bytes())
+    for folder in ("модули", "методики"):
+        for f in sorted(p for p in Path(str(resources.files("konveyer").joinpath(folder))).rglob("*") if p.is_file()):
+            engine.update(f.read_bytes())
     return {
         "конфиг.yaml": file_hash(ws.root / "конфиг.yaml"),
+        "проект.yaml": file_hash(ws.root / "проект.yaml"),
         "шаблоны": h.hexdigest(),
+        "шаблоны_движка": engine.hexdigest(),
         "norms.json": file_hash(ws.exports / "norms.json"),
+        "модели": sha(json.dumps({r: [m.provider, m.model, m.params] for r, m in _config_roles(ws).items()},
+                                 ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")),
     }
+
+
+def _config_roles(ws: Workspace) -> dict:
+    from .config import load_config
+
+    try:
+        return load_config(ws).roles()
+    except Exception:  # noqa: BLE001 — битый конфиг: отпечаток без моделей
+        return {}
 
 
 def _brief_from_context(ctx: dict) -> Brief:
@@ -101,7 +122,7 @@ def run_e1_test(ws: Workspace, test: GoldenTest) -> tuple[list[str], list[str], 
 
 def run_e2_test(ws: Workspace, cfg: Config, test: GoldenTest) -> tuple[list[str], list[str], list[str]]:
     """Прогон Э2 по фрагменту через API Верификатора-2; ожидания — типы флагов."""
-    system = verifier2._template(ws, "верификатор2_система.md")
+    system = verifier2.system_prompt(ws, cfg)
     ctx = test.context_slice
     user = "\n".join(
         [
@@ -113,12 +134,12 @@ def run_e2_test(ws: Workspace, cfg: Config, test: GoldenTest) -> tuple[list[str]
             "",
             "## ТЕКСТ",
             "",
+            verifier2.FENCE_OPEN,
             test.fragment,
+            verifier2.FENCE_CLOSE,
         ]
     )
-    raw = adapters.call_anthropic(
-        system, user, cfg.verifier2, cfg.api, ws.logs, role="верификатор-2 (регрессия)"
-    )
+    raw = adapters.call_role(cfg, "верификатор2", system, user, ws.logs, role="верификатор-2 (регрессия)")
     flags = verifier2.parse_flags(raw)
     raised = {f.type for f in flags} | {"самоволка" for f in flags if f.kind == "samovolka"}
     expected = set(test.expected_flags)

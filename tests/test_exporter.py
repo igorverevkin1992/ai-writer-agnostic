@@ -17,10 +17,10 @@ def test_выгрузки_созданы_и_валидны(ws):
     norms = exporter.load_norms(ws.exports)
     assert norms["средняя_длина"].brak == 7 and norms["средняя_длина"].min == 9
     briefs = exporter.load_briefs(ws.exports)
-    assert {b.chapter for b in briefs} == {1, 5}
+    assert {b.chapter for b in briefs} == {1, 2, 3, 4, 5, 6}
     b1 = exporter.load_brief(ws.exports, 1)
     assert b1.focal == "Каширин" and b1.year == 1995 and b1.volume_words == 300
-    assert b1.participants == ["Каширин", "Зоя"]
+    assert b1.participants == ["Зоя"]  # фокал в участники не входит
     # корпус нормализован из Проза/
     corpus_files = sorted(f.name for f in ws.corpus.glob("*.txt"))
     assert corpus_files == ["Том1_Глава03.txt", "Том1_Глава04_МАКЕТ.txt"]
@@ -42,14 +42,22 @@ def test_ошибка_структуры_с_файлом_и_строкой(ws, l
     assert "31_Матрица_знаний.md" in str(e.value)  # FR-X1: файл и строка
 
 
-def test_отсутствие_обязательной_нормы(ws, library):
+def test_отсутствие_нормы_выключает_метрику(ws, library):
+    """FR-MT-3: нормы только из канона; нет нормы — метрика не считается, умолчаний в коде нет."""
+    from konveyer import verifier1
+
     path = library / "02_Стиль_и_голос.md"
     text = path.read_text(encoding="utf-8").replace(
         "| был_на_250 | «был/было/были» на 250 слов | — | 1 | — | шт/250 слов |\n", ""
     )
     path.write_text(text, encoding="utf-8")
-    with pytest.raises(MarkupError, match="был_на_250"):
-        exporter.export_norms(library)
+    exporter.run_export(library, ws.exports, ws.logs)
+    norms = exporter.load_norms(ws.exports)
+    assert "был_на_250" not in norms
+    checks = verifier1.analyze("Он был дома. Было тихо.", "", exporter.load_brief(ws.exports, 1), norms,
+                               exporter.load_stoplists(ws.exports))
+    assert not [c for c in checks if c.check_id == "V1.3_был"]
+    assert [c for c in checks if c.check_id == "V1.2a_средняя_длина"]
 
 
 def test_невалидная_выгрузка_не_пишется(ws, library):

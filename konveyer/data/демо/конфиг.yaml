@@ -1,0 +1,22 @@
+# КОНВЕЙЕР · конфиг.yaml демонстрационного проекта «Гаражи» (ключи не нужны: без них — ручной режим)
+library_dir: "Библиотека"
+
+писатель:
+  provider: ручной
+  model: "ручной"
+верификатор2:
+  provider: ручной
+  model: "ручной"
+канонист:
+  provider: ручной
+  model: "ручной"
+
+api:
+  retries: 3
+  backoff_base_s: 2.0
+  timeout_s: 120
+
+window_soft_limit_chars: 80000
+auto_retries_verify1: 2
+edit_cycle_max_iterations: 3
+backup_remotes_min: 2

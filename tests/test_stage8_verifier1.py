@@ -140,24 +140,23 @@ def test_маркеры_тайн_по_границам_слова():
     assert lint.marker_hit("сеть работала", ["завербован сетью"]) is None
 
 
-def test_маркер_в_реплике_чужого_персонажа_не_знание_фокала(ws, library, tmp_path):
+def test_маркер_в_реплике_чужого_персонажа_не_знание_фокала(ws, library):
     """Проза: «— Сынок, — сказал Бугаев» — не утечка тайны фокала; то же в повествовании — утечка."""
-    import shutil
-
     from konveyer.schemas import InfoBan
 
-    lib = tmp_path / "копия_библиотеки"
-    shutil.copytree(library, lib)
-    (lib / "Проза").mkdir(exist_ok=True)
     brief = exporter.load_brief(ws.exports, 1)
     bans = [InfoBan(ban_id="Т-99", text="тайна", secret=True, markers=["сын"], known_by={}, until_chapter=40)]
-    stops = exporter.load_stoplists(ws.exports)
+    prose = library / "Проза" / f"Том1_Глава0{brief.chapter}.md"
 
-    (lib / "Проза" / f"Том1_Глава0{brief.chapter}.md").write_text(
-        "Он вошёл в контору.\n\n— Сынок, — сказал Бугаев и отвернулся.\n\nКаширин молчал.\n", encoding="utf-8")
-    assert [f for f in lint.check_prose(lib, [brief], bans, stops) if f.code == "ПРОЗА-1"] == []
+    def run() -> list:
+        ctx = lint.load_context(library, ws.exports, 1)
+        ctx.infobans = bans
+        return [f for f in lint.check_prose(ctx) if f.code == "ПРОЗА-1"]
 
-    (lib / "Проза" / f"Том1_Глава0{brief.chapter}.md").write_text(
-        "Он вошёл в контору.\n\nКаширин вспомнил про сына и промолчал.\n", encoding="utf-8")
-    hits = [f for f in lint.check_prose(lib, [brief], bans, stops) if f.code == "ПРОЗА-1"]
+    prose.write_text("Он вошёл в контору.\n\n— Сынок, — сказал Бугаев и отвернулся.\n\nКаширин молчал.\n", encoding="utf-8")
+    assert run() == []
+    prose.write_text("Он вошёл в контору.\n\nКаширин вспомнил про сына и промолчал.\n", encoding="utf-8")
+    hits = run()
     assert len(hits) == 1 and "Т-99" in hits[0].message
+
+

@@ -731,7 +731,7 @@ function ManualTab({ d, reload, notify, busy }: { d: ChapterDetail; reload: () =
     run(async () => {
       try {
         const r = await apiPost<{ draft: number }>(`/api/chapter/${d.chapter}/manual-draft`, { text: pasted });
-        notify(`Черновик принят как draft_${r.draft}.`, "ok");
+        notify(`Черновик принят как черновик_${r.draft}.`, "ok");
         ds.discard(); // принято сервером — черновик больше не нужен
         reload();
       } catch (e) {
@@ -773,11 +773,11 @@ function ManualTab({ d, reload, notify, busy }: { d: ChapterDetail; reload: () =
             )}
           </div>
           <RestoredNote state={ds} />
-          <textarea aria-label="Текст черновика" placeholder={`Вставьте текст главы — будет сохранён как draft_${d.draft + 1}.md`}
+          <textarea aria-label="Текст черновика" placeholder={`Вставьте текст главы — будет сохранён как черновик_${d.draft + 1}.md`}
             value={pasted} onChange={(e) => setPasted(e.target.value)} />
           <div className="actions">
             <button className="primary" disabled={locked || !pasted.trim()} onClick={sendDraft}>
-              {pending ? "Регистрируется…" : `Принять как draft_${d.draft + 1}`}
+              {pending ? "Регистрируется…" : `Принять как черновик_${d.draft + 1}`}
             </button>
           </div>
         </>

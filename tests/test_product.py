@@ -53,10 +53,10 @@ def test_resolve_список_и_решение(ws, monkeypatch):
     r = runner.invoke(app, ["resolve", "2"])
     assert r.exit_code == 0 and "F-002" in r.output and "БЕЗ РЕШЕНИЯ" in r.output
 
-    r = runner.invoke(app, ["resolve", "2", "F-002", "канонизировать", "--реестр", "3.1"])
+    r = runner.invoke(app, ["resolve", "2", "F-002", "канонизировать", "--реестр", "эпистемика"])
     assert r.exit_code == 0, r.output
     saved = review.load_resolutions(ws, 2)
-    assert saved[0].decision == "канонизировать" and saved[0].target_registry == "3.1"
+    assert saved[0].decision == "канонизировать" and saved[0].target_registry == "эпистемика"
 
     assert runner.invoke(app, ["resolve", "2", "F-002", "удалить"]).exit_code == 1  # неверное решение
     assert runner.invoke(app, ["resolve", "2", "F-999", "вычеркнуть"]).exit_code == 1  # нет такой

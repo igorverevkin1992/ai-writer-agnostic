@@ -19,17 +19,14 @@ from .schemas import Brief, CheckResult, DiffReport, Edit, Norm, StopRule, Verdi
 MAX_QUOTES = 10
 
 
-def _norm_value(norms: dict[str, Norm], norm_id: str) -> float:
+def _norm_value(norms: dict[str, Norm], norm_id: str) -> float | None:
     """Числовое значение нормы-параметра. Пороги берутся ТОЛЬКО из norms.json
-    (критерий приёмки 6) — отсутствие значения это ошибка канона, не повод
-    для зашитого в код умолчания."""
-    n = norms[norm_id]
-    value = n.max if n.max is not None else n.min
-    if value is None:
-        raise RuntimeError(
-            f"Норма «{norm_id}» (02 §5) не имеет числового значения — заполните таблицу норм в каноне."
-        )
-    return value
+    (критерий приёмки 6): нормы нет или она без числа — метрика пропускается,
+    зашитого в код умолчания нет (FR-MT-3)."""
+    n = norms.get(norm_id)
+    if n is None:
+        return None
+    return n.max if n.max is not None else n.min
 
 
 def _status(actual: float, norm: Norm) -> str:
@@ -270,7 +267,9 @@ def analyze(
     checks: list[CheckResult] = []
 
     def add(check_id: str, norm_id: str, actual: float, quotes: list[str] | None = None, note: str = "") -> None:
-        norm = norms[norm_id]
+        norm = norms.get(norm_id)
+        if norm is None:  # нормы в каноне нет — метрика не считается (FR-MT-3)
+            return
         checks.append(
             CheckResult(
                 check_id=check_id,
@@ -290,8 +289,10 @@ def analyze(
     short_thr = _norm_value(norms, "короткая_фраза_порог")
     long_thr = _norm_value(norms, "длинная_фраза_порог")
     if lengths:
-        add("V1.2b_доля_коротких", "доля_коротких", round(sum(1 for x in lengths if x <= short_thr) / len(lengths), 3))
-        add("V1.2c_доля_длинных", "доля_длинных", round(sum(1 for x in lengths if x >= long_thr) / len(lengths), 3))
+        if short_thr is not None:
+            add("V1.2b_доля_коротких", "доля_коротких", round(sum(1 for x in lengths if x <= short_thr) / len(lengths), 3))
+        if long_thr is not None:
+            add("V1.2c_доля_длинных", "доля_длинных", round(sum(1 for x in lengths if x >= long_thr) / len(lengths), 3))
         if "максимум_длины" in norms:  # опциональная норма
             longest = max(zip(lengths, [s for s in sentences if textutils.words(s)], strict=True))
             add("V1.2d_максимум_длины", "максимум_длины", longest[0], quotes=[longest[1]])
@@ -301,7 +302,7 @@ def analyze(
         add("V1.2e_объём", "объём_главы", n_words)
     elif brief.volume_words and "объём_допуск" in norms:
         deviation = abs(n_words - brief.volume_words) / brief.volume_words
-        tolerance = _norm_value(norms, "объём_допуск")
+        tolerance = _norm_value(norms, "объём_допуск") or 0.0
         checks.append(
             CheckResult(
                 check_id="V1.2e_объём",
@@ -344,7 +345,7 @@ def analyze(
         if rule.kind != "лексика" or not _stoplist_applies(rule, brief):
             continue
         # стоп-лист линии фокала (0.3) касается ВНУТРЕННЕЙ речи: реплики других персонажей
-        # («— Сынок, — сказал Бугаев») ложным флагом быть не должны. Лексика эпохи (0.4) — весь текст.
+        # («— Сынок, — сказал он») ложным флагом быть не должны. Лексика эпохи (0.4) — весь текст.
         scope_text = narration if rule.scope == "0.3" else text
         found = _find_items(scope_text, rule.items)
         if found:
@@ -368,97 +369,100 @@ def analyze(
         )
 
     # FR-V1.6 — вставка окна («утечка промпта»)
-    leak_n = int(_norm_value(norms, "утечка_нграмма"))
-    # хвост предыдущей главы в окне — цитата канона для сцепки голоса, не промпт: из проверки
-    # утечки исключается (повтор канона ловит V1.7 по корпусу)
-    win_tokens = textutils.normalize(_strip_prose_tail(window_raw))
-    leaks = (
-        _matching_runs(tokens, set(textutils.ngrams(win_tokens, leak_n)), leak_n) if win_tokens else []
-    )
-    checks.append(
-        CheckResult(
-            check_id="V1.6_утечка_окна",
-            status="FLAG" if leaks else "PASS",
-            threshold=f"совпадения ≥ {leak_n} слов с окном",
-            actual=str(len(leaks)),
-            quotes=leaks,
-            rule_source=norms["утечка_нграмма"].source,
+    leak_n = int(_norm_value(norms, "утечка_нграмма") or 0)
+    if leak_n:
+        # хвост предыдущей главы в окне — цитата канона для сцепки голоса, не промпт: из проверки
+        # утечки исключается (повтор канона ловит V1.7 по корпусу)
+        win_tokens = textutils.normalize(_strip_prose_tail(window_raw))
+        leaks = (
+            _matching_runs(tokens, set(textutils.ngrams(win_tokens, leak_n)), leak_n) if win_tokens else []
         )
-    )
+        checks.append(
+            CheckResult(
+                check_id="V1.6_утечка_окна",
+                status="FLAG" if leaks else "PASS",
+                threshold=f"совпадения ≥ {leak_n} слов с окном",
+                actual=str(len(leaks)),
+                quotes=leaks,
+                rule_source=norms["утечка_нграмма"].source,
+            )
+        )
 
     # FR-V1.7 — межглавные повторы против корпус/
-    rep_n = int(_norm_value(norms, "повтор_нграмма"))
-    repeats: list[str] = []
-    sources: list[str] = []
-    if corpus_dir is not None and corpus_dir.exists():
-        text_ngrams = set(textutils.ngrams(tokens, rep_n))
-        for f in sorted(corpus_dir.glob("*.txt")):
-            if own_stem and f.stem == own_stem:
-                continue
-            other = f.read_text(encoding="utf-8").split()
-            hits = _matching_runs(other, text_ngrams, rep_n)
-            if hits:
-                sources.append(f.stem)
-                repeats.extend(f"[{f.stem}] {h}" for h in hits[:3])
-    checks.append(
-        CheckResult(
-            check_id="V1.7_межглавные_повторы",
-            status="FLAG" if repeats else "PASS",
-            threshold=f"n-граммы ≥ {rep_n} слов против корпуса",
-            actual=str(len(repeats)),
-            quotes=repeats[:MAX_QUOTES],
-            rule_source=norms["повтор_нграмма"].source,
-            note="главы-источники: " + ", ".join(sources) if sources else "",
+    rep_n = int(_norm_value(norms, "повтор_нграмма") or 0)
+    if rep_n:
+        repeats: list[str] = []
+        sources: list[str] = []
+        if corpus_dir is not None and corpus_dir.exists():
+            text_ngrams = set(textutils.ngrams(tokens, rep_n))
+            for f in sorted(corpus_dir.glob("*.txt")):
+                if own_stem and f.stem == own_stem:
+                    continue
+                other = f.read_text(encoding="utf-8").split()
+                hits = _matching_runs(other, text_ngrams, rep_n)
+                if hits:
+                    sources.append(f.stem)
+                    repeats.extend(f"[{f.stem}] {h}" for h in hits[:3])
+        checks.append(
+            CheckResult(
+                check_id="V1.7_межглавные_повторы",
+                status="FLAG" if repeats else "PASS",
+                threshold=f"n-граммы ≥ {rep_n} слов против корпуса",
+                actual=str(len(repeats)),
+                quotes=repeats[:MAX_QUOTES],
+                rule_source=norms["повтор_нграмма"].source,
+                note="главы-источники: " + ", ".join(sources) if sources else "",
+            )
         )
-    )
 
     # FR-V1.8 — TTR
     ttr_val = textutils.ttr(tokens)
-    checks.append(
-        CheckResult(
-            check_id="V1.8a_ttr_главы",
-            status="PASS",  # по главе — справочно
-            threshold="справочно",
-            actual=f"{ttr_val:.3f}",
-            rule_source=norms["ttr_мин"].source,
+    if "ttr_мин" in norms and "ttr_окно_слов" in norms:  # норм TTR в каноне нет — метрика не считается
+        checks.append(
+            CheckResult(
+                check_id="V1.8a_ttr_главы",
+                status="PASS",  # по главе — справочно
+                threshold="справочно",
+                actual=f"{ttr_val:.3f}",
+                rule_source=norms["ttr_мин"].source,
+            )
         )
-    )
-    win_size = int(_norm_value(norms, "ttr_окно_слов"))
-    # корпус окна — принятые главы тома брифа (и части, если она известна), не весь корпус/ (аудит 3.7)
-    part_tokens: list[str] = []
-    scope_files: list[str] = []
-    if corpus_dir is not None and corpus_dir.exists():
-        # окно скользит по ТОМУ: часть тома 1 (10 × 800 слов) короче окна 10 000, и проверка
-        # лексической бедности не срабатывала бы никогда (аудит 2, находка 2.2)
-        for f in corpus_scope(corpus_dir, brief.volume, None):
-            if own_stem and f.stem == own_stem:
-                continue
-            scope_files.append(f.stem)
-            part_tokens.extend(f.read_text(encoding="utf-8").split())
-    part_tokens.extend(tokens)
-    rolling = textutils.rolling_ttr(part_tokens, win_size)
-    min_ttr = min((v for _, v in rolling), default=None)
-    short_corpus = min_ttr is None and part_tokens
-    if short_corpus:  # тома пока меньше окна — считаем по имеющемуся объёму, справочно
-        uniq = len(set(part_tokens))
-        min_ttr = round(uniq / len(part_tokens), 3)
-    ttr_norm = norms["ttr_мин"]
-    checks.append(
-        CheckResult(
-            check_id="V1.8b_ttr_окно",
-            status=(
-                "PASS" if short_corpus or min_ttr is None or ttr_norm.min is None
-                else "BRAK" if ttr_norm.brak is not None and min_ttr < ttr_norm.brak
-                else "FLAG" if min_ttr < ttr_norm.min else "PASS"
-            ),
-            threshold=f"мин {ttr_norm.min:g}" + (f", брак {ttr_norm.brak:g}" if ttr_norm.brak else "")
-                      + f" в окне {win_size} слов",
-            actual=(f"{min_ttr:.3f}" if min_ttr is not None else "корпус пуст")
-                   + (f" (справочно: том короче окна, {len(part_tokens)} слов)" if short_corpus else ""),
-            rule_source=ttr_norm.source,
-            note=f"корпус: том {brief.volume}" + (f" ({', '.join(scope_files)})" if scope_files else " (корпус пуст)"),
+        win_size = int(_norm_value(norms, "ttr_окно_слов") or 0)
+        # корпус окна — принятые главы тома брифа (и части, если она известна), не весь корпус/ (аудит 3.7)
+        part_tokens: list[str] = []
+        scope_files: list[str] = []
+        if corpus_dir is not None and corpus_dir.exists():
+            # окно скользит по ТОМУ: часть тома 1 (10 × 800 слов) короче окна 10 000, и проверка
+            # лексической бедности не срабатывала бы никогда (аудит 2, находка 2.2)
+            for f in corpus_scope(corpus_dir, brief.volume, None):
+                if own_stem and f.stem == own_stem:
+                    continue
+                scope_files.append(f.stem)
+                part_tokens.extend(f.read_text(encoding="utf-8").split())
+        part_tokens.extend(tokens)
+        rolling = textutils.rolling_ttr(part_tokens, win_size)
+        min_ttr = min((v for _, v in rolling), default=None)
+        short_corpus = min_ttr is None and part_tokens
+        if short_corpus:  # тома пока меньше окна — считаем по имеющемуся объёму, справочно
+            uniq = len(set(part_tokens))
+            min_ttr = round(uniq / len(part_tokens), 3)
+        ttr_norm = norms["ttr_мин"]
+        checks.append(
+            CheckResult(
+                check_id="V1.8b_ttr_окно",
+                status=(
+                    "PASS" if short_corpus or min_ttr is None or ttr_norm.min is None
+                    else "BRAK" if ttr_norm.brak is not None and min_ttr < ttr_norm.brak
+                    else "FLAG" if min_ttr < ttr_norm.min else "PASS"
+                ),
+                threshold=f"мин {ttr_norm.min:g}" + (f", брак {ttr_norm.brak:g}" if ttr_norm.brak else "")
+                          + f" в окне {win_size} слов",
+                actual=(f"{min_ttr:.3f}" if min_ttr is not None else "корпус пуст")
+                       + (f" (справочно: том короче окна, {len(part_tokens)} слов)" if short_corpus else ""),
+                rule_source=ttr_norm.source,
+                note=f"корпус: том {brief.volume}" + (f" ({', '.join(scope_files)})" if scope_files else " (корпус пуст)"),
+            )
         )
-    )
 
     # FR-V1.9 — доля диалога и однострочные абзацы (02 §5): нормы справочные, порог — из канона
     paras = [p for p in textutils.paragraphs(text) if p.strip()]

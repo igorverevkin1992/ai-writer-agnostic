@@ -14,6 +14,7 @@ DEMO = Path(str(resources.files("konveyer").joinpath("data/демо")))
 def ws(tmp_path: Path) -> Workspace:
     """Рабочая область с демо-библиотекой и стартовым регрессионным корпусом."""
     shutil.copytree(DEMO / "Библиотека", tmp_path / "Библиотека")
+    shutil.copyfile(DEMO / "проект.yaml", tmp_path / "проект.yaml")
     (tmp_path / "конфиг.yaml").write_text("library_dir: Библиотека\n", encoding="utf-8")
     golden = tmp_path / "регрессия" / "золотые"
     golden.mkdir(parents=True)

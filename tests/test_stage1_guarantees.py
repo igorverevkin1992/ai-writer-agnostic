@@ -10,7 +10,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from konveyer import compiler, exporter, gitops, guard, realcanon, verifier2
+from konveyer import compiler, exporter, gitops, guard, verifier2
+from tests import профиль
+from tests.профиль import realcanon
 from konveyer.cli import app
 from konveyer.fsm import ChapterState
 from konveyer.paths import Workspace
@@ -133,6 +135,12 @@ def test_кто_знает_из_реестра_и_матрицы(real):
 
 
 # --------------------------------------------------- фильтр досье (юнит)
+
+
+@pytest.fixture(autouse=True)
+def _ugar_markers():
+    with профиль.markers():
+        yield
 
 
 def test_фильтр_фраз_проверяет_все_ссылки_и_траектории():

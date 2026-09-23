@@ -3,7 +3,8 @@
 import json
 import subprocess
 
-from konveyer import circles, compiler, exporter, realcanon, verifier2
+from konveyer import circles, compiler, exporter, verifier2
+from tests.профиль import realcanon
 from konveyer.config import Config
 from konveyer.schemas import Act, CircleStep, StoryCircle
 
@@ -80,9 +81,9 @@ def test_окно_и_э2_с_каркасом(ws, library):
     ws.chapter_dir(1).mkdir(parents=True, exist_ok=True)
     ws.draft_path(1, 1).write_text("Текст.\n", encoding="utf-8")
     system, user = verifier2.build_prompt(ws, 1, 1)
-    assert "## Драматургия: каркас круга истории" in user and "Слабое место (по оценке аналитика): шаг 6" not in user
+    assert "## Драматургия: каркас" in user and "Слабое место (по оценке аналитика): шаг 6" not in user
     assert "Том: шаг 1 «Ты»" in user
-    assert "8. **Драматургия**" in system and "драматургия" in system
+    assert "**Драматургия.**" in system and "Тип флага — \"драматургия\"" in system
 
 
 def _init_git(lib):
@@ -104,7 +105,7 @@ def test_внесение_в_канон(ws, library, monkeypatch):
     assert [(c.scope, c.key) for c in canon] == [("книга", None), ("глава", 1)]
     assert circles.canon_status(ws) == {"книга": "в каноне", "глава_01": "в каноне"}
     log = subprocess.run(["git", "-C", str(library), "log", "-1", "--format=%s"], capture_output=True, text=True, encoding="utf-8").stdout
-    assert "круги истории" in log and "Р-020" in log
+    assert "каркасов" in log and "внесено каркасов: 2" in log
 
     # правка черновика → «отличается от канона»; повторное внесение заменяет только его, книга остаётся
     ch.steps[0].text = "иначе"
@@ -137,15 +138,12 @@ def test_вложенность_материалов(ws, library):
 
 
 def test_без_таблицы_актов_акты_равны_частям(ws, library):
-    """Демо-библиотека без 2.1: актов нет, окно собирается без каркаса; с частями — акты = части."""
+    """Демо-библиотека без документа каркасов: актов нет, окно собирается без каркаса;
+    строки таблицы актов разбираются в акты с границами глав."""
     assert exporter.load_acts(ws.exports) == []
-    parts = [{"part": 1, "title": "А", "period": "", "from_chapter": 1, "to_chapter": 3},
-             {"part": 2, "title": "Б", "period": "", "from_chapter": 4, "to_chapter": 6}]
-    from konveyer import exporter as ex
-    orig = ex.export_parts
-    try:
-        ex.export_parts = lambda lib, volume=1: parts
-        acts = ex.export_acts(library)
-    finally:
-        ex.export_parts = orig
+    from konveyer.dramaturgy_doc import acts_from_rows
+    rows = [{"act": 1, "title": "«А»", "parts": "I", "chapters_text": "1–3"},
+            {"act": 2, "title": "Б", "parts": "II", "chapters_text": "4–6"},
+            {"act": 3, "title": "без глав", "parts": "", "chapters_text": ""}]
+    acts = acts_from_rows(rows)
     assert [(a.act, a.title, a.parts, a.to_chapter) for a in acts] == [(1, "А", "I", 3), (2, "Б", "II", 6)]

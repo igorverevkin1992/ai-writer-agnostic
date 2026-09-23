@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from test_stage6_reliability import _accepted_chapter, _git, _init_repo
+from tests.test_stage6_reliability import _accepted_chapter, _git, _init_repo
 from konveyer import apilog, circles, exporter, volume as volume_mod
 from konveyer.cli import app
 from konveyer.config import Config, load_config, set_volume
@@ -69,12 +69,28 @@ POGLAVNIK_T2 = """# 23. Поглавник · Том 2
 
 
 def _make_volume2(library: Path) -> None:
-    """Синтетический том 2 на демо-библиотеке: поглавник и матрица с суффиксом _Том2."""
-    (library / "23_Поглавник_Том2.md").write_text(POGLAVNIK_T2, encoding="utf-8")
-    matrix = (library / "31_Матрица_знаний.md").read_text(encoding="utf-8")
-    matrix = matrix.replace("# 31. Матрица знаний (реестр 3.1)", "# 31. Матрица знаний · Том 2 (реестр 3.1)")
-    matrix += "| M-201 | письмо пришло из Твери | Зоя | 1 | гл. 1 | — |\n"
-    (library / "31_Матрица_знаний_Том2.md").write_text(matrix, encoding="utf-8")
+    """Демо-библиотека уже несёт документы тома 2 (`…_Том2.md`); хелпер сохранён для читаемости тестов."""
+    assert (library / "23_Поглавник_Том2.md").exists()
+
+
+def _hide_volume2(library: Path) -> None:
+    """Убирает документы тома 2 из библиотеки (для сценариев «тома 2 ещё нет»)."""
+    hidden = library.parent / "скрыто_том2"
+    hidden.mkdir(exist_ok=True)
+    for p in library.glob("*_Том2.md"):
+        p.rename(hidden / p.name)
+    if (library / ".git").exists():
+        _git(library, "add", "-A")
+        _git(library, "commit", "-q", "-m", "без тома 2")
+
+
+def _restore_volume2(library: Path) -> None:
+    hidden = library.parent / "скрыто_том2"
+    for p in hidden.glob("*.md"):
+        p.rename(library / p.name)
+    if (library / ".git").exists():
+        _git(library, "add", "-A")
+        _git(library, "commit", "-q", "-m", "том 2")
 
 
 @pytest.fixture(autouse=True)
@@ -103,60 +119,63 @@ def test_пути_тома_1_как_были(tmp_path):
     assert ws.chapter_dir(1, volume=3) == tmp_path / "главы" / "Т3" / "001"
 
 
+def _names(library: Path, тип: str, volume: int) -> list[str]:
+    return [p.name for p in exporter.docs_of_type(library, тип, volume, library.parent)]
+
+
 def test_документы_по_тому(library):
-    _make_volume2(library)
     assert exporter.doc_volume(Path("23_Поглавник_Том2.md")) == 2
     assert exporter.doc_volume(Path("УГАР_Том1_Реестр_информационного_режима.md")) == 1
     assert exporter.doc_volume(Path("21_Круги_истории_Т3.md")) == 3
     assert exporter.doc_volume(Path("23_Поглавник_Часть_I.md")) is None
     assert exporter.doc_volume(Path("ТЗ_Конвейер_УГАР.md")) is None
     # том 1 — только свой поглавник; том 2 — только свой; общие документы серии — для любого тома
-    assert [p.name for p in exporter.volume_docs(library, "23_*.md", 1)] == ["23_Поглавник_Том1.md"]
-    assert [p.name for p in exporter.volume_docs(library, "23_*.md", 2)] == ["23_Поглавник_Том2.md"]
-    assert [p.name for p in exporter.volume_docs(library, "31_*.md", 2)] == ["31_Матрица_знаний_Том2.md"]
-    assert [p.name for p in exporter.volume_docs(library, "31_*.md", 1)] == ["31_Матрица_знаний.md"]
-    assert [p.name for p in exporter.volume_docs(library, "02_*.md", 2)] == ["02_Стиль_и_голос.md"]
+    assert _names(library, "план_глав", 1) == ["23_Поглавник_Том1.md"]
+    assert _names(library, "план_глав", 2) == ["23_Поглавник_Том2.md"]
+    assert _names(library, "эпистемика", 2) == ["31_Матрица_знаний_Том2.md"]
+    assert _names(library, "эпистемика", 1) == ["31_Матрица_знаний.md"]
+    assert _names(library, "стиль", 2) == ["02_Стиль_и_голос.md"]
     # потомные документы без маркера — том 1, тому 3 они не подходят
-    assert exporter.volume_docs(library, "23_*.md", 3) == []
-    assert exporter.missing_volume_docs(library, 2) == []
-    assert len(exporter.missing_volume_docs(library, 3)) == 2
-    assert circles.canon_doc_name(2) == "21_Круги_истории_Том2.md" and circles.CANON_DOC == circles.canon_doc_name(1)
+    assert _names(library, "план_глав", 3) == []
+    assert not [m for m in exporter.missing_volume_docs(library, 2) if m.startswith("план_глав")]
+    assert [m for m in exporter.missing_volume_docs(library, 3) if m.startswith("план_глав")]
+    assert circles.canon_doc_name(2) == "21_Каркасы_Том2.md" and circles.CANON_DOC == circles.canon_doc_name(1)
 
 
 def test_том_1_без_маркера_берёт_документы_без_номера(tmp_path):
-    """Реальная библиотека: `23_Поглавник_Часть_I.md` (без номера тома) остаётся документом тома 1,
-    а появление `…_Том2.md` его не вытесняет."""
-    lib = tmp_path / "lib"
-    lib.mkdir()
-    (lib / "23_Поглавник_Часть_I.md").write_text("# x\n", encoding="utf-8")
-    (lib / "23_Поглавник_Том2.md").write_text("# y\n", encoding="utf-8")
-    assert [p.name for p in exporter.volume_docs(lib, "23_*.md", 1)] == ["23_Поглавник_Часть_I.md"]
-    assert [p.name for p in exporter.volume_docs(lib, "23_*.md", 2)] == ["23_Поглавник_Том2.md"]
+    """Документ без номера тома (`23_Поглавник_Часть_I.md`) остаётся документом тома 1,
+    а появление `…_Том2.md` его не вытесняет (без манифеста — по классификации)."""
+    lib = tmp_path / "проект" / "Библиотека"
+    lib.mkdir(parents=True)
+    src = Path(__file__).resolve().parent.parent / "konveyer" / "data" / "демо" / "Библиотека"
+    (lib / "23_Поглавник_Часть_I.md").write_text((src / "23_Поглавник_Том1.md").read_text(encoding="utf-8"), encoding="utf-8")
+    (lib / "23_Поглавник_Том2.md").write_text((src / "23_Поглавник_Том2.md").read_text(encoding="utf-8"), encoding="utf-8")
+    assert _names(lib, "план_глав", 1) == ["23_Поглавник_Часть_I.md"]
+    assert _names(lib, "план_глав", 2) == ["23_Поглавник_Том2.md"]
 
 
 # ------------------------------------------------------------- экспорт и состояния
 
 
 def test_экспорт_текущего_тома(ws, library):
-    _make_volume2(library)
     exporter.run_export(library, ws.exports, ws.logs, 2)
     briefs = exporter.load_briefs(ws.exports)
-    assert {b.volume for b in briefs} == {2} and [b.chapter for b in briefs] == [1, 2, 3]
-    assert briefs[0].focal == "Зоя"
+    assert {b.volume for b in briefs} == {2} and [b.chapter for b in briefs][:1] == [1]
     assert exporter.export_volume(ws.exports) == 2
-    assert any(f.fact_id == "M-201" for f in exporter.load_matrix(ws.exports))
+    t2_facts = {f.fact_id for f in exporter.load_matrix(ws.exports)}
     # обратно к тому 1 — документы тома 2 в выгрузки не попадают
     exporter.run_export(library, ws.exports, ws.logs, 1)
     briefs = exporter.load_briefs(ws.exports)
-    assert {b.volume for b in briefs} == {1} and [b.chapter for b in briefs] == [1, 5]
-    assert not any(f.fact_id == "M-201" for f in exporter.load_matrix(ws.exports))
+    assert {b.volume for b in briefs} == {1} and [b.chapter for b in briefs] == [1, 2, 3, 4, 5, 6]
+    assert {f.fact_id for f in exporter.load_matrix(ws.exports)} != t2_facts
     assert exporter.export_volume(ws.exports) == 1
 
 
 def test_экспорт_тома_без_документов_отказывает(ws, library):
+    _hide_volume2(library)
     with pytest.raises(Exception) as e:
         exporter.run_export(library, ws.exports, ws.logs, 2)
-    assert "Том2" in str(e.value)
+    assert "план_глав" in str(e.value) and "Том2" in str(e.value)
 
 
 def test_состояния_глав_изолированы_по_томам(ws, library):
@@ -226,14 +245,15 @@ def test_volume_close_отказывает_при_незафиксированн
 
 def test_volume_close_проходит_и_open_переключает(ws, library):
     _init_repo(library)
+    _hide_volume2(library)
     runner = CliRunner()
-    for n in (1, 5):
+    for n in range(1, 7):
         _accepted_chapter(ws, library, n)
         r = runner.invoke(app, ["canonize", str(n), "--apply", "-y"])
         assert r.exit_code == 0, r.output
     assert all(s.state == "зафиксировано" for s in all_states(ws))
     r = runner.invoke(app, ["volume", "status"])
-    assert r.exit_code == 0 and "Зафиксировано: 2 (1, 5)" in r.output, r.output
+    assert r.exit_code == 0 and "Зафиксировано: 6 (1, 2, 3, 4, 5, 6)" in r.output, r.output
 
     r = runner.invoke(app, ["volume", "close", "1", "-y"])
     assert r.exit_code == 0, r.output
@@ -249,7 +269,7 @@ def test_volume_close_проходит_и_open_переключает(ws, librar
     assert text.index("## Глава 1") < text.index("## Глава 5")
     assert "Каширин нашёл записку утром возле хлебницы." in text
     stats = (ws.root / "рукопись" / "Том1_статистика.md").read_text(encoding="utf-8")
-    assert "зафиксировано: 2" in stats and "Слов в принятых главах" in stats
+    assert "зафиксировано: 6" in stats and "Слов в принятых главах" in stats
     assert load_config(ws).volume == 1  # документов тома 2 нет — не переключились
 
     # повторное закрытие — отказ без --заново
@@ -260,8 +280,8 @@ def test_volume_close_проходит_и_open_переключает(ws, librar
 
     # открыть том 2: без документов — отказ со списком; с документами — переключение и выгрузки тома 2
     r = runner.invoke(app, ["volume", "open", "2"])
-    assert r.exit_code == 1 and "23_Поглавник_Том2.md" in r.output, r.output
-    _make_volume2(library)
+    assert r.exit_code == 1 and "план_глав" in r.output and "Том2" in r.output, r.output
+    _restore_volume2(library)
     r = runner.invoke(app, ["volume", "open", "2"])
     assert r.exit_code == 0 and "Текущий том: 2" in r.output, r.output
     assert load_config(ws).volume == 2

@@ -1,71 +1,68 @@
-"""Линтер канона: противоречия и ошибки логики повествования в библиотеке.
+"""Линтер канона (FR-LT-1…FR-LT-6): противоречия между реестрами проекта.
 
-Машинный слой — детерминированные проверки по выгрузкам и документам: хронология брифов,
-границы частей/актов, допустимость фокала, эпистемика брифов и принятой прозы (тайны,
-которых фокал не знает), реестр тайн ↔ матрица 3.1, диапазоны глав в матрице/закладках/
-континуити, возраст в досье, ссылки на неизвестные имена, участники сцен без карточки досье и
-карточки без «Физики», круги истории, маркеры тайн.
-Каждая находка — файл, строка, объяснение; где правка механическая — предложение
-исправления (LintFix), которое автор применяет одним действием. Модельный слой
-(`run_lint_llm`) ищет смысловые противоречия, которые машине не видны.
+Машинный слой — детерминированные проверки по выгрузкам; каждая объявлена кодом, серьёзностью и модулем,
+который её включает (`модули/*.yaml: линтер`): выключенный модуль → проверка не выполняется и ложных находок
+не даёт (FR-MD-2, FR-LT-6). Каждая находка — файл, строка, сообщение и подсказка, что делать; механическое
+исправление — `LintFix`, применяет только автор внутри сессии записи (FR-LT-4). Результат кэшируется по
+отпечатку канона (FR-LT-5). Модельный слой (`run_lint_llm`) — по требованию, с лимитом документов и сметой.
 
-Линтер ничего не пишет в библиотеку: исправления применяет автор (`apply_fix`, только
-внутри canon_write_session по подтверждению — FR-K3).
+Форматно-специфичные проверки серии (например, по документам эталона) подключаются профилем проекта как
+плагины `линтер/*.py` (функция `checks(ctx) -> list[LintFinding]`), не правкой движка (П-1).
 """
 
 from __future__ import annotations
 
+import importlib.util
+import json
 import re
-from datetime import datetime, timezone
+import sys
+from dataclasses import dataclass, field
+from datetime import date as _date, datetime, timezone
 from importlib import resources
 from pathlib import Path
+from typing import Callable
 
-from . import adapters, exporter, guard, lint_canon, lint_epist, llmjson, realcanon, textutils, verifier1
+from . import adapters, catalog, exporter, guard, llmjson, manifest as manifest_mod, names, textutils, verifier1
 from .config import Config
 from .mdparse import MarkupError
 from .paths import Workspace
 from .schemas import Brief, InfoBan, LintFinding, LintFix, LintReport, MatrixFact
 
-MONTHS = {
-    "янв": 1, "фев": 2, "мар": 3, "апр": 4, "мая": 5, "май": 5, "июн": 6, "июл": 7,
-    "авг": 8, "сен": 9, "окт": 10, "ноя": 11, "дек": 12,
-}
+MONTHS = {"янв": 1, "фев": 2, "мар": 3, "апр": 4, "мая": 5, "май": 5, "июн": 6, "июл": 7,
+          "авг": 8, "сен": 9, "окт": 10, "ноя": 11, "дек": 12}
 DATE_NUM_RE = re.compile(r"\b(\d{1,2})\.(\d{1,2})\b")
 DATE_WORD_RE = re.compile(r"\b(\d{1,2})\s+([а-яё]+)", re.IGNORECASE)
-FUTURE_REF_RE = re.compile(r"\bт\.\s*(\d+)")
 
 
-# ------------------------------------------------------------------ утилиты
-
-
-def _rel(library: Path, path: Path) -> str:
-    try:
-        return str(path.relative_to(library)).replace("\\", "/")
-    except ValueError:
-        return str(path)
-
-
-def marker_hit(text: str, markers: list[str]) -> str | None:
-    """Маркер тайны в тексте по границам слова и основе (как стоп-лексика Э1), а не подстрокой:
-    «сынок» ≠ «сын», «активно» ≠ «актив» (аудит 2, находка 3.9). Обороты из нескольких слов —
-    дословно. Возвращает найденный маркер или None."""
-    low = text.lower().replace("ё", "е")
-    for m in markers:
-        if not m:
-            continue
-        if verifier1.item_pattern(m).search(low):
-            return m
+def parse_date(text: str) -> tuple[int, int] | None:
+    """«12.04», «ночь 18.04», «12 июня 1995» → (месяц, день); «та же ночь» → None."""
+    m = DATE_NUM_RE.search(text or "")
+    if m:
+        return int(m.group(2)), int(m.group(1))
+    m = DATE_WORD_RE.search(text or "")
+    if m:
+        mon = MONTHS.get(m.group(2).lower()[:3])
+        if mon:
+            return mon, int(m.group(1))
     return None
+
+
+def _months(text: str) -> set[int]:
+    found = [MONTHS[w.lower()[:3]] for w in re.findall(r"[А-Яа-яЁё]{3,}", text) if w.lower()[:3] in MONTHS]
+    if len(found) >= 2 and found[0] <= found[-1]:
+        return set(range(found[0], found[-1] + 1))
+    return set(found)
+
+
+# ------------------------------------------------------------------ контекст прогона
 
 
 _LINES_CACHE: dict[tuple[Path, int, int], list[str]] = {}
 
 
-def _lines_cache(path: Path) -> list[str]:
-    """Строки документа: линтер обращается к одному файлу десятки раз (находки, _find_line).
-    Ключ включает время изменения и размер — наблюдатель перепроверяет канон после правок, и устаревший
-    кэш давал бы находки по старому содержимому (размер — страховка от грубого таймера Windows:
-    две записи подряд получают одно mtime)."""
+def _lines(path: Path | None) -> list[str]:
+    if path is None:
+        return []
     try:
         st = path.stat()
         key = (path, st.st_mtime_ns, st.st_size)
@@ -76,420 +73,680 @@ def _lines_cache(path: Path) -> list[str]:
             _LINES_CACHE[key] = path.read_text(encoding="utf-8").splitlines()
         except OSError:
             _LINES_CACHE[key] = []
-        if len(_LINES_CACHE) > 500:  # прогон линтера — десятки документов; страховка от роста
-            for old_key in list(_LINES_CACHE)[:250]:
-                _LINES_CACHE.pop(old_key, None)
+        if len(_LINES_CACHE) > 500:
+            for old in list(_LINES_CACHE)[:250]:
+                _LINES_CACHE.pop(old, None)
     return _LINES_CACHE[key]
 
 
-def _find_line(path: Path, needle: str, start: int = 0) -> int | None:
-    """Номер строки (1-based) первого вхождения фрагмента в файле."""
-    if not needle:
+def marker_hit(text: str, markers: list[str]) -> str | None:
+    """Маркер тайны в тексте по границам слова и основе (как стоп-лексика Э1), а не подстрокой."""
+    low = text.lower().replace("ё", "е")
+    for m in markers:
+        if m and verifier1.item_pattern(m).search(low):
+            return m
+    return None
+
+
+@dataclass
+class LintContext:
+    library: Path
+    exports: Path
+    root: Path
+    volume: int
+    types: dict
+    modules: dict
+    manifest: manifest_mod.Manifest
+    enabled_codes: set[str]
+    briefs: list[Brief] = field(default_factory=list)
+    matrix: list[MatrixFact] = field(default_factory=list)
+    infobans: list[InfoBan] = field(default_factory=list)
+    plants: list = field(default_factory=list)
+    continuity: list = field(default_factory=list)
+    dossiers: list = field(default_factory=list)
+    stoplists: list = field(default_factory=list)
+    acts: list = field(default_factory=list)
+    circles: list = field(default_factory=list)
+    arcs: list = field(default_factory=list)
+    doses: list = field(default_factory=list)
+    documents: list = field(default_factory=list)
+    chronicle: list = field(default_factory=list)
+    chronology: list = field(default_factory=list)
+    decisions: list = field(default_factory=list)
+    narration: list = field(default_factory=list)
+    norms: dict = field(default_factory=dict)
+    known: set[str] = field(default_factory=set)
+    pseudo: set[str] = field(default_factory=set)
+
+    def doc(self, тип: str) -> Path | None:
+        docs = self.manifest.docs(self.library, тип, self.volume, self.types)
+        return docs[0] if docs else None
+
+    def docs(self, тип: str) -> list[Path]:
+        return self.manifest.docs(self.library, тип, self.volume, self.types)
+
+    def rel(self, path: Path | None) -> str:
+        if path is None:
+            return ""
+        try:
+            return path.relative_to(self.library).as_posix()
+        except ValueError:
+            return path.name
+
+    def line_of(self, path: Path | None, needle: str, start: int = 0) -> int | None:
+        if path is None or not needle:
+            return None
+        for i, line in enumerate(_lines(path)[start:], start=start + 1):
+            if needle in line:
+                return i
         return None
-    lines = _lines_cache(path)
-    for i, line in enumerate(lines[start:], start=start + 1):
-        if needle in line:
-            return i
-    return None
+
+    def brief_loc(self, b: Brief) -> tuple[str, int | None]:
+        path = self.doc("план_глав")
+        line = b.line or self.line_of(path, f"Глава {b.chapter}") or self.line_of(path, f"| {b.chapter} |")
+        return self.rel(path), line
+
+    @property
+    def hi(self) -> int:
+        vol = [b.chapter for b in self.briefs if b.volume == self.volume]
+        return max(vol) if vol else 0
+
+    @property
+    def year(self) -> int | None:
+        return next((b.year for b in self.briefs if b.year), None)
+
+    def dossier_of(self, name: str):
+        return next((d for d in self.dossiers if d.name.lower() == name.lower()), None)
 
 
-def _library_docs(library: Path) -> list[Path]:
-    """Документы канона: все .md, кроме инструментальных и текстов отбора."""
-    docs = []
-    for p in sorted(library.rglob("*.md")):
-        rel = _rel(library, p)
-        if rel.startswith(("ИНСТРУМЕНТ_", "ТЗ_", "Тест_Писателя/")):
-            continue
-        docs.append(p)
-    return docs
+def load_context(library: Path, exports_dir: Path, volume: int, root: Path | None = None) -> LintContext:
+    root = exporter.project_root_of(library, root)
+    types = catalog.load_types(root)
+    modules = catalog.load_modules(root)
+    man = manifest_mod.effective(root, library, types)
+    enabled = catalog.enabled_lint_codes(modules, man.enabled_modules(modules))
+    ctx = LintContext(library=library, exports=exports_dir, root=root, volume=volume, types=types, modules=modules,
+                      manifest=man, enabled_codes=enabled)
+    ctx.briefs = exporter.load_briefs(exports_dir)
+    ctx.matrix = exporter.load_matrix(exports_dir)
+    ctx.infobans = exporter.load_infobans(exports_dir)
+    ctx.plants = exporter.load_plants(exports_dir)
+    ctx.continuity = exporter.load_continuity(exports_dir)
+    ctx.dossiers = exporter.load_dossiers(exports_dir)
+    ctx.stoplists = exporter.load_stoplists(exports_dir)
+    ctx.acts = exporter.load_acts(exports_dir)
+    ctx.circles = exporter.load_circles(exports_dir)
+    ctx.arcs = exporter.load_arcs(exports_dir)
+    ctx.doses = exporter.load_doses(exports_dir)
+    ctx.documents = exporter.load_documents(exports_dir)
+    ctx.chronicle = exporter.load_chronicle(exports_dir)
+    ctx.chronology = exporter.load_chronology(exports_dir)
+    ctx.decisions = exporter.load_decisions(exports_dir)
+    ctx.narration = exporter.load_narration(exports_dir)
+    ctx.norms = exporter.load_norms(exports_dir)
+    ctx.pseudo = exporter.pseudo_subjects(exports_dir, root)
+    ctx.known = exporter.known_names_of(exports_dir)
+    if ctx.briefs:
+        ctx.volume = ctx.briefs[0].volume
+    return ctx
 
 
-def parse_date(text: str) -> tuple[int, int] | None:
-    """«12.04», «ночь 18.04», «12 июня 1995» → (месяц, день); «та же ночь» → None (наследует)."""
-    m = DATE_NUM_RE.search(text)
-    if m:
-        return int(m.group(2)), int(m.group(1))
-    m = DATE_WORD_RE.search(text)
-    if m:
-        mon = MONTHS.get(m.group(2).lower()[:3])
-        if mon:
-            return mon, int(m.group(1))
-    return None
+# ------------------------------------------------------------------ реестр проверок
+
+Check = Callable[[LintContext], list[LintFinding]]
+CHECKS: list[tuple[tuple[str, ...], Check]] = []
 
 
-# ------------------------------------------------------------------ проверки
+def check(*codes: str):
+    def deco(fn: Check) -> Check:
+        CHECKS.append((codes, fn))
+        return fn
+    return deco
 
 
-def check_chronology(briefs: list[Brief], reg_path: Path | None) -> list[LintFinding]:
+def _f(code: str, severity: str, file: str, line: int | None, message: str, hint: str = "", **kw) -> LintFinding:
+    text = message if not hint else f"{message}. Что сделать: {hint}"
+    return LintFinding(code=code, severity=severity, file=file, line=line, message=text, **kw)  # type: ignore[arg-type]
+
+
+# ------------------------------------------------------------------ хронология брифов, части, акты
+
+
+@check("ХРОН-1", "ХРОН-2")
+def check_chronology(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
     last: tuple[int, int] | None = None
     last_ch = None
-    for b in sorted(briefs, key=lambda b: b.chapter):
+    for b in sorted((x for x in ctx.briefs if x.volume == ctx.volume), key=lambda b: b.chapter):
         d = parse_date(b.date)
         if d is None:
             continue
         mon, day = d
+        file, line = ctx.brief_loc(b)
         if not (1 <= mon <= 12 and 1 <= day <= 31):
-            out.append(LintFinding(
-                code="ХРОН-1", severity="ошибка", file=_rel_or("", reg_path), line=_find_line(reg_path, b.date) if reg_path else None,
-                message=f"гл. {b.chapter}: дата «{b.date}» вне календаря",
-            ))
+            out.append(_f("ХРОН-1", "ошибка", file, line, f"гл. {b.chapter}: дата «{b.date}» вне календаря",
+                          "исправьте дату главы в плане глав"))
             continue
         if last is not None and d < last and not (last[0] == 12 and mon == 1):
-            # стык года без явного года («30 декабря» → «2 января») — не нарушение
-            out.append(LintFinding(
-                code="ХРОН-2", severity="ошибка", file=_rel_or("", reg_path),
-                line=_find_line(reg_path, f"| {b.chapter} |") if reg_path else None,
-                message=f"гл. {b.chapter} датирована «{b.date}» — раньше гл. {last_ch} ({last[1]:02d}.{last[0]:02d}); "
-                        "порядок глав нарушает хронологию тома",
-            ))
+            out.append(_f("ХРОН-2", "ошибка", file, line,
+                          f"гл. {b.chapter} датирована «{b.date}» — раньше гл. {last_ch} ({last[1]:02d}.{last[0]:02d}); "
+                          "порядок глав нарушает хронологию тома", "переставьте главы или поправьте даты"))
         last, last_ch = d, b.chapter
     return out
 
 
-def _rel_or(default: str, path: Path | None) -> str:
-    return default if path is None else path.name
-
-
-def check_ranges(parts: list[dict], acts, briefs: list[Brief], reg_path: Path | None, acts_path: Path | None) -> list[LintFinding]:
-    """Части и акты покрывают главы тома без разрывов и наложений."""
+@check("АКТ-1", "ЧАСТЬ-1")
+def check_ranges(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
-    if not briefs:
+    if not ctx.briefs or not ctx.acts:
         return out
-    lo, hi = min(b.chapter for b in briefs), max(b.chapter for b in briefs)
-
-    def contiguous(label: str, spans: list[tuple[int, int, str]], path: Path | None, code: str) -> None:
-        expect = lo
-        for a, z, name in sorted(spans):
-            if a != expect:
-                out.append(LintFinding(
-                    code=code, severity="ошибка", file=_rel_or("", path), line=_find_line(path, name) if path else None,
-                    message=f"{label} «{name}» начинается с гл. {a}, ожидалась гл. {expect} (разрыв или наложение)",
-                ))
-            expect = z + 1
-        if spans and expect - 1 != hi:
-            out.append(LintFinding(
-                code=code, severity="предупреждение", file=_rel_or("", path), line=None,
-                message=f"{label}: покрыты главы до {expect - 1}, а в томе {hi}",
-            ))
-
-    contiguous("часть", [(p["from_chapter"], p["to_chapter"], p["title"]) for p in parts], reg_path, "ЧАСТЬ-1")
-    contiguous("акт", [(a.from_chapter, a.to_chapter, a.title) for a in acts], acts_path, "АКТ-1")
+    lo, hi = min(b.chapter for b in ctx.briefs), ctx.hi
+    path = ctx.doc("каркасы") or ctx.doc("акты")
+    expect = lo
+    for a in sorted(ctx.acts, key=lambda a: a.from_chapter):
+        if a.from_chapter != expect:
+            out.append(_f("АКТ-1", "ошибка", ctx.rel(path), ctx.line_of(path, a.title[:20]) if a.title else None,
+                          f"акт «{a.title}» начинается с гл. {a.from_chapter}, ожидалась гл. {expect} (разрыв или наложение)",
+                          "поправьте границы актов так, чтобы они шли подряд"))
+        expect = a.to_chapter + 1
+    if expect - 1 != hi:
+        out.append(_f("АКТ-1", "предупреждение", ctx.rel(path), None, f"акты покрывают главы до {expect - 1}, а в томе {hi}",
+                      "добавьте главы в последний акт или заведите ещё акт"))
     return out
 
 
-FOCAL_RE = re.compile(r"Фокал[а-я]*\s*[:：]?\s*([^\n·.]*)", re.IGNORECASE)
-VOL_RANGE_RE = re.compile(r"т\.\s*(\d+)\s*(?:[–-]\s*(\d+))?")
-
-
-def parse_focal_volumes(paths: list[Path], known_names: set[str]) -> dict[str, tuple[Path, set[int] | None]]:
-    """Из «## Статус…» карточки: {имя: (файл, тома, где персонаж может быть фокалом)}; None = не разобрано."""
-    result: dict[str, tuple[Path, set[int] | None]] = {}
-    for path in paths:
-        text = path.read_text(encoding="utf-8")
-        heads = list(realcanon.DOSSIER_HEAD_RE.finditer(text))
-        for i, head in enumerate(heads):
-            body = text[head.end(): heads[i + 1].start() if i + 1 < len(heads) else len(text)]
-            title = re.sub(r"\(.*?\)", "", head.group(1))
-            found = [(m.start(), n) for n in known_names if (m := re.search(n, title, re.IGNORECASE))]
-            if not found:
-                continue
-            name = min(found)[1]
-            sm = re.search(r"^##\s*Статус[^\n]*\n?(.*?)(?=^##\s|\Z)", body, re.M | re.S)
-            status = (sm.group(0) if sm else "")
-            fm = FOCAL_RE.search(status)
-            if not fm or "⚠" in status:
-                result[name] = (path, None)
-                continue
-            seg = fm.group(1)
-            if re.search(r"не имеет|без фокала|нет", seg, re.IGNORECASE) and not VOL_RANGE_RE.search(seg):
-                result[name] = (path, set())
-                continue
-            vols: set[int] = set()
-            if re.search(r"\bс\s+т\.", seg):
-                m = VOL_RANGE_RE.search(seg)
-                if m:
-                    vols.update(range(int(m.group(1)), 100))
-            for m in VOL_RANGE_RE.finditer(seg):
-                a = int(m.group(1)); z = int(m.group(2) or a)
-                vols.update(range(a, z + 1))
-            result[name] = (path, vols if vols else None)
-    return result
-
-
-def check_focals(briefs: list[Brief], focal_vols: dict[str, tuple[Path, set[int] | None]], library: Path,
-                 dossier_names: set[str], reg_path: Path | None) -> list[LintFinding]:
+@check("ХРОН-3")
+def check_part_period(ctx: LintContext) -> list[LintFinding]:
+    """Дата главы вне периода своего акта («май–июнь» в колонке «части/период»)."""
     out: list[LintFinding] = []
-    for b in sorted(briefs, key=lambda b: b.chapter):
+    for a in ctx.acts:
+        months = _months(a.parts or "")
+        if not months:
+            continue
+        for b in ctx.briefs:
+            if not (a.from_chapter <= b.chapter <= a.to_chapter):
+                continue
+            d = parse_date(b.date)
+            if d is None or d[0] in months:
+                continue
+            file, line = ctx.brief_loc(b)
+            out.append(_f("ХРОН-3", "ошибка", file, line, f"гл. {b.chapter} датирована «{b.date}», а акт «{a.title}» объявлен "
+                          f"периодом «{a.parts}»", "поправьте дату главы или период акта"))
+    return out
+
+
+_CHRON_DATE_RE = re.compile(r"^\**\s*(\d{1,2})\.(\d{1,2})\s*\**$")
+_CAP_WORD_RE = re.compile(r"[А-ЯЁа-яё]{4,}")
+
+
+def _event_keys(event: str) -> set[str]:
+    words = _CAP_WORD_RE.findall(event.replace("*", " "))
+    return {w.lower()[:7] for i, w in enumerate(words) if i and w[0].isupper() and len(w) >= 6}
+
+
+def _brief_text(b: Brief) -> str:
+    cards = [f"{s.place} {s.time} {s.participants} {s.goal} {s.enters} {s.exits}" for s in b.scene_cards]
+    return " ".join([*b.beats, b.reader_learns, *b.scenes, *cards, *b.documents])
+
+
+@check("ХРОН-4")
+def check_chronicle_dates(ctx: LintContext) -> list[LintFinding]:
+    out: list[LintFinding] = []
+    texts = {b.chapter: _brief_text(b).lower() for b in ctx.briefs}
+    by_ch = {b.chapter: b for b in ctx.briefs}
+    for ev in ctx.chronicle:
+        m = _CHRON_DATE_RE.match(ev.date.strip())
+        if not m or "✓" not in ev.status:
+            continue
+        day, month = int(m.group(1)), int(m.group(2))
+        for key in sorted(_event_keys(ev.event)):
+            hits = [ch for ch, text in texts.items() if key in text]
+            if not hits or len(hits) > 2:
+                continue
+            for ch in hits:
+                d = parse_date(by_ch[ch].date)
+                if d is None or d == (month, day):
+                    continue
+                file, line = ctx.brief_loc(by_ch[ch])
+                out.append(_f("ХРОН-4", "предупреждение", file, line,
+                              f"гл. {ch} датирована «{by_ch[ch].date}», а названное в ней событие "
+                              f"«{ev.event.replace('*', '').strip()[:60]}» хроника датирует {ev.date.strip('* ')}",
+                              "сверьте дату главы с хроникой эпохи"))
+    return out
+
+
+_WEEKDAYS = {"понедельник": 0, "вторник": 1, "среду": 2, "четверг": 3, "пятницу": 4, "субботу": 5, "воскресенье": 6}
+_WEEKDAY_RE = re.compile(r"\bво?\s+(" + "|".join(_WEEKDAYS) + r")\b", re.IGNORECASE)
+_WEEKDAY_NAMES = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
+
+
+@check("ХРОН-5")
+def check_weekdays(ctx: LintContext) -> list[LintFinding]:
+    out: list[LintFinding] = []
+    for b in ctx.briefs:
+        d = parse_date(b.date)
+        if d is None or not b.year:
+            continue
+        try:
+            actual = _date(b.year, d[0], d[1]).weekday()
+        except ValueError:
+            continue
+        for m in _WEEKDAY_RE.finditer(_brief_text(b)):
+            named = _WEEKDAYS[m.group(1).lower()]
+            if named == actual:
+                continue
+            file, line = ctx.brief_loc(b)
+            out.append(_f("ХРОН-5", "ошибка", file, line, f"гл. {b.chapter}: «{m.group(0)}», а {d[1]:02d}.{d[0]:02d}.{b.year} — "
+                          f"{_WEEKDAY_NAMES[actual]}", "поправьте день недели или дату"))
+    return out
+
+
+# ------------------------------------------------------------------ фокалы и досье
+
+_FOCAL_VOL_RE = re.compile(r"фокал\w*\s*(?:[:—-]\s*)?(?:с\s+)?т\.?\s*(\d+)(?:\s*[–-]\s*(\d+))?", re.IGNORECASE)
+
+
+def _focal_volumes(status: str) -> set[int] | None:
+    """Из «Статуса» карточки: тома, где персонаж может быть фокалом; None — не разобрано; пусто — никогда."""
+    if not status:
+        return None
+    if re.search(r"фокала не имеет|не фокален|без фокала|никогда не фокал", status, re.IGNORECASE):
+        return set()
+    m = _FOCAL_VOL_RE.search(status)
+    if not m:
+        return None
+    a = int(m.group(1))
+    z = int(m.group(2)) if m.group(2) else (99 if re.search(r"\bс\s+т", status) else a)
+    return set(range(a, z + 1))
+
+
+@check("ФОКАЛ-1", "ФОКАЛ-2")
+def check_focals(ctx: LintContext) -> list[LintFinding]:
+    out: list[LintFinding] = []
+    dossier_names = {d.name.lower() for d in ctx.dossiers}
+    for b in sorted(ctx.briefs, key=lambda b: b.chapter):
         if not b.focal:
             continue
-        if b.focal not in dossier_names:
-            out.append(LintFinding(
-                code="ФОКАЛ-1", severity="предупреждение", file=_rel_or("", reg_path),
-                line=_find_line(reg_path, f"| {b.chapter} |") if reg_path else None,
-                message=f"гл. {b.chapter}: фокал «{b.focal}» без досье 1.3 — окно не получит его профиль",
-            ))
+        file, line = ctx.brief_loc(b)
+        if ctx.dossiers and b.focal.lower() not in dossier_names:
+            out.append(_f("ФОКАЛ-1", "предупреждение", file, line, f"гл. {b.chapter}: фокал «{b.focal}» без карточки персонажа — "
+                          "окно не получит его профиль", "заведите карточку в папке персонажей или исправьте имя фокала"))
             continue
-        entry = focal_vols.get(b.focal)
-        if entry and entry[1] is not None and b.volume not in entry[1]:
-            out.append(LintFinding(
-                code="ФОКАЛ-2", severity="ошибка", file=_rel_or("", reg_path),
-                line=_find_line(reg_path, f"| {b.chapter} |") if reg_path else None,
-                message=f"гл. {b.chapter}: фокал «{b.focal}», но по досье ({_rel(library, entry[0])}) он не фокален в т.{b.volume} "
-                        f"(разрешено: {', '.join('т.' + str(v) for v in sorted(entry[1])) or 'нигде'})",
-            ))
+        d = ctx.dossier_of(b.focal)
+        vols = _focal_volumes(d.status) if d else None
+        if vols is not None and b.volume not in vols:
+            out.append(_f("ФОКАЛ-2", "ошибка", file, line, f"гл. {b.chapter}: фокал «{b.focal}», но по карточке ({d.file}) он не "
+                          f"фокален в т.{b.volume} (разрешено: {', '.join('т.' + str(v) for v in sorted(vols)) or 'нигде'})",
+                          "смените фокал главы или поправьте статус карточки"))
     return out
 
 
-def check_brief_epistemics(briefs: list[Brief], infobans: list[InfoBan], reg_path: Path | None) -> list[LintFinding]:
-    """Бриф главы описывает событие словами тайны, которой фокал в этой главе ещё не знает."""
+@check("ЭПИСТ-1")
+def check_brief_epistemics(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
-    for b in briefs:
+    for b in ctx.briefs:
         text = " ".join([*b.scenes, *b.beats])
-        # реплики персонажей в брифе («Бугаев: «молодец, сынок»») — не знание фокала
         text = textutils.narration_only(text) or text
-        for ban in infobans:
+        for ban in ctx.infobans:
             if not ban.secret or ban.known_to(b.focal, b.chapter) or not ban.markers:
                 continue
             hit = marker_hit(text, ban.markers)
             if hit:
-                out.append(LintFinding(
-                    code="ЭПИСТ-1", severity="предупреждение", file=_rel_or("", reg_path),
-                    line=_find_line(reg_path, f"| {b.chapter} |") if reg_path else None,
-                    message=f"гл. {b.chapter} (фокал {b.focal}): бриф содержит «{hit}» — маркер тайны {ban.ban_id}, "
-                            f"которую {b.focal} к этой главе не знает; проверьте, не требует ли бриф от фокала чужого знания",
-                ))
+                file, line = ctx.brief_loc(b)
+                out.append(_f("ЭПИСТ-1", "предупреждение", file, line,
+                              f"гл. {b.chapter} (фокал {b.focal}): бриф содержит «{hit}» — маркер тайны {ban.ban_id}, которую "
+                              f"{b.focal} к этой главе не знает", "проверьте, не требует ли бриф от фокала чужого знания"))
     return out
 
 
-def check_secrets_vs_matrix(infobans: list[InfoBan], matrix: list[MatrixFact], reg_path: Path | None) -> list[LintFinding]:
+@check("ТАЙНА-3", "ТАЙНА-4", "ТАЙНА-5")
+def check_secrets(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
-    if reg_path is None:
-        return out
-    text = reg_path.read_text(encoding="utf-8")
-    for ban in infobans:
+    path = ctx.doc("информрежим")
+    by_ch = {b.chapter: b for b in ctx.briefs}
+    for ban in ctx.infobans:
         if not ban.secret:
             continue
-        line = _find_line(reg_path, ban.text[:40])
-        row = text.splitlines()[line - 1] if line else ""
-        # явная «гл. N» в реестре против «Читатель» матрицы
-        cells = [c.strip() for c in row.strip("|").split("|")] if row else []
-        if len(cells) >= 2:
-            explicit = realcanon.reveal_chapter(cells[1])
-            fid = realcanon._match_matrix_fact(ban.text, matrix)
-            if fid and explicit is not None:
-                reader = next((f.from_chapter for f in matrix if f.fact_id == fid and f.subject == "Читатель"), None)
-                if reader is not None and reader != explicit:
-                    out.append(LintFinding(
-                        code="ТАЙНА-1", severity="предупреждение", file=reg_path.name, line=line,
-                        message=f"{ban.ban_id}: реестр говорит «читатель узнаёт в гл. {explicit}», матрица 3.1 ({fid}, «Читатель») — гл. {reader}",
-                    ))
-            if fid and len(cells) >= 3:
-                for name, ch in ban.known_by.items():
-                    mfact = next((f for f in matrix if f.fact_id == fid and f.subject == name), None)
-                    if mfact and mfact.from_chapter is not None and not mfact.note.startswith("частично"):
-                        reg_explicit = re.search(rf"{re.escape(name)}[^;,]*гл\.?\s*(\d+)", cells[2])
-                        if reg_explicit and int(reg_explicit.group(1)) != mfact.from_chapter:
-                            out.append(LintFinding(
-                                code="ТАЙНА-2", severity="предупреждение", file=reg_path.name, line=line,
-                                message=f"{ban.ban_id}: по реестру {name} узнаёт в гл. {reg_explicit.group(1)}, по матрице ({fid}) — в гл. {mfact.from_chapter}",
-                            ))
+        line = ban.line or ctx.line_of(path, ban.ban_id)
         if not ban.markers:
-            out.append(LintFinding(
-                code="ТАЙНА-3", severity="заметка", file=reg_path.name, line=line,
-                message=f"{ban.ban_id}: нет строки в таблице «Маркеры тайн для фильтра окна» — досье не будут очищаться от этой тайны",
-            ))
+            out.append(_f("ТАЙНА-3", "заметка", ctx.rel(path), line, f"{ban.ban_id}: не заданы маркеры тайны — досье и план не будут "
+                          "очищаться от неё в окне Писателя", "заполните колонку маркеров (основы слов через «;»)"))
+        if ban.until_chapter:
+            b = by_ch.get(ban.until_chapter)
+            if b and not b.documents and not ban.known_to(b.focal, ban.until_chapter):
+                who = ", ".join(f"{n} (гл. {c})" if c else f"{n} (всегда)" for n, c in sorted(ban.known_by.items()))
+                out.append(_f("ТАЙНА-4", "ошибка", ctx.rel(path), line, f"{ban.ban_id}: читатель узнаёт тайну в гл. {ban.until_chapter}, "
+                              f"но её фокал {b.focal} тайны не знает (знают: {who or 'никто'}) — раскрывать нечем",
+                              "смените главу раскрытия, фокал главы или добавьте фокала в «кто знает»"))
+        for f in ctx.matrix:
+            if f.fact_id == ban.ban_id and f.from_chapter is not None and f.subject not in ctx.pseudo and f.subject not in ban.known_by:
+                out.append(_f("ТАЙНА-5", "предупреждение", ctx.rel(path), line, f"{ban.ban_id}: по эпистемике {f.subject} знает "
+                              f"{'всегда' if f.from_chapter == 0 else 'с гл. ' + str(f.from_chapter)}, а в «кто знает» его нет",
+                              "согласуйте колонку «кто знает» с матрицей"))
     return out
 
 
-def check_chapter_refs(matrix: list[MatrixFact], plants, continuity, briefs: list[Brief], library: Path) -> list[LintFinding]:
+# ------------------------------------------------------------------ эпистемика
+
+OFFSTAGE_RE = re.compile(r"по своим каналам|за кадром", re.IGNORECASE)
+DEDUCTION_RE = re.compile(r"разгадк|улик|расчётн", re.IGNORECASE)
+
+
+@check("МАТР-1", "МАТР-2", "МАТР-3")
+def check_matrix(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
-    if not briefs:
+    if not ctx.briefs:
         return out
-    volume = briefs[0].volume
-    hi = max(b.chapter for b in briefs if b.volume == volume)
-    mpath = next(iter(exporter.volume_docs(library, "31_*.md", volume)), None)
-    for f in matrix:
+    hi = ctx.hi
+    path = ctx.doc("эпистемика")
+    by_ch = {b.chapter: b for b in ctx.briefs}
+    focal_lines = {b.focal for b in ctx.briefs if b.focal}
+    by_fact: dict[str, list[MatrixFact]] = {}
+    for f in ctx.matrix:
+        by_fact.setdefault(f.fact_id, []).append(f)
+    for f in ctx.matrix:
+        line = ctx.line_of(path, f.fact_id) or ctx.line_of(path, f.fact[:30])
         if f.from_chapter is not None and f.from_chapter > hi:
-            out.append(LintFinding(
-                code="МАТР-1", severity="ошибка", file=_rel_or("", mpath), line=_find_line(mpath, f.fact[:30]) if mpath else None,
-                message=f"{f.fact_id} ({f.subject}): узнаёт в гл. {f.from_chapter}, а в томе {hi} глав",
-            ))
-    reg = exporter._registry(library, volume) or next(iter(exporter.volume_docs(library, "32_*.md", volume)), None)
-    for p in plants:
-        for ch in p.chapters:
-            if ch > hi:
-                out.append(LintFinding(
-                    code="ЗАКЛ-1", severity="ошибка", file=_rel_or("", reg), line=_find_line(reg, p.what[:30]) if reg else None,
-                    message=f"{p.plant_id}: закладка в гл. {ch}, а в томе {hi} глав",
-                ))
-        placed_ch = p.placed.get("ch")
-        for fire in p.fires:
-            if fire.get("vol") == volume and fire.get("ch") and placed_ch and fire["ch"] < placed_ch:
-                out.append(LintFinding(
-                    code="ЗАКЛ-2", severity="ошибка", file=_rel_or("", reg), line=_find_line(reg, p.what[:30]) if reg else None,
-                    message=f"{p.plant_id}: «стреляет» в гл. {fire['ch']} раньше, чем положена (гл. {placed_ch})",
-                ))
-    cpath = next(iter(exporter.volume_docs(library, "33_*.md", volume)), None)
-    for c in continuity:
-        for ch in re.findall(r"\d+", c.chapters or ""):
-            if int(ch) > hi:
-                out.append(LintFinding(
-                    code="КОНТ-1", severity="предупреждение", file=_rel_or("", cpath), line=_find_line(cpath, c.event[:30]) if cpath else None,
-                    message=f"континуити «{c.event[:50]}…»: ссылка на гл. {ch}, а в томе {hi} глав",
-                ))
+            out.append(_f("МАТР-1", "ошибка", ctx.rel(path), line, f"{f.fact_id} ({f.subject}): узнаёт в гл. {f.from_chapter}, "
+                          f"а в томе {hi} глав", "поправьте главу или добавьте главу в план"))
+            continue
+        if f.subject in ctx.pseudo or not f.from_chapter or OFFSTAGE_RE.search(f.source):
+            continue
+        b = by_ch.get(f.from_chapter)
+        if b is None or f.subject == b.focal or f.subject in b.participants:
+            continue
+        same = next((x for x in by_fact[f.fact_id] if x.subject == b.focal), None)
+        if same is not None and same.from_chapter == f.from_chapter:
+            continue
+        out.append(_f("МАТР-2", "ошибка" if f.subject in focal_lines else "предупреждение", ctx.rel(path), line,
+                      f"{f.fact_id} ({f.subject}): узнаёт в гл. {f.from_chapter}, но это глава фокала {b.focal or '?'}, и "
+                      f"{f.subject} не значится среди участников", "добавьте участника в план главы или пометьте источник «за кадром»"))
+    for fid, rows in by_fact.items():
+        reader = next((x for x in rows if x.subject in ctx.pseudo), None)
+        if reader and reader.from_chapter and not DEDUCTION_RE.search(reader.note or ""):
+            b = by_ch.get(reader.from_chapter)
+            focal = next((x for x in rows if b and x.subject == b.focal), None)
+            if b and focal is not None and not b.documents and (focal.from_chapter is None or focal.from_chapter > reader.from_chapter):
+                knows = "не знает его до конца тома" if focal.from_chapter is None else f"узнаёт только в гл. {focal.from_chapter}"
+                out.append(_f("МАТР-3", "предупреждение", ctx.rel(path), ctx.line_of(path, fid),
+                              f"{fid}: читатель узнаёт в гл. {reader.from_chapter}, а фокал этой главы ({b.focal}) {knows} — "
+                              "читатель получает факт через голову фокала", "смените главу или фокал раскрытия"))
     return out
 
 
-AGE_RE = re.compile(r"Рожд\.\s*≈?\s*(\d{4})")
-# «Возраст по томам: 24 (т.1) · 32 (т.7)» либо «55 лет в томе 1»; «гл. 41 т.1» — не возраст
-AGE_VOL_RE = re.compile(r"(\d{2,3})\s*\(\s*т\.\s*(\d+)\s*\)|(\d{2,3})\s*(?:лет|года)\s+в\s+томе\s+(\d+)")
+# ------------------------------------------------------------------ закладки и континуити
+
+PLANT_OR_RE = re.compile(r"\d\s*(?:,\s*\d+\s*)*или\s*\d")
 
 
-def check_dossiers(library: Path, known_names: set[str], year: int | None, volume: int) -> list[LintFinding]:
-    """Возраст против года тома; ссылки [[Имя]] на неизвестных персонажей."""
+@check("ЗАКЛ-1", "ЗАКЛ-2", "ЗАКЛ-3", "ЗАКЛ-4", "ЗАКЛ-7")
+def check_plants(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
-    paths = sorted((library / "Досье").glob("*.md")) if (library / "Досье").exists() else []
-    # имена из заголовков карточек (включая рабочие имена и имена в скобках) — допустимые ссылки [[Имя]]
-    all_names = set(known_names)
-    for path in paths:
-        for head in realcanon.DOSSIER_HEAD_RE.finditer(path.read_text(encoding="utf-8")):
-            all_names.update(w.capitalize() for w in re.findall(r"[А-ЯЁ][А-ЯЁа-яё-]{2,}", head.group(1)))
-    for path in paths:
-        text = path.read_text(encoding="utf-8")
-        heads = list(realcanon.DOSSIER_HEAD_RE.finditer(text))
-        for i, head in enumerate(heads):
-            body = text[head.end(): heads[i + 1].start() if i + 1 < len(heads) else len(text)]
-            offset = text[: head.end()].count("\n")
-            bm = AGE_RE.search(body)
-            if bm and year:
-                born = int(bm.group(1))
-                for am in AGE_VOL_RE.finditer(body):
-                    age = int(am.group(1) or am.group(3)); vol = int(am.group(2) or am.group(4))
-                    if vol != volume:
-                        continue
-                    expected = year - born
-                    if abs(expected - age) > 1:
-                        line = offset + body[: am.start()].count("\n") + 1
-                        old = am.group(0)
-                        new = old.replace(str(age), str(expected), 1)
-                        out.append(LintFinding(
-                            code="ДОСЬЕ-1", severity="предупреждение", file=_rel(library, path), line=line,
-                            message=f"{head.group(1).strip()}: рождение ≈{born}, том {vol} = {year} год → возраст {expected}, в досье {age}",
-                            fix=LintFix(file=_rel(library, path), line=line, old=old, new=new, note="пересчитанный возраст"),
-                        ))
-            for rm in re.finditer(r"\[\[([^\]]+)\]\]", body):
-                ref = rm.group(1).strip()
-                base = re.split(r"[-–\s]", ref)[0]
-                if not any(base.lower().startswith(n.lower()) or n.lower().startswith(base.lower()) for n in all_names):
-                    line = offset + body[: rm.start()].count("\n") + 1
-                    out.append(LintFinding(
-                        code="ДОСЬЕ-2", severity="заметка", file=_rel(library, path), line=line,
-                        message=f"ссылка [[{ref}]] — такого персонажа нет ни среди досье, ни среди известных имён",
-                    ))
-            if not re.search(r"^##\s*Физик", body, re.M):
-                out.append(LintFinding(
-                    code="ДОСЬЕ-6", severity="заметка", file=_rel(library, path), line=offset + 1,
-                    message=f"{head.group(1).strip()}: у карточки нет секции «Физика»: Писатель обязан выдумать внешность",
-                ))
+    if not ctx.briefs:
+        return out
+    hi = ctx.hi
+    path = ctx.doc("закладки")
+    by_ch = {b.chapter: b for b in ctx.briefs}
+    in_volume = {b.focal for b in ctx.briefs if b.focal} | {n for b in ctx.briefs for n in b.participants}
+    for p in ctx.plants:
+        line = ctx.line_of(path, p.plant_id) or ctx.line_of(path, p.what[:30])
+        chapters = list(p.chapters) or ([p.placed["ch"]] if p.placed.get("ch") else [])
+        for ch in chapters:
+            if ch > hi:
+                out.append(_f("ЗАКЛ-1", "ошибка", ctx.rel(path), line, f"{p.plant_id}: закладка в гл. {ch}, а в томе {hi} глав",
+                              "поправьте главу закладки"))
+        placed_ch = p.placed.get("ch")
+        placed_vol = p.placed.get("vol")
+        for fire in p.fires:
+            if fire.get("vol") == placed_vol and fire.get("ch") and placed_ch and fire["ch"] < placed_ch:
+                out.append(_f("ЗАКЛ-2", "ошибка", ctx.rel(path), line, f"{p.plant_id}: «стреляет» в гл. {fire['ch']} раньше, чем "
+                              f"положена (гл. {placed_ch})", "поменяйте главу выстрела или закладки"))
+            if placed_vol and fire.get("vol") and fire["vol"] < placed_vol:
+                out.append(_f("ЗАКЛ-4", "ошибка", ctx.rel(path), line, f"{p.plant_id}: «стреляет» в томе {fire['vol']}, а положена "
+                              f"в томе {placed_vol}", "поправьте том выстрела"))
+        bearers = [n for n in names.find_names(p.what, ctx.known, ctx.pseudo) if n in in_volume]
+        for ch in chapters:
+            b = by_ch.get(ch)
+            if not b or not bearers or any(n == b.focal or n in b.participants for n in bearers):
+                continue
+            out.append(_f("ЗАКЛ-3", "ошибка", ctx.rel(path), line, f"{p.plant_id} «{p.what[:40]}»: положена в гл. {ch} (фокал {b.focal}), "
+                          f"но её носитель ({', '.join(bearers)}) в этой главе не фокал и не участник",
+                          "добавьте носителя в участники главы или перенесите закладку"))
+        if PLANT_OR_RE.search(p.status or ""):
+            out.append(_f("ЗАКЛ-7", "предупреждение", ctx.rel(path), line, f"{p.plant_id}: «{p.status[:40]}» — две главы через «или»",
+                          "выберите одну главу, иначе окно положит закладку дважды"))
     return out
 
 
-# роли безымянных персонажей сцен: основа → именительный падеж; такой участник события или сцены
-# не имеет карточки досье («поляк», «посредник», «оперативник ОГПУ»)
-_ROLES = {
-    "поляк": "поляк", "посредник": "посредник", "оперативник": "оперативник", "сторож": "сторож",
-    "милиционер": "милиционер", "посыльн": "посыльный", "писар": "писарь", "гастролёр": "гастролёр",
-    "медвежатник": "медвежатник", "куратор": "куратор", "чекист": "чекист", "следовател": "следователь",
+@check("КОНТ-1")
+def check_continuity(ctx: LintContext) -> list[LintFinding]:
+    out: list[LintFinding] = []
+    if not ctx.briefs:
+        return out
+    path = ctx.doc("континуити")
+    for c in ctx.continuity:
+        for ch in re.findall(r"\d+", c.chapters or ""):
+            if int(ch) > ctx.hi:
+                out.append(_f("КОНТ-1", "предупреждение", ctx.rel(path), ctx.line_of(path, c.event[:30]),
+                              f"континуити «{c.event[:50]}»: ссылка на гл. {ch}, а в томе {ctx.hi} глав", "поправьте главу"))
+    return out
+
+
+# ------------------------------------------------------------------ карточки персонажей
+
+_ADJ = r"(?:ый|ое|ая|ой|ом|ую|ым|ые|ых|ими|ого|ому)"
+_FEATURES = [
+    ("сторона глухоты", re.compile(r"глух\w*|\bух[оа]\b|\bуш(?:и|ей|ах)\b|\bслух\b", re.I), "сторона"),
+    ("почерк", re.compile(r"почерк\w*", re.I), "размер"),
+    ("рост", re.compile(r"\bрост[аом]?\b|\bросл\w+", re.I), "рост"),
+    ("цвет глаз", re.compile(r"\bглаз\w*", re.I), "цвет"),
+    ("цвет волос", re.compile(r"\bволос\w*|\bшевелюр\w*", re.I), "цвет"),
+    ("увечья", re.compile(r"увеч\w*|\bрубц\w*|\bшрам\w*|изуродован\w*|ожог\w*", re.I), "сторона"),
+]
+_VALUES = {
+    "сторона": [("левое", re.compile(rf"\bлев{_ADJ}\b|\bслева\b", re.I)), ("правое", re.compile(rf"\bправ{_ADJ}\b|\bсправа\b", re.I))],
+    "размер": [("мелкий", re.compile(rf"\bмелк{_ADJ}\b", re.I)), ("крупный", re.compile(rf"\bкрупн{_ADJ}\b", re.I))],
+    "рост": [("высокий", re.compile(rf"\bвысок{_ADJ}\b|\bвысокоросл\w+", re.I)), ("низкий", re.compile(rf"\bнизк{_ADJ}\b|\bнизкоросл\w+|\bкоротышк\w+", re.I))],
+    "цвет": [("серый", re.compile(rf"\bсер{_ADJ}\b", re.I)), ("голубой", re.compile(rf"\bголуб{_ADJ}\b", re.I)),
+             ("карий", re.compile(r"\bкари[йеяю]\w*\b", re.I)), ("зелёный", re.compile(rf"\bзел[её]н{_ADJ}\b", re.I)),
+             ("чёрный", re.compile(rf"\bч[её]рн{_ADJ}\b", re.I)), ("светлый", re.compile(rf"\bсветл{_ADJ}\b", re.I)),
+             ("тёмный", re.compile(rf"\bт[её]мн{_ADJ}\b", re.I)), ("рыжий", re.compile(r"\bрыж[ий]\w*\b", re.I)),
+             ("седой", re.compile(rf"\bсед{_ADJ}\b|\bседин\w+", re.I))],
 }
-_ROLE_RE = re.compile(r"(?<![а-яё])(" + "|".join(_ROLES) + r")([а-яё]*)(?![а-яё])", re.IGNORECASE)
-_ADJ_END_RE = re.compile(r"ск(ий|ая|ое|ие|ой|ую|ого|ому|им|их|ими|ом)$")  # «чекистской», «писарского» — прилагательные
-# «Веры Холодовой»: имя и фамилия подряд — персонаж, названный полностью
+
+
+def _feature_values(text: str) -> dict[str, tuple[set[str], str]]:
+    out: dict[str, tuple[set[str], str]] = {}
+    for clause in re.split(r"[;·()]", text.replace("**", "")):
+        clause = clause.strip()
+        if not clause:
+            continue
+        for name, feature_re, group in _FEATURES:
+            if not feature_re.search(clause):
+                continue
+            values = {value for value, value_re in _VALUES[group] if value_re.search(clause)}
+            if not values:
+                continue
+            seen, quote = out.get(name, (set(), clause))
+            out[name] = (seen | values, quote)
+    return out
+
+
+@check("ДОСЬЕ-1", "ДОСЬЕ-2", "ДОСЬЕ-3", "ДОСЬЕ-6")
+def check_dossiers(ctx: LintContext) -> list[LintFinding]:
+    out: list[LintFinding] = []
+    year = ctx.year
+    all_names = set(ctx.known) | {d.name for d in ctx.dossiers}
+    by_name: dict[str, list] = {}
+    for c in ctx.continuity:
+        for name in names.find_names(c.event, ctx.known, ctx.pseudo):
+            by_name.setdefault(name, []).append(c)
+    for d in ctx.dossiers:
+        path = ctx.library / d.file if d.file else None
+        head_line = d.line or ctx.line_of(path, d.name) or 1
+        if d.born_year and year:
+            age = d.ages.get(f"т.{ctx.volume}")
+            if age is not None and abs((year - d.born_year) - age) > 1:
+                needle = f"{age} (т.{ctx.volume})"
+                line = ctx.line_of(path, needle) or head_line
+                fix = LintFix(file=d.file, line=line, old=needle, new=f"{year - d.born_year} (т.{ctx.volume})",
+                              note="пересчитанный возраст") if ctx.line_of(path, needle) else None
+                out.append(_f("ДОСЬЕ-1", "предупреждение", d.file, line, f"{d.name}: рождение ≈{d.born_year}, том {ctx.volume} = "
+                              f"{year} год → возраст {year - d.born_year}, в карточке {age}", "исправьте возраст или год рождения", fix=fix))
+        for ref in d.refs:
+            base = re.split(r"[-–\s]", ref)[0]
+            if not any(base.lower().startswith(n.lower()) or n.lower().startswith(base.lower()) for n in all_names):
+                out.append(_f("ДОСЬЕ-2", "заметка", d.file, ctx.line_of(path, f"[[{ref}]]") or head_line,
+                              f"ссылка [[{ref}]] — такого персонажа нет ни среди карточек, ни среди известных имён",
+                              "заведите карточку или исправьте ссылку"))
+        if not d.physique:
+            out.append(_f("ДОСЬЕ-6", "заметка", d.file, head_line, f"{d.name}: у карточки нет секции «Физика»: Писатель обязан выдумать внешность",
+                          "добавьте секцию «Физика»"))
+        card = _feature_values(" ".join([d.profile, d.physique, d.code]))
+        for c in by_name.get(d.name, []):
+            for feature, (values, _q) in _feature_values(c.event).items():
+                mine = card.get(feature)
+                if not mine or not values or (mine[0] & values):
+                    continue
+                out.append(_f("ДОСЬЕ-3", "ошибка", d.file, ctx.line_of(path, mine[1][:40]) or head_line,
+                              f"{d.name}: {feature} — в карточке «{', '.join(sorted(mine[0]))}», а континуити фиксирует "
+                              f"«{', '.join(sorted(values))}» ({c.event[:60]})", "согласуйте карточку с континуити", quote=mine[1][:120]))
+    return out
+
+
+_DEATH_VOL_RE = re.compile(r"(?:гибнет|гибель|умирает|мёртв\w*|погибает)[^.;·|]{0,40}?т\.\s*(\d+)", re.I)
+_DEATH_EVENT_RE = re.compile(r"гибель|гибнут|смерть|умирает|погиб\w*", re.I)
+_AGE_ABS_RE = re.compile(r"(?<![\d.,–—-])(\d{2,3})(?:\s*[–-]\s*(\d{2,3}))?\s*(?:лет|года|год)?\s*(?:\(\s*(\d{4})|в\s+(\d{4}))")
+
+
+@check("ДОСЬЕ-4", "ДОСЬЕ-5")
+def check_dossier_chronology(ctx: LintContext) -> list[LintFinding]:
+    out: list[LintFinding] = []
+    if not ctx.chronology:
+        return out
+    years: dict[int, list[int]] = {}
+    for ev in ctx.chronology:
+        if ev.volume and ev.year:
+            years.setdefault(ev.volume, []).append(ev.year)
+    for d in ctx.dossiers:
+        path = ctx.library / d.file if d.file else None
+        body = "\n".join([d.profile, d.status, d.arc])
+        told = {int(m.group(1)): m.group(0).strip() for m in _DEATH_VOL_RE.finditer(body)}
+        if told:
+            pattern = names.name_pattern(d.name)
+            for ev in ctx.chronology:
+                near = [re.split(r"[.,;:—|]", ev.event[dm.end():])[0] for dm in _DEATH_EVENT_RE.finditer(ev.event)]
+                if not any(pattern.search(chunk) for chunk in near):
+                    continue
+                vol = ev.volume or (ev.volumes[0] if ev.volumes else None)
+                if vol is None:
+                    continue
+                for said, quote in told.items():
+                    if said != vol:
+                        out.append(_f("ДОСЬЕ-4", "предупреждение", d.file, ctx.line_of(path, quote[:40]), f"{d.name}: карточка говорит "
+                                      f"«{quote}», а хронология ставит «{ev.event.strip()[:50]}» ({ev.event_id}) в том {vol}",
+                                      "согласуйте том гибели", quote=quote))
+        if d.born_year:
+            for m in _AGE_ABS_RE.finditer(body):
+                lo = int(m.group(1)); hi = int(m.group(2)) if m.group(2) else lo
+                y = int(m.group(3) or m.group(4))
+                if abs((y - d.born_year) - lo) <= 1 or abs((y - d.born_year) - hi) <= 1:
+                    continue
+                out.append(_f("ДОСЬЕ-5", "предупреждение", d.file, ctx.line_of(path, m.group(0)) or d.line or 1,
+                              f"{d.name}: «{m.group(0).strip()}» — при рождении ≈{d.born_year} на {y} год возраст {y - d.born_year}",
+                              "поправьте возраст или год рождения", quote=m.group(0).strip()))
+    return out
+
+
+_ADJ_END_RE = re.compile(r"ск(ий|ая|ое|ие|ой|ую|ого|ому|им|их|ими|ом)$")
 _FULL_NAME_RE = re.compile(r"(?<![«\w])([А-ЯЁ][а-яё]+)\s+([А-ЯЁ][а-яё]+(?:ов|ев|ин|ын|ск)[а-яё]*)(?![а-яё])")
 _SCENE_SKIP = {"те же", "один", "одна", "все", "никого"}
 
 
-def check_scene_persons(briefs: list[Brief], dossier_names: set[str], known_names: set[str],
-                        reg_path: Path | None, p23_path: Path | None) -> list[LintFinding]:
-    """ПОГЛ-2: участники сцен и событий сетки без карточки досье — известные имена без карточки
-    («Куратор ОГПУ»), позиции поля «участники» сцены поглавника без известного имени («милиционер»,
-    «тело Клюева у сейфа»), роли безымянных персонажей и полные имена в событиях («поляк»,
-    «посредник», «Веры Холодовой»). Одна заметка на персонажа со списком глав (аудит 7.6, 3.10)."""
-    seen: dict[str, tuple[str, list[int], Path | None, str]] = {}
+@check("ПОГЛ-2")
+def check_scene_persons(ctx: LintContext) -> list[LintFinding]:
+    """Участники сцен и событий без карточки персонажа: известные имена без карточки, роли безымянных
+    (список ролей — из типа «персонажи»), полные имена в событиях."""
+    roles = list((ctx.types.get("персонажи").raw.get("роли_безымянных") if ctx.types.get("персонажи") else None) or [])
+    role_re = re.compile(r"(?<![а-яё])(" + "|".join(re.escape(r[:-1] if r.endswith(("й", "ь")) else r) for r in roles) + r")([а-яё]*)(?![а-яё])",
+                         re.IGNORECASE) if roles else None
+    dossier_names = {d.name.lower() for d in ctx.dossiers}
+    if not dossier_names:
+        return []
+    seen: dict[str, tuple[str, list[int]]] = {}
 
-    def note(key: str, who: str, chapter: int, path: Path | None, anchor: str) -> None:
+    def note(key: str, who: str, chapter: int) -> None:
         key = key.lower()
         if key not in seen:
-            seen[key] = (who, [chapter], path, anchor)
+            seen[key] = (who, [chapter])
         elif chapter not in seen[key][1]:
             seen[key][1].append(chapter)
 
     def has_card(name: str) -> bool:
-        return any(name.lower() == d.lower() or name.lower().startswith(d.lower() + " ") for d in dossier_names)
+        return any(name.lower() == d or name.lower().startswith(d + " ") for d in dossier_names)
 
-    for b in briefs:
-        # событие сетки — первый бит брифа из реестра (в демо-формате биты — не события)
-        event = b.beats[0] if reg_path is not None and b.beats and not b.beats[0].lower().startswith("кладём") else ""
+    card_text = " ".join(d.profile.lower() for d in ctx.dossiers)
+
+    for b in ctx.briefs:
         for name in [b.focal, *b.participants]:
-            if name and name in known_names and not has_card(name):
-                note(name, name, b.chapter, reg_path, event[:30])
-        texts = [(event, reg_path, event[:30])]
-        for scene in b.scenes:
-            parts = [x.strip() for x in scene.split("·")]
-            texts.append((scene, p23_path, scene[:30]))
-            if len(parts) > 1 and p23_path is not None:
-                for item in re.split(r"[,;]", re.sub(r"\(.*?\)", "", parts[1])):
-                    item = item.strip(" .")
-                    if not item or item.lower() in _SCENE_SKIP or realcanon.find_names(item, known_names):
+            if name and name in ctx.known and not has_card(name):
+                note(name, name, b.chapter)
+        for text in [*b.beats, *b.scenes]:
+            if role_re:
+                for m in role_re.finditer(text):
+                    stem = m.group(1).lower()
+                    if _ADJ_END_RE.search(m.group(0).lower()) or any(n.lower().startswith(stem) for n in ctx.known):
                         continue
-                    rm = _ROLE_RE.fullmatch(item)
-                    if rm:
-                        note(rm.group(1), _ROLES[rm.group(1).lower()], b.chapter, p23_path, scene[:30])
-                    else:
-                        note(item, item, b.chapter, p23_path, scene[:30])
-        for text, path, anchor in texts:
-            if not text:
-                continue
-            for m in _ROLE_RE.finditer(text):
-                stem = m.group(1).lower()
-                if _ADJ_END_RE.search(m.group(0).lower()) or any(n.lower().startswith(stem) for n in known_names):
-                    continue  # прилагательное («чекистской») или известное имя («куратор» = «Куратор ОГПУ»)
-                note(stem, _ROLES[stem], b.chapter, path, anchor)
+                    if stem in card_text:
+                        continue  # роль принадлежит персонажу с карточкой («сторож» — это Имя из карточки)
+                    note(stem, m.group(0), b.chapter)
             for m in _FULL_NAME_RE.finditer(text):
                 prev = text[: m.start()].rstrip()
                 if not prev or prev[-1] in ".;:!?—·":
-                    continue  # начало фразы: «Смерть Дзержинского» — не «Имя Фамилия»
-                if not realcanon.find_names(m.group(0), known_names):
-                    note(m.group(2), m.group(0), b.chapter, path, anchor)
-    out: list[LintFinding] = []
-    for who, chapters, path, anchor in seen.values():
-        chs = ", ".join(str(c) for c in sorted(chapters))
-        out.append(LintFinding(
-            code="ПОГЛ-2", severity="заметка", file=_rel_or("", path), line=_find_line(path, anchor) if path else None,
-            message=f"участник сцены без досье: «{who}» (гл. {chs})",
-        ))
-    return out
+                    continue
+                if not names.find_names(m.group(0), ctx.known, ctx.pseudo):
+                    note(m.group(2), m.group(0), b.chapter)
+    path = ctx.doc("план_глав")
+    return [_f("ПОГЛ-2", "заметка", ctx.rel(path), ctx.line_of(path, who), f"участник сцены без карточки: «{who}» "
+               f"(гл. {', '.join(str(c) for c in sorted(chs))})", "заведите карточку или оставьте персонажа безымянным")
+            for who, chs in seen.values()]
 
 
-def check_circles(circles, acts, briefs: list[Brief], library: Path) -> list[LintFinding]:
+# ------------------------------------------------------------------ каркасы, арки
+
+
+@check("КРУГ-1", "КРУГ-2")
+def check_frames(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
-    path = next(iter(exporter.volume_docs(library, "21_*.md", briefs[0].volume if briefs else 1)), None)
-    if not circles or not briefs:
+    if not ctx.circles or not ctx.briefs:
         return out
-    lo, hi = min(b.chapter for b in briefs), max(b.chapter for b in briefs)
-    for c in circles:
-        # Р-024: у главы обязательны шаги 1–7, шаг 8 «Изменение» — по материалу (пустой или «в материале не задано» — норма)
-        n_steps = len(c.steps)
-        expected = "восемь" if c.scope != "глава" else "семь обязательных (1–7) и необязательный восьмой (Р-024)"
-        bad = n_steps != 8 if c.scope != "глава" else not (7 <= n_steps <= 8) or {st.n for st in c.steps} < set(range(1, 8))
-        if bad:
-            out.append(LintFinding(code="КРУГ-1", severity="предупреждение", file=_rel_or("", path), line=_find_line(path, c.title[:20]) if path else None,
-                                   message=f"{c.title}: шагов {n_steps}, а в круге истории {expected}"))
+    from . import circles as circles_mod
+
+    ws = Workspace(ctx.root, ctx.volume)
+    path = ctx.doc("каркасы")
+    lo, hi = min(b.chapter for b in ctx.briefs), ctx.hi
+    for c in ctx.circles:
+        try:
+            m = circles_mod.methodic_for(ws, c.scope)
+            required = m.required_steps(circles_mod.LEVEL_OF[c.scope], ctx.manifest)
+            total = {s.n for s in m.steps}
+        except Exception:  # noqa: BLE001 — без методики каркас не проверяется по составу
+            required, total = set(), set()
+        present = {st.n for st in c.steps if not circles_mod.step_unset(st)}
+        if required and not required <= present:
+            missing = sorted(required - present)
+            out.append(_f("КРУГ-1", "предупреждение", ctx.rel(path), ctx.line_of(path, c.title[:20]),
+                          f"{c.title}: не заданы обязательные шаги {missing} (методика «{m.title}»)",
+                          "заполните шаги или снимите их обязательность в манифесте"))
+        if total and any(st.n not in total for st in c.steps):
+            out.append(_f("КРУГ-1", "предупреждение", ctx.rel(path), ctx.line_of(path, c.title[:20]),
+                          f"{c.title}: есть шаги вне методики «{m.title}» ({sorted(st.n for st in c.steps if st.n not in total)})",
+                          "уберите лишние шаги"))
         if c.scope in ("книга", "акт"):
             if c.scope == "книга":
                 a, z = lo, hi
             else:
-                act = next((x for x in acts if x.act == c.key), None)
+                act = next((x for x in ctx.acts if x.act == c.key), None)
                 if not act:
                     continue
                 a, z = act.from_chapter, act.to_chapter
@@ -498,59 +755,112 @@ def check_circles(circles, acts, briefs: list[Brief], library: Path) -> list[Lin
                 if st.from_chapter is None:
                     continue
                 if st.from_chapter < expect or (st.to_chapter or st.from_chapter) > z:
-                    out.append(LintFinding(code="КРУГ-2", severity="предупреждение", file=_rel_or("", path), line=_find_line(path, st.text[:25]) if path else None,
-                                           message=f"{c.title}, шаг {st.n} «{st.name}» ({st.chapters}) выходит за границы {a}–{z} или наезжает на предыдущий шаг"))
+                    out.append(_f("КРУГ-2", "предупреждение", ctx.rel(path), ctx.line_of(path, st.text[:25]),
+                                  f"{c.title}, шаг {st.n} «{st.name}» ({st.chapters}) выходит за границы {a}–{z} или наезжает на "
+                                  "предыдущий шаг", "поправьте диапазоны глав шагов"))
                 expect = (st.to_chapter or st.from_chapter) + 1
     return out
 
 
-def check_accepted_prose(library: Path, exports_dir: Path, briefs: list[Brief]) -> list[LintFinding]:
-    """ПРОЗА-3: принятая в канон глава не проходит Э1 по текущим нормам 02 §5.
-
-    Такое расхождение — не ошибка конвейера, а противоречие внутри канона (Р-015 задал коридор,
-    Р-018 принял главу вне коридора). Решение — за автором: перекалибровать нормы или править главу."""
+@check("АРКА-1", "АРКА-2")
+def check_arcs(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
-    norms = exporter.load_norms(exports_dir)
-    stoplists = exporter.load_stoplists(exports_dir)
-    by_ch = {b.chapter: b for b in briefs}
-    for path in sorted((library / "Проза").glob("*.md")) if (library / "Проза").exists() else []:
-        m = re.search(r"Глава(\d+)", path.name)
-        if not m or "МАКЕТ" in path.name:
-            continue
-        brief = by_ch.get(int(m.group(1)))
-        if brief is None:
-            continue
-        try:
-            checks = verifier1.analyze(path.read_text(encoding="utf-8"), "", brief, norms, stoplists)
-        except (KeyError, ValueError):
-            continue  # нормы неполны — это ловит РАЗМ-1/ЛИНТ-0
-        brak = [c for c in checks if c.status == "BRAK"]
-        if brak:
-            details = "; ".join(f"{c.check_id} = {c.actual} при пороге {c.threshold}" for c in brak)
-            out.append(LintFinding(
-                code="ПРОЗА-3", severity="предупреждение", file=_rel(library, path),
-                message=f"принятая глава {brief.chapter} не проходит Э1 по текущим нормам: {details}. "
-                        "Либо нормы 02 §5 перекалибровать по принятой прозе, либо главу править — решение автора",
-            ))
+    if not ctx.arcs:
+        return out
+    path = ctx.doc("арки")
+    dossier_names = {d.name for d in ctx.dossiers}
+    act_numbers = {a.act for a in ctx.acts}
+    seen: set[tuple[str, str]] = set()
+    for arc in ctx.arcs:
+        if dossier_names and arc.character not in dossier_names and ("АРКА-1", arc.character) not in seen:
+            seen.add(("АРКА-1", arc.character))
+            out.append(_f("АРКА-1", "заметка", ctx.rel(path), ctx.line_of(path, f"| {arc.character} |"),
+                          f"арки: персонаж «{arc.character}» без карточки", "опечатка в имени или нужна карточка"))
+        if act_numbers and arc.act not in act_numbers and ("АРКА-2", str(arc.act)) not in seen:
+            seen.add(("АРКА-2", str(arc.act)))
+            out.append(_f("АРКА-2", "заметка", ctx.rel(path), ctx.line_of(path, f"| {arc.character} | {arc.act} |"),
+                          f"арки: акт {arc.act} («{arc.character}») вне таблицы актов ({', '.join(str(n) for n in sorted(act_numbers))})",
+                          "поправьте номер акта"))
     return out
 
 
-def check_prose(library: Path, briefs: list[Brief], infobans: list[InfoBan], stoplists) -> list[LintFinding]:
-    """Принятая проза: маркеры тайн, которых фокал главы не знает; стоп-лексика линии фокала."""
+# ------------------------------------------------------------------ дозы, документы
+
+_DOSE_REF_RE = re.compile(r"[Дд]оз[аеуы]\s*(?:\d{4}\s*)?№\s*(\d+)")
+_DOC_REF_RE = re.compile(r"→\s*\**\s*[Дд]окумент\s*№\s*(\d+)")
+_DOC_POG_RE = re.compile(r"№\s*(\d+)\s*\(([^)]*)\)")
+
+
+@check("ДОЗА-1")
+def check_doses(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
-    by_ch = {b.chapter: b for b in briefs}
-    for path in sorted((library / "Проза").glob("*.md")) if (library / "Проза").exists() else []:
-        m = re.search(r"Глава(\d+)", path.name)
-        if not m or "МАКЕТ" in path.name:
+    if not ctx.doses:
+        return out
+    path = ctx.doc("дозы_прошлого")
+    grid: dict[int, int] = {}
+    for b in ctx.briefs:
+        for m in _DOSE_REF_RE.finditer(_brief_text(b)):
+            grid.setdefault(int(m.group(1)), b.chapter)
+    for dose in ctx.doses:
+        num = re.search(r"\d+", dose.dose_id)
+        if not num or int(num.group()) not in grid:
             continue
-        b = by_ch.get(int(m.group(1)))
+        if grid[int(num.group())] != dose.chapter:
+            out.append(_f("ДОЗА-1", "ошибка", ctx.rel(path), ctx.line_of(path, f"| {dose.dose_id} |"),
+                          f"доза {dose.dose_id}: таблица доз — гл. {dose.chapter}, план глав — гл. {grid[int(num.group())]}",
+                          "доза прошлого — единственный канал воспоминаний, глава должна быть одна"))
+    return out
+
+
+@check("ДОК-1")
+def check_documents(ctx: LintContext) -> list[LintFinding]:
+    out: list[LintFinding] = []
+    if not ctx.documents:
+        return out
+    path = ctx.doc("документы_вставки")
+    pog: dict[int, int] = {}
+    for b in ctx.briefs:
+        for m in _DOC_REF_RE.finditer(" ".join([*b.beats, b.reader_learns])):
+            pog.setdefault(int(m.group(1)), b.chapter)
+        for item in b.documents:
+            m = _DOC_POG_RE.match(item.strip())
+            if m:
+                after = re.search(r"гл\.?\s*(\d+)", m.group(2))
+                pog.setdefault(int(m.group(1)), int(after.group(1)) if after else b.chapter)
+    for spec in ctx.documents:
+        if spec.number in pog and pog[spec.number] != spec.after_chapter:
+            out.append(_f("ДОК-1", "ошибка", ctx.rel(path), ctx.line_of(path, f"| {spec.number} |"),
+                          f"документ №{spec.number}: реестр — после гл. {spec.after_chapter}, план глав — после гл. {pog[spec.number]}",
+                          "согласуйте место вставки"))
+    return out
+
+
+# ------------------------------------------------------------------ проза
+
+PATRONYMIC = r"[А-ЯЁ][а-яё]*?(?:ович|евич|ьич|инична|ична|овна|евна)"
+SURNAME = r"[А-ЯЁ][а-яё]+?(?:ов|ев|ин|ын|ск|цк)"
+PROSE_NAME_RE = re.compile(rf"(?<![А-Яа-яЁё])([А-ЯЁ][а-яё]{{2,}})\s+({PATRONYMIC}|{SURNAME})([а-яё]{{0,3}})(?![А-Яа-яЁё])")
+_STEM_END_RE = re.compile(r"(?:ами|ями|ого|ому|ыми|ими|ой|ей|ом|ем|ых|их|ий|ый|ая|ое|ые|ов|ев|ах|ях|[аяуюеиыоь])$")
+
+
+def _stems(text: str) -> set[str]:
+    return {s for w in re.findall(r"[а-яёa-z]{3,}", text.lower()) if len(s := _STEM_END_RE.sub("", w)) >= 3}
+
+
+def _prose(ctx: LintContext) -> list[tuple[int, Path, Brief | None]]:
+    by_ch = {b.chapter: b for b in ctx.briefs}
+    return [(ch, p, by_ch.get(ch)) for ch, p in exporter.prose_files(ctx.library, ctx.volume, ctx.root)]
+
+
+@check("ПРОЗА-1", "ПРОЗА-2")
+def check_prose(ctx: LintContext) -> list[LintFinding]:
+    out: list[LintFinding] = []
+    for ch, path, b in _prose(ctx):
         if not b:
             continue
-        lines = _lines_cache(path)
-        active = [ban for ban in infobans if ban.secret and ban.markers and not ban.known_to(b.focal, b.chapter)]
-        rules = [r for r in stoplists if r.kind == "лексика" and verifier1._stoplist_applies(r, b)]
-        # маркеры тайн и стоп-лексика линии — по внутренней речи фокала: реплика чужого персонажа
-        # («— Сынок, — сказал Бугаев») знанием фокала не является (03, аудит 2, находка 3.9)
+        lines = _lines(path)
+        active = [ban for ban in ctx.infobans if ban.secret and ban.markers and not ban.known_to(b.focal, b.chapter)]
+        rules = [r for r in ctx.stoplists if r.kind == "лексика" and verifier1._stoplist_applies(r, b)]
         narration = set(textutils.narration_only("\n\n".join(lines)).splitlines())
         for i, line in enumerate(lines, start=1):
             if line.strip() and line.strip() not in narration:
@@ -558,80 +868,197 @@ def check_prose(library: Path, briefs: list[Brief], infobans: list[InfoBan], sto
             for ban in active:
                 hit = marker_hit(line, ban.markers)
                 if hit:
-                    out.append(LintFinding(
-                        code="ПРОЗА-1", severity="предупреждение", file=_rel(library, path), line=i,
-                        message=f"гл. {b.chapter} (фокал {b.focal}): «{hit}» — маркер тайны {ban.ban_id}, которой фокал ещё не знает",
-                    ))
+                    out.append(_f("ПРОЗА-1", "предупреждение", ctx.rel(path), i, f"гл. {ch} (фокал {b.focal}): «{hit}» — маркер тайны "
+                                  f"{ban.ban_id}, которой фокал ещё не знает", "проверьте фразу или знание фокала"))
             for r in rules:
                 found = verifier1._find_items(line, list(r.items))
                 if found:
-                    out.append(LintFinding(
-                        code="ПРОЗА-2", severity="заметка", file=_rel(library, path), line=i,
-                        message=f"гл. {b.chapter}: стоп-лексика линии [{r.rule_id}]: {', '.join(found[:3])}",
-                    ))
+                    out.append(_f("ПРОЗА-2", "заметка", ctx.rel(path), i, f"гл. {ch}: стоп-лексика линии [{r.rule_id}]: {', '.join(found[:3])}",
+                                  "замените слово или снимите правило"))
+    return out
+
+
+@check("ПРОЗА-3")
+def check_accepted_prose(ctx: LintContext) -> list[LintFinding]:
+    out: list[LintFinding] = []
+    if not ctx.norms:
+        return out
+    for ch, path, b in _prose(ctx):
+        if not b:
+            continue
+        try:
+            checks = verifier1.analyze(path.read_text(encoding="utf-8"), "", b, ctx.norms, ctx.stoplists)
+        except (KeyError, ValueError):
+            continue
+        brak = [c for c in checks if c.status == "BRAK"]
+        if brak:
+            details = "; ".join(f"{c.check_id} = {c.actual} при пороге {c.threshold}" for c in brak)
+            out.append(_f("ПРОЗА-3", "предупреждение", ctx.rel(path), None, f"принятая глава {ch} не проходит Э1 по текущим нормам: {details}",
+                          "перекалибровать нормы по принятой прозе или править главу — решение автора"))
+    return out
+
+
+@check("ПРОЗА-4")
+def check_prose_names(ctx: LintContext) -> list[LintFinding]:
+    prose = _prose(ctx)
+    if not prose:
+        return []
+    canon = "\n".join([*(d.profile + " " + d.physique + " " + d.speech + " " + " ".join(d.relations) for d in ctx.dossiers),
+                       *(c.event for c in ctx.continuity)])
+    canon_stems = _stems(canon)
+    out: list[LintFinding] = []
+    seen: set[str] = set()
+    for _ch, path, _b in prose:
+        text = path.read_text(encoding="utf-8")
+        for m in PROSE_NAME_RE.finditer(text):
+            if not names.find_names(m.group(1), ctx.known, ctx.pseudo):
+                continue
+            core = m.group(2).lower()
+            if core in canon_stems or _STEM_END_RE.sub("", core) in canon_stems:
+                continue
+            full = re.sub(r"\s+", " ", m.group(0))
+            key = f"{path.name}:{core}"
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(_f("ПРОЗА-4", "заметка", ctx.rel(path), text[: m.start()].count("\n") + 1,
+                          f"«{full}» — имя из принятой прозы, которого нет ни в карточках, ни в континуити: новый факт прозы, не внесённый в канон",
+                          "внесите в карточку/континуити или уберите из прозы", quote=full))
+    return out
+
+
+# ------------------------------------------------------------------ вопросы автору (КАНОН-1)
+
+_INDEX_RANGE_RE = re.compile(r"Р-(\d+)\s*…\s*Р-(\d+)")
+
+
+@check("КАНОН-1")
+def check_canon_questions(ctx: LintContext) -> list[LintFinding]:
+    out: list[LintFinding] = []
+    by_ch = {b.chapter: b for b in ctx.briefs}
+    path = ctx.doc("хронология")
+    for ev in ctx.chronology:
+        if ev.volume != ctx.volume or not ev.chapters:
+            continue
+        d = parse_date(ev.date)
+        months = {d[0]} if d else _months(ev.date)
+        if not months:
+            continue
+        for ch in ev.chapters:
+            b = by_ch.get(ch)
+            bd = parse_date(b.date) if b else None
+            if bd is None or bd[0] in months:
+                continue
+            out.append(_f("КАНОН-1", "заметка", ctx.rel(path), ev.line or ctx.line_of(path, ev.event_id),
+                          f"{ev.event_id} датировано «{ev.date}», а гл. {ch}, где читатель его узнаёт, — «{b.date}»",
+                          "согласуйте хронологию и план глав — решение за автором"))
+    index = ctx.doc("индекс_библиотеки")
+    if index is not None and ctx.decisions:
+        last = max((int(re.sub(r"\D", "", d.decision_id) or 0) for d in ctx.decisions), default=0)
+        for i, line in enumerate(_lines(index), start=1):
+            rm = _INDEX_RANGE_RE.search(line)
+            if rm and int(rm.group(2)) < last:
+                out.append(_f("КАНОН-1", "заметка", ctx.rel(index), i, f"индекс библиотеки обещает «{rm.group(0)}», а журнал решений дошёл до Р-{last:03d}",
+                              "обновите индекс"))
+    # фокал открывается в разных томах: карточка против таблицы фокалов
+    for d in ctx.dossiers:
+        vols = _focal_volumes(d.status)
+        if not vols:
+            continue
+        for n in ctx.narration:
+            for line in n.focals_text.splitlines():
+                if not line.startswith("|") or d.name not in line:
+                    continue
+                cell = line.strip("|").split("|")[0].strip()
+                m = re.match(r"(\d+)", cell)
+                if m and re.search(r"открыва", line) and int(m.group(1)) != min(vols):
+                    out.append(_f("КАНОН-1", "заметка", d.file, d.line or 1, f"{d.name}: по карточке фокал с т.{min(vols)}, по таблице "
+                                  f"фокалов открывается в т.{m.group(1)}", "решение за автором"))
+    return out
+
+
+# ------------------------------------------------------------------ плагины проекта
+
+
+def _project_checks(ctx: LintContext) -> list[LintFinding]:
+    folder = ctx.root / "линтер"
+    out: list[LintFinding] = []
+    if not folder.is_dir():
+        return out
+    for path in sorted(folder.glob("*.py")):
+        spec = importlib.util.spec_from_file_location(f"konveyer_lint_{path.stem}", path)
+        module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+        sys.modules[spec.name] = module  # type: ignore[union-attr]
+        try:
+            spec.loader.exec_module(module)  # type: ignore[union-attr]
+            fn = getattr(module, "checks", None)
+            if fn:
+                out.extend(f for f in fn(ctx) if f.code in ctx.enabled_codes or f.code not in catalog.all_lint_codes(ctx.modules))
+        except Exception as e:  # noqa: BLE001 — плагин не должен ронять линтер
+            out.append(LintFinding(code="ЛИНТ-0", severity="заметка", file=f"линтер/{path.name}",
+                                   message=f"плагин линтера не выполнен: {type(e).__name__}: {e}"))
     return out
 
 
 # ------------------------------------------------------------------ прогон
 
 
-def run_lint(library: Path, exports_dir: Path, logs_dir: Path, export: bool = True, volume: int = 1) -> LintReport:
-    """Машинный слой: экспорт (валидация Д-1) + все проверки ТОМА `volume` (текущий том рабочей области).
-    Ничего не пишет в библиотеку. `export=False` — выгрузки уже актуальны (вызывающий только что сделал
-    экспорт того же тома): без второго прогона."""
+def run_checks(ctx: LintContext) -> list[LintFinding]:
+    findings: list[LintFinding] = []
+    for codes, fn in CHECKS:
+        if not any(c in ctx.enabled_codes for c in codes):
+            continue
+        for f in fn(ctx):
+            if f.code in ctx.enabled_codes:
+                findings.append(f)
+    findings += _project_checks(ctx)
+    return findings
+
+
+def run_lint(library: Path, exports_dir: Path, logs_dir: Path, export: bool = True, volume: int = 1,
+             root: Path | None = None, use_cache: bool = True) -> LintReport:
+    """Машинный слой: экспорт + все проверки тома. Кэш по отпечатку канона (FR-LT-5): при том же отпечатке и той же
+    конфигурации модулей возвращается прежний отчёт."""
+    root = exporter.project_root_of(library, root)
+    fingerprint = exporter.canon_fingerprint(library)
+    key = f"{fingerprint}:{volume}"
+    if use_cache:
+        cached = load_report(logs_dir)
+        if cached is not None and cached.fingerprint == key:
+            return cached
     findings: list[LintFinding] = []
     try:
         if export:
-            exporter.run_export(library, exports_dir, logs_dir, volume)
+            exporter.run_export(library, exports_dir, logs_dir, volume, root)
     except MarkupError as e:
-        rel = _rel(library, Path(e.path)) if getattr(e, "path", None) else ""
-        findings.append(LintFinding(code="РАЗМ-1", severity="ошибка", file=rel, line=getattr(e, "line", None),
-                                    message=f"разметка расходится с соглашениями Д-1: {e}"))
-        return _finish(findings, logs_dir, files=len(_library_docs(library)))
-    briefs = exporter.load_briefs(exports_dir)
-    infobans = exporter.load_infobans(exports_dir)
-    matrix = exporter.load_matrix(exports_dir)
-    plants = exporter.load_plants(exports_dir)
-    continuity = exporter.load_continuity(exports_dir)
-    dossiers = exporter.load_dossiers(exports_dir)
-    stoplists = exporter.load_stoplists(exports_dir)
-    parts = exporter.load_parts(exports_dir)
-    acts = exporter.load_acts(exports_dir)
-    circles = exporter.load_circles(exports_dir)
-    known = exporter._known_names(library)
-    volume = briefs[0].volume if briefs else volume  # выгрузки — одного тома (run_export(volume=…))
-    reg = exporter._registry(library, volume)
-    if reg is None:
-        reg = next(iter(exporter.volume_docs(library, "23_*.md", volume)), None)
-    acts_path = next(iter(exporter.volume_docs(library, "21_*.md", volume)), None)
-    year = briefs[0].year if briefs else None
-    focal_vols = parse_focal_volumes(sorted((library / "Досье").glob("*.md")) if (library / "Досье").exists() else [], known)
-
-    findings += check_chronology(briefs, reg)
-    findings += check_ranges(parts, acts, briefs, reg, acts_path)
-    findings += check_focals(briefs, focal_vols, library, {d.name for d in dossiers}, reg)
-    findings += check_brief_epistemics(briefs, infobans, reg)
-    findings += check_secrets_vs_matrix(infobans, matrix, exporter._registry(library, volume))
-    findings += check_chapter_refs(matrix, plants, continuity, briefs, library)
-    findings += check_dossiers(library, known, year, volume)
-    findings += check_scene_persons(briefs, {d.name for d in dossiers}, known, exporter._registry(library, volume),
-                                    next(iter(exporter.volume_docs(library, "23_*.md", volume)), None))
-    findings += check_circles(circles, acts, briefs, library)
-    findings += check_prose(library, briefs, infobans, stoplists)
-    findings += check_accepted_prose(library, exports_dir, briefs)
-    findings += lint_epist.run_checks(library, exports_dir, briefs, matrix, infobans, plants, parts, acts, known, reg)
-    findings += lint_canon.run_checks(library, exports_dir, briefs, parts, continuity, known, reg, volume)
-    return _finish(findings, logs_dir, files=len(_library_docs(library)))
+        errors = getattr(e, "errors", [e])
+        for err in errors:
+            rel = ""
+            try:
+                rel = Path(err.path).relative_to(library).as_posix()
+            except (ValueError, TypeError):
+                rel = str(getattr(err, "path", ""))
+            findings.append(LintFinding(code="РАЗМ-1", severity="ошибка", file=rel, line=getattr(err, "line", None),
+                                        message=f"разметка расходится с типом документа: {str(err).split(': ', 1)[-1]}"))
+        return _finish(findings, logs_dir, files=len(_library_docs(library)), fingerprint=key)
+    ctx = load_context(library, exports_dir, volume, root)
+    findings += run_checks(ctx)
+    return _finish(findings, logs_dir, files=len(_library_docs(library)), fingerprint=key)
 
 
-def _finish(findings: list[LintFinding], logs_dir: Path, files: int) -> LintReport:
+def _library_docs(library: Path) -> list[Path]:
+    return [p for p in sorted(library.rglob("*.md"))] if library.is_dir() else []
+
+
+def _finish(findings: list[LintFinding], logs_dir: Path, files: int, fingerprint: str = "") -> LintReport:
     order = {"ошибка": 0, "предупреждение": 1, "заметка": 2}
-    findings.sort(key=lambda f: (order[f.severity], f.file, f.line or 0))
+    findings.sort(key=lambda f: (order[f.severity], f.file, f.line or 0, f.code))
     report = LintReport(
         ts=datetime.now(timezone.utc).isoformat(), files_checked=files, findings=findings,
         errors=sum(1 for f in findings if f.severity == "ошибка"),
         warnings=sum(1 for f in findings if f.severity == "предупреждение"),
         notes=sum(1 for f in findings if f.severity == "заметка"),
+        fingerprint=fingerprint,
     )
     guard.write_text(logs_dir / "линтер.json", report.model_dump_json(indent=2) + "\n")
     guard.write_text(logs_dir / "линтер.md", render_md(report))
@@ -664,8 +1091,7 @@ def load_report(logs_dir: Path) -> LintReport | None:
 
 
 def apply_fix(library: Path, fix: LintFix) -> Path:
-    """Применяет предложенное исправление к документу канона — ТОЛЬКО по подтверждению автора:
-    вызывающий обязан открыть guard.canon_write_session()."""
+    """Применяет предложенное исправление — ТОЛЬКО по подтверждению автора: вызывающий обязан открыть сессию записи."""
     path = (library / fix.file).resolve()
     if library.resolve() not in path.parents:
         raise ValueError("исправление указывает вне библиотеки")
@@ -678,10 +1104,13 @@ def apply_fix(library: Path, fix: LintFix) -> Path:
     return path
 
 
-# ------------------------------------------------------------------ модельный слой
+# ------------------------------------------------------------------ модельный слой (FR-LT-3)
 
 
-def _template() -> str:
+def _template(root: Path | None = None) -> str:
+    for cand in ([root / "промпты" / "линтер.md", root / "шаблоны" / "линтер_канона_система.md"] if root else []):
+        if cand.exists():
+            return cand.read_text(encoding="utf-8")
     return resources.files("konveyer").joinpath("шаблоны/линтер_канона_система.md").read_text(encoding="utf-8")
 
 
@@ -707,8 +1136,6 @@ def _context_slices(exports_dir: Path) -> str:
 
 
 def resolve_library_files(library: Path, files: list[str] | None) -> list[Path]:
-    """Документы для модельного слоя: только .md ВНУТРИ библиотеки (иначе содержимое произвольного
-    файла ушло бы в API и в журналы/линтер_промпты/)."""
     if not files:
         return _library_docs(library)
     root = library.resolve()
@@ -724,49 +1151,44 @@ def resolve_library_files(library: Path, files: list[str] | None) -> list[Path]:
 
 
 def estimate_llm_cost(cfg: Config, n_docs: int, avg_chars: int = 12_000) -> float | None:
-    """Грубая смета модельного слоя по ценам из конфиг.yaml (0 = цены не заданы → None)."""
-    mc = cfg.canonist
+    mc = cfg.role("линтер")
     if not (mc.price_in_per_1m or mc.price_out_per_1m):
         return None
-    tokens_in = n_docs * (avg_chars / 3 + 3_000)   # документ + контекст канона, ~3 символа на токен
+    tokens_in = n_docs * (avg_chars / 3 + 3_000)
     tokens_out = n_docs * 800
     return tokens_in / 1e6 * mc.price_in_per_1m + tokens_out / 1e6 * mc.price_out_per_1m
 
 
 def run_lint_llm(ws: Workspace, cfg: Config, library: Path, files: list[Path] | None = None,
                  max_calls: int | None = None) -> tuple[list[LintFinding], list[str]]:
-    """Смысловые противоречия по документам (по одному вызову на документ). Возвращает (находки, промпты
-    ручного режима, если API недоступен). Сбой на одном документе (нет JSON в ответе, ошибка API) не
-    теряет находки уже проверенных: он становится находкой ЛИНТ-0 по этому документу. `max_calls`
-    ограничивает число оплачиваемых вызовов за прогон."""
+    """Смысловые противоречия по документам (по одному вызову на документ), с лимитом вызовов (FR-LT-3)."""
     docs = files or _library_docs(library)
     if max_calls is not None and len(docs) > max_calls:
         raise ValueError(f"документов {len(docs)}, лимит вызовов модели {max_calls}: укажите --файл или поднимите --лимит")
-    system = _template()
+    system = _template(ws.root)
     context = _context_slices(ws.exports)
     findings: list[LintFinding] = []
     prompts: list[str] = []
     for doc in docs:
-        rel = _rel(library, doc)
-        user = f"# Документ: {rel}\n\n{doc.read_text(encoding='utf-8')}\n\n# Контекст канона\n\n{context}"
+        rel = doc.relative_to(library).as_posix()
+        user = f"# Документ: {rel}\n\n<документ>\n{doc.read_text(encoding='utf-8')}\n</документ>\n\n# Контекст канона\n\n{context}"
         prompt_path = ws.logs / "линтер_промпты" / (re.sub(r"[^\w.\-]+", "_", rel) + ".md")
         guard.write_text(prompt_path, f"<!-- system -->\n{system}\n\n<!-- user -->\n{user}\n")
         try:
-            raw = adapters.call_anthropic(system, user, cfg.canonist, cfg.api, ws.logs, role="линтер канона")
+            raw = adapters.call_role(cfg, "линтер", system, user, ws.logs, role="линтер канона")
             findings += parse_llm_findings(raw, library, doc)
         except adapters.ManualModeNeeded:
             prompts.append(str(prompt_path))
-        except Exception as e:  # noqa: BLE001 — один документ не должен отменять весь прогон
-            findings.append(LintFinding(
-                code="ЛИНТ-0", severity="заметка", file=rel, source="модель",
-                message=f"модельный слой не дал результата по документу: {type(e).__name__}: {str(e)[:200]}",
-            ))
+        except Exception as e:  # noqa: BLE001
+            findings.append(LintFinding(code="ЛИНТ-0", severity="заметка", file=rel, source="модель",
+                                        message=f"модельный слой не дал результата по документу: {type(e).__name__}: {str(e)[:200]}"))
     return findings, prompts
 
 
 def parse_llm_findings(raw: str, library: Path, doc: Path) -> list[LintFinding]:
     data = llmjson.extract_json(raw, list)
     out: list[LintFinding] = []
+    lines = _lines(doc)
     for item in data:
         if not isinstance(item, dict):
             continue
@@ -774,25 +1196,19 @@ def parse_llm_findings(raw: str, library: Path, doc: Path) -> list[LintFinding]:
         sev = str(item.get("severity", "предупреждение"))
         if sev not in ("ошибка", "предупреждение", "заметка"):
             sev = "предупреждение"
-        out.append(LintFinding(
-            code="МОДЕЛЬ", severity=sev, file=_rel(library, doc), line=_find_line(doc, quote[:40]),
-            message=(str(item.get("problem", "")).strip() + (f" — {item['suggestion']}" if item.get("suggestion") else "")).strip(),
-            quote=quote, source="модель",
-        ))
+        line = next((i for i, ln in enumerate(lines, start=1) if quote[:40] and quote[:40] in ln), None)
+        out.append(LintFinding(code="МОДЕЛЬ", severity=sev, file=doc.relative_to(library).as_posix(), line=line,
+                               message=(str(item.get("problem", "")).strip() + (f" — {item['suggestion']}" if item.get("suggestion") else "")).strip(),
+                               quote=quote, source="модель"))
     return out
 
 
 def error_report(exc: BaseException, logs_dir: Path, files: int = 0) -> LintReport:
-    """Сбой самого линтера (нечитаемый файл, ошибка программы) — не исчезает молча, а становится
-    находкой ЛИНТ-0 уровня «ошибка»: автор видит причину в панели и в журналы/линтер.md."""
-    hint = ""
-    if isinstance(exc, UnicodeDecodeError):
-        hint = " — файл не в UTF-8 (NFR-8): пересохраните его в UTF-8"
-    return _finish([LintFinding(code="ЛИНТ-0", severity="ошибка", file=getattr(exc, "path", "") or "",
-                                message=f"проверка канона не выполнена: {type(exc).__name__}: {exc}{hint}")],
-                   logs_dir, files)
+    hint = " — файл не в UTF-8: пересохраните его в UTF-8" if isinstance(exc, UnicodeDecodeError) else ""
+    return _finish([LintFinding(code="ЛИНТ-0", severity="ошибка", file=str(getattr(exc, "path", "") or ""),
+                                message=f"проверка канона не выполнена: {type(exc).__name__}: {exc}{hint}")], logs_dir, files)
 
 
 def merge_llm(report: LintReport, extra: list[LintFinding], logs_dir: Path) -> LintReport:
     findings = [f for f in report.findings if f.source != "модель"] + extra
-    return _finish(findings, logs_dir, report.files_checked)
+    return _finish(findings, logs_dir, report.files_checked, report.fingerprint)

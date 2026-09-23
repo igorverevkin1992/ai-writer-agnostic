@@ -174,10 +174,10 @@ def _prepare_accepted_chapter(ws, library, n=1, rows=("| — | Бумага па
     ws.draft_path(n, 1).parent.mkdir(parents=True, exist_ok=True)
     ws.draft_path(n, 1).write_text("Каширин нашёл записку утром возле хлебницы.", encoding="utf-8")
     (ws.chapter_dir(n) / "пакет_канона.json").write_text(
-        json.dumps({"facts": [{"registry": "3.1", "row": r} for r in rows]}, ensure_ascii=False), encoding="utf-8"
+        json.dumps({"facts": [{"registry": "эпистемика", "row": r} for r in rows]}, ensure_ascii=False), encoding="utf-8"
     )
     (ws.chapter_dir(n) / "пакет_канона.md").write_text(
-        "# Пакет\n\n## Новые факты\n" + "\n".join(f"- РЕЕСТР 3.1 → {r}" for r in rows) + "\n", encoding="utf-8"
+        "# Пакет\n\n## Новые факты\n" + "\n".join(f"- РЕЕСТР эпистемика → {r}" for r in rows) + "\n", encoding="utf-8"
     )
 
 
@@ -187,7 +187,7 @@ def test_apply_batch_откатывает_библиотеку_при_сбое(w
     head = gitops.head(library)
     real_export = exporter.run_export
 
-    def broken_export(lib, exports, logs, volume=1):
+    def broken_export(lib, exports, logs, volume=1, root=None):
         raise MarkupError(lib / "31_Матрица_знаний.md", 7, "в таблице 6 колонок, в строке — 5")
 
     monkeypatch.setattr(canonist.exporter, "run_export", broken_export)
@@ -245,9 +245,9 @@ def test_реальная_библиотека_строки_реестров_б�
     _init_repo(lib)
     chapter = 6  # закладка З-04 «Недогоревший знак…» лежит в гл. 6 (§7 реестра)
     rows = {
-        "3.1": "| — | Лемм заметил остаток знака в золе | (сформулировать) |",
-        "3.2": "| P-101 | недогоревший знак в золе | т1 гл6 | т6 | 🔧 |",
-        "3.3": "| 20.04.1926 | печь, знак догорает не до конца | 6 | — |",
+        "эпистемика": "| — | Лемм заметил остаток знака в золе | (сформулировать) |",
+        "закладки": "| P-101 | недогоревший знак в золе | т1 гл6 | т6 | 🔧 |",
+        "континуити": "| 20.04.1926 | печь, знак догорает не до конца | 6 | — |",
     }
     ws.draft_path(chapter, 1).parent.mkdir(parents=True, exist_ok=True)
     ws.draft_path(chapter, 1).write_text("Лемм стоял у печи. Знак догорал не до конца.", encoding="utf-8")
@@ -281,7 +281,7 @@ def test_реальная_библиотека_строки_реестров_б�
     # 3.2 и 3.3: таблиц с нужными заголовками в реальном каноне нет → «Входящие», а не сироты
     assert not any(ln.startswith("|") for ln in (lib / "33_Континуити_трекер.md").read_text(encoding="utf-8").splitlines())
     inbox = (lib / canonist.INBOX_DOC).read_text(encoding="utf-8")
-    assert "## Глава 6" in inbox and "РЕЕСТР 3.2" in inbox and "РЕЕСТР 3.3" in inbox and "недогоревший знак" in inbox
+    assert "## Глава 6" in inbox and "РЕЕСТР закладки" in inbox and "РЕЕСТР континуити" in inbox and "недогоревший знак" in inbox
 
     # статус закладки главы — в §7 реестра информрежима, и парсер §7 читает её по-прежнему
     reg = next(lib.glob("*Реестр_информационного_режима*.md")).read_text(encoding="utf-8")
@@ -295,19 +295,19 @@ def test_реальная_библиотека_строки_реестров_б�
 
 
 def test_демо_реестр_без_подходящей_таблицы_во_входящие(ws, library):
-    """Строка для 3.3 в файл, где нет таблицы с колонками «дата/событие», — во «Входящие», не сирота."""
+    """Строка для реестра, документа которого в библиотеке (ещё) нет, — во «Входящие», не сирота."""
     _init_repo(library)
-    p33 = library / "33_Хронология.md"
-    p33.write_text("# 33. Хронология\n\nПока только проза, таблицы нет.\n", encoding="utf-8")
-    _git(library, "commit", "-qam", "без таблицы")
+    p33 = library / "33_Континуити.md"
+    p33.unlink()
+    _git(library, "commit", "-qam", "без реестра континуити")
     exporter.run_export(library, ws.exports, ws.logs)
     _prepare_accepted_chapter(ws, library, 1, rows=())
     (ws.chapter_dir(1) / "пакет_канона.md").write_text(
-        "- РЕЕСТР 3.3 → | 01.08.1995 | событие | 1 | — |\n", encoding="utf-8"
+        "- РЕЕСТР континуити → | 01.08.1995 | событие | 1 | — |\n", encoding="utf-8"
     )
     canonist.apply_batch(ws, Config(), library, 1, 1)
-    assert "|" not in p33.read_text(encoding="utf-8")
-    assert "РЕЕСТР 3.3" in (library / canonist.INBOX_DOC).read_text(encoding="utf-8")
+    assert not p33.exists()
+    assert "РЕЕСТР континуити" in (library / canonist.INBOX_DOC).read_text(encoding="utf-8")
 
 
 # ============================================================ 2.8 регрессия
@@ -332,7 +332,7 @@ def test_регрессия_все_э2_пропущены_не_зелёная(ws
 
 def test_регрессия_устаревший_отчёт_не_считается(ws):
     report = regression.run_regression(ws)
-    assert report["зелёная"] and set(report["хэши"]) == {"конфиг.yaml", "шаблоны", "norms.json"}
+    assert report["зелёная"] and set(report["хэши"]) >= {"конфиг.yaml", "проект.yaml", "шаблоны", "norms.json"}
     assert regression.is_green(ws) is True
     (ws.root / "конфиг.yaml").write_text("library_dir: Библиотека\nwindow_soft_limit_chars: 70000\n", encoding="utf-8")
     assert regression.is_green(ws) is None and regression.is_stale(ws)   # конфигурация сменилась — прогон нужен заново
@@ -385,7 +385,7 @@ def test_resolutions_пересобираются_по_текущим_флага
     res = {r.flag_id: r for r in review.load_resolutions(ws, n)}
     assert set(res) == {"F-002", "F-003"} and review.unresolved_samovolki(ws, n) == ["F-002", "F-003"]
     # решения по оставшимся флагам сохраняются
-    review.save_resolutions(ws, n, [Resolution(flag_id="F-002", decision="канонизировать", target_registry="3.1"), Resolution(flag_id="F-003")])
+    review.save_resolutions(ws, n, [Resolution(flag_id="F-002", decision="канонизировать", target_registry="эпистемика"), Resolution(flag_id="F-003")])
     verifier2.save_flags(ws, n, [sam("F-002", "Часы стояли")])
     review.build_review_pack(ws, n, 1)
     res = review.load_resolutions(ws, n)
@@ -455,7 +455,7 @@ def test_canonize_не_перезаписывает_отредактирован
     ws.draft_path(n, 1).write_text("Текст главы.", encoding="utf-8")
     assert runner.invoke(app, ["canonize", str(n)]).exit_code == 0
     batch = ws.chapter_dir(n) / "пакет_канона.md"
-    batch.write_text(batch.read_text(encoding="utf-8") + "- РЕЕСТР 3.1 → | — | правка автора | — |\n", encoding="utf-8")
+    batch.write_text(batch.read_text(encoding="utf-8") + "- РЕЕСТР эпистемика → | — | правка автора | — |\n", encoding="utf-8")
     r = runner.invoke(app, ["canonize", str(n)])
     assert r.exit_code == 1 and "правился автором" in r.output
     assert "правка автора" in batch.read_text(encoding="utf-8")

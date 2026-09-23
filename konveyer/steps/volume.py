@@ -18,7 +18,7 @@ def volume_status(volume: int | None = None):
     volume = volume or ws.volume
     if volume == ws.volume:
         try:
-            exporter.run_export(lib, ws.exports, ws.logs, ws.volume)
+            exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
         except MarkupError as e:
             secho(f"⚠ выгрузки не пересобраны: {e}", fg=colors.YELLOW)
     stats = volume_mod.volume_stats(ws, lib, volume)
@@ -78,12 +78,20 @@ def volume_close(
         next_volume = bool(confirm and confirm(f"Переключить рабочую область на том {nxt} (конфиг.yaml: volume)?"))
     if next_volume:
         set_volume(ws, nxt)
-        exporter.run_export(lib, ws.exports, ws.logs, nxt)
+        exporter.run_export(lib, ws.exports, ws.logs, nxt, ws.root)
+        _warn_missing(ws, lib, nxt)
         secho(f"Текущий том: {nxt} (главы — {ws.chapters_root(nxt).relative_to(ws.root).as_posix()}/, выгрузки пересобраны).",
               fg=colors.GREEN)
     else:
         echo(f"Текущий том остался {ws.volume}; переключить позже — `konveyer volume open {nxt}`.")
     return res
+
+
+def _warn_missing(ws, lib, volume: int) -> None:
+    warn = volume_mod.volume_warnings(ws, lib, volume)
+    if warn:
+        secho(f"Документов модулей для тома {volume} пока нет (модули работают вхолостую): " + "; ".join(warn),
+              fg=colors.YELLOW)
 
 
 def volume_open(volume: int) -> None:
@@ -95,9 +103,10 @@ def volume_open(volume: int) -> None:
     if volume == ws.volume:
         echo(f"Том {volume} уже текущий.")
         return
+    _warn_missing(ws, lib, volume)
     set_volume(ws, volume)
     try:
-        exporter.run_export(lib, ws.exports, ws.logs, volume)
+        exporter.run_export(lib, ws.exports, ws.logs, volume, ws.root)
     except MarkupError as e:
         raise StepError(f"том {volume} переключён, но выгрузки не собрались: {e}") from e
     secho(f"Текущий том: {volume}. Главы — {ws.chapters_root(volume).relative_to(ws.root).as_posix()}/; выгрузки пересобраны.",

@@ -72,7 +72,7 @@ def test_полный_такт_с_коммитом(ws, library):
 
     # автор решает: канонизировать самоволку; правок нет — черновик едет дальше
     (ws.chapter_dir(chapter) / "решения.json").write_text(
-        json.dumps([Resolution(flag_id="F-001", decision="канонизировать", target_registry="3.1").model_dump()],
+        json.dumps([Resolution(flag_id="F-001", decision="канонизировать", target_registry="эпистемика").model_dump()],
                    ensure_ascii=False),
         encoding="utf-8",
     )

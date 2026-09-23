@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from konveyer import circles, compiler, exporter, guard, lint, realcanon, verifier2
+from konveyer import circles, compiler, exporter, guard, lint, verifier2
+from tests.профиль import realcanon
 from konveyer.paths import Workspace
 from konveyer.schemas import Act, CircleStep, StoryCircle
 
@@ -68,7 +69,7 @@ def test_шаг_8_главы_необязателен_окно_э2_линтер(
         w = compiler.compile_window(ws, library, ch)[0].read_text(encoding="utf-8")
         assert f"7. Возвращение (сц. {ch}.1) — гл. {ch} шаг 7" in w
         assert "8. Изменение" not in w and "в материале не задано" not in w
-        assert "изменение фокала не требуется, Р-024" in w
+        assert "не задан — изменение фокала не требуется" in w
         assert "если задано в круге главы" in w and "фокал не обязан выйти из неё иным" in w
         ws.chapter_dir(ch).mkdir(parents=True, exist_ok=True)
         ws.draft_path(ch, 1).write_text("Текст.\n", encoding="utf-8")
@@ -78,13 +79,15 @@ def test_шаг_8_главы_необязателен_окно_э2_линтер(
 
     report = lint.run_lint(library, ws.exports, ws.logs, export=False)
     krug1 = [f.message for f in report.findings if f.code == "КРУГ-1"]
-    assert krug1 == ["Книга (том целиком): шагов 7, а в круге истории восемь"]
+    assert len(krug1) == 1 and krug1[0].startswith("Книга (том целиком): не заданы обязательные шаги [8]")
 
 
 def test_шаблон_аналитика_кругов_про_шаг_8():
-    text = (REPO / "konveyer" / "шаблоны" / "круг_истории_система.md").read_text(encoding="utf-8")
-    assert "шаги 1–7 обязательны" in text and "в материале не задано" in text and "Р-024" in text
-    assert "тему цикла" in text and "арок 2.5" in text
+    text = (REPO / "konveyer" / "методики" / "круг_хармона" / "промпт.md").read_text(encoding="utf-8")
+    assert "Обязательные шаги уровня" in text and "в материале не задано" in text
+    assert "тему серии" in text and "арки персонажей" in text
+    meth = (REPO / "konveyer" / "методики" / "круг_хармона" / "методика.yaml").read_text(encoding="utf-8")
+    assert "глава: [1, 2, 3, 4, 5, 6, 7]" in meth
 
 
 # ------------------------------------------------------------------ Р-025: разбор и экспорт 2.5
@@ -136,7 +139,7 @@ def test_арки_в_окне_демо(ws, library):
     path, breakdown = compiler.compile_window(ws, library, 1)
     w = path.read_text(encoding="utf-8")
     assert "арки участников" in breakdown
-    assert "## Что видно снаружи (арки тома, 2.5)" in w and "- Каширин: Сух и точен, не смотрит в глаза." in w
+    assert "## Что видно снаружи (арки участников)" in w and "- Каширин: Сух и точен, не смотрит в глаза." in w
     assert "Зоя:" not in w and "т.2" not in w  # ссылка на том — строка не выводится
     assert "НЕ-ЭТОТ-АКТ" not in w
     for hidden in ("ЛОЖЬ-КАШИРИНА", "ЖЕЛАНИЕ-КАШИРИНА", "ПОТРЕБНОСТЬ-КАШИРИНА", "начало"):
@@ -146,7 +149,7 @@ def test_арки_в_окне_демо(ws, library):
     assert compiler.compile_window(ws, library, 1)[0].read_text(encoding="utf-8") == w
     # черновик круга не нужен: аналитик тома получает всю таблицу, включая ложь
     _, material = circles.build_material(ws, "книга")
-    assert "## Арки тома (2.5" in material and "ЛОЖЬ-КАШИРИНА" in material and "участники: Зоя" in material
+    assert "## Арки тома (" in material and "ЛОЖЬ-КАШИРИНА" in material and "участники: Зоя" in material
     _, act_material = circles.build_material(ws, "акт", 1)
     assert "## Арки акта 1" in act_material and "НЕ-ЭТОТ-АКТ" not in act_material
     _, ch_material = circles.build_material(ws, "глава", 1)
@@ -235,7 +238,7 @@ def test_материал_аналитика_тома_реальный(real_copy
     title, material = circles.build_material(ws, "книга")
     assert title == "Книга (том целиком)"
     assert "## Тема цикла (13 §1)" in material and "опеку через ложь" in material and "наследование вины" in material
-    assert "## Арки тома (2.5" in material and "| Штерн | 1 |" in material and "| Ася | 4 |" in material
+    assert "## Арки тома (" in material and "| Штерн | 1 |" in material and "| Ася | 4 |" in material
     assert "гл. 13 · " in material and "фокал Штерн · участники: Степан" in material
     _, act_material = circles.build_material(ws, "акт", 2)
     assert "## Арки акта 2" in act_material and "| Лемм | 2 |" in act_material and "| Лемм | 1 |" not in act_material

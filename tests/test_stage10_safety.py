@@ -17,7 +17,7 @@ from konveyer.cli import app
 from konveyer.config import Config, ModelConfig
 from konveyer.fsm import ChapterState
 
-from test_stage6_reliability import _accepted_chapter, _git, _init_repo
+from tests.test_stage6_reliability import _accepted_chapter, _git, _init_repo
 
 runner = CliRunner()
 

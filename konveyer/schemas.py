@@ -33,6 +33,61 @@ class ChronicleEvent(BaseModel):
     month: int | None = None  # для среза «месяц главы ± 1»
 
 
+class NarrationRules(BaseModel):
+    """narration.json — правила повествования: общие законы (текст в окно) и таблица фокалов (имена)."""
+
+    file: str = ""
+    laws: str = ""
+    focals_text: str = ""
+    focal_names: list[str] = Field(default_factory=list)
+
+
+class MethodNote(BaseModel):
+    """method.json — замысел серии: тема и принципы (материал аналитика драматургии, Писателю не идёт)."""
+
+    file: str = ""
+    theme: str = ""
+    principles: str = ""
+
+
+class WorldEntry(BaseModel):
+    """world.json / objects.json / places.json — запись мира: организация, предмет, место."""
+
+    name: str
+    description: str = ""
+    note: str = ""
+    kind: str = ""
+    file: str = ""
+
+
+class VolumePlan(BaseModel):
+    """volumes.json — план томов."""
+
+    volume: int
+    period: str = ""
+    theme: str = ""
+    chapters: str = ""
+
+
+class Decision(BaseModel):
+    """decisions.json — решение автора из журнала решений."""
+
+    decision_id: str
+    title: str = ""
+    date: str = ""
+    statement: str = ""
+    rationale: str = ""
+    text: str = ""
+    line: int = 0
+
+
+class Checklist(BaseModel):
+    """checklists.json — чек-лист верификации (текст документа целиком, для Э2)."""
+
+    file: str = ""
+    text: str = ""
+
+
 class ChronologyEvent(BaseModel):
     """Строка chronology.json — генеральная хронология фабулы 12 («документ-позвоночник» цикла).
 
@@ -108,7 +163,7 @@ class Scene(BaseModel):
     number: str = ""        # «5.1»
     place: str = ""
     time: str = ""          # «за полночь», «утро» — вынесено из места
-    participants: str = ""  # строка как в поглавнике («Степан; Лемм (появление в финале)»)
+    participants: str = ""  # строка как в поглавнике («Иван; Пётр (появление в финале)»)
     goal: str = ""
     enters: str = ""        # чем входит фокал
     exits: str = ""         # чем выходит фокал
@@ -116,9 +171,10 @@ class Scene(BaseModel):
 
 
 class Brief(BaseModel):
-    """Глава поглавника (briefs.json — из 23)."""
+    """Глава плана глав (briefs.json)."""
 
     chapter: int
+    line: int = 0                                          # строка документа плана (для находок линтера)
     volume: int = 1
     date: str = ""
     year: int | None = None
@@ -138,7 +194,7 @@ class Brief(BaseModel):
 
 
 class Dose(BaseModel):
-    """Строка doses.json — §5 реестра «Три дозы 1913 года» (канал воспоминаний Лемма).
+    """Строка doses.json — §5 реестра доз прошлого (канал воспоминаний фокала).
 
     Единственный разрешённый канал прошлого внутри тома; в окно идёт ТОЛЬКО доза своей главы (FR-C3)."""
 
@@ -153,12 +209,12 @@ class Dose(BaseModel):
 
 
 class DocumentSpec(BaseModel):
-    """Строка documents.json — §6 реестра «Реестр документов» (рапорты Степана)."""
+    """Строка documents.json — §6 реестра документов-вставок (рапорты, письма, протоколы)."""
 
     number: int
     after_chapter: int
     volume: int = 1
-    kind: str = ""          # из заголовка раздела: «рапорты Степана»
+    kind: str = ""          # из заголовка раздела: «рапорты», «письма»
     style: str = ""
     divergence: str = ""    # «Расхождение с правдой, которую видел читатель»
     form: str = ""          # вводный абзац §6 (как верстается документ) — общий для всех
@@ -166,7 +222,8 @@ class DocumentSpec(BaseModel):
 
 
 class Dossier(BaseModel):
-    """Досье персонажа для окна (FR-C1): профиль, физика, речевой паспорт, опознавательный код, отношения."""
+    """Карточка персонажа для окна (FR-C1): профиль, физика, речевой паспорт, опознавательный код, отношения.
+    Служебные поля (статус, арка, файл, строки секций) — для линтера; Писателю не показываются (FR-DT-3)."""
 
     name: str
     profile: str = ""
@@ -174,13 +231,23 @@ class Dossier(BaseModel):
     speech: str = ""
     code: str = ""  # «Опознавательный код»: приметы, по которым персонажа опознают (перстень, перчатка…)
     relations: dict[str, str] = Field(default_factory=dict)
+    status: str = ""          # «Статус по томам» (жив/гибнет/фокален с т.N) — линтеру, не Писателю
+    arc: str = ""             # арка по томам — линтеру и аналитику, не Писателю
+    file: str = ""            # документ канона (относительно библиотеки)
+    line: int = 0             # строка заголовка карточки
+    sections: dict[str, int] = Field(default_factory=dict)  # секция → строка (для находок)
+    born_year: int | None = None   # «Рожд. ≈ГГГГ» — для проверки возраста
+    ages: dict[str, int] = Field(default_factory=dict)      # «т.1» → 55: возраст по томам
+    refs: list[str] = Field(default_factory=list)           # ссылки [[Имя]] в карточке
 
 
 class InfoBan(BaseModel):
-    """Запрет информрежима из 2.2 (FR-C3): резервы будущих томов."""
+    """Запрет информрежима (FR-WN-3/FR-WN-4): резервы будущих томов и тайны с главой раскрытия."""
 
     ban_id: str
     text: str
+    known_text: str = ""  # колонка «кто знает» как в документе (разбирается в known_by по известным именам)
+    line: int = 0
     until_volume: int | None = None
     # реестр тайн: глава, в которой читатель узнаёт (до неё — «НЕ упоминать»)
     until_chapter: int | None = None
@@ -209,12 +276,13 @@ class CircleStep(BaseModel):
 
 
 class Act(BaseModel):
-    """Акт тома (acts.json — таблица «Акты тома» документа 2.1, Р-021)."""
+    """Акт тома (acts.json — таблица актов документа каркасов или отдельного документа актов)."""
 
     act: int
     title: str = ""
     from_chapter: int
     to_chapter: int
+    chapters_text: str = ""
     parts: str = ""   # какие части реестра 2.2 покрывает («III–IV»)
     steps: str = ""   # шаги круга тома, за которые отвечает акт («5–6 «Обретение», «Расплата»»)
 
@@ -374,6 +442,7 @@ class LintFinding(BaseModel):
 
 class LintReport(BaseModel):
     ts: str
+    fingerprint: str = ""   # отпечаток канона (+ том), для которого снят отчёт (FR-LT-5)
     files_checked: int = 0
     findings: list[LintFinding] = Field(default_factory=list)
     errors: int = 0

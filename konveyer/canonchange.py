@@ -5,8 +5,7 @@
     проверки git → сессия записи guard → writer() → экспорт → линт → коммит
                                                               └→ или явное «незакоммичено»
 
-Только этот модуль открывает `guard.canon_write_session()` (статический тест
-`tests/test_stage5_static.py`): приёмка главы (канонист), внесение кругов истории,
+Только этот модуль открывает `guard.canon_write_session()` (статический тест): приёмка главы (канонист), внесение кругов истории,
 правка документа и исправление линтера из панели, `konveyer canon-commit` — все идут здесь.
 Подтверждение автора (FR-K2, Д-8) вызывающий даёт явно флагом `author_confirmed`.
 """
@@ -73,7 +72,7 @@ def check_git(library: Path, *, commit: bool, require_clean: bool = True, action
     if commit and require_clean and not clean:
         raise RuntimeError(
             f"{UNCOMMITTED_TEXT} — {action} требует чистого git (защита от двойного применения). "
-            "Закоммитьте их (`konveyer canon-commit`) или откатите (`git restore .`), затем повторите."
+            "Закоммитьте их (`konveyer канон-коммит`) или откатите (`git restore .`), затем повторите."
         )
     if commit and not gitops.has_identity(library):
         raise RuntimeError(
@@ -93,7 +92,7 @@ def _rollback(library: Path, ws: Workspace, error: BaseException) -> None:
             f"Восстановите вручную: git -C «{library}» checkout -- . && git clean -fd -- ."
         ) from error
     try:
-        exporter.run_export(library, ws.exports, ws.logs, ws.volume)
+        exporter.run_export(library, ws.exports, ws.logs, ws.volume, ws.root)
     except Exception:  # noqa: BLE001 — выгрузки пересчитает `konveyer export`; важнее показать исходную ошибку
         pass
 
@@ -130,13 +129,13 @@ def canon_change(
     try:
         with guard.canon_write_session():
             writer()
-        hashes = exporter.run_export(library, ws.exports, ws.logs, ws.volume)  # разбирает ВСЁ до записи выгрузок
+        hashes = exporter.run_export(library, ws.exports, ws.logs, ws.volume, ws.root)  # разбирает ВСЁ до записи выгрузок
     except BaseException as e:
         if repo and clean_at_entry:
             _rollback(library, ws, e)
         raise
     try:
-        report = lint.run_lint(library, ws.exports, ws.logs, export=False, volume=ws.volume)  # выгрузки только что пересобраны
+        report = lint.run_lint(library, ws.exports, ws.logs, export=False, volume=ws.volume, root=ws.root, use_cache=False)  # выгрузки только что пересобраны
     except Exception as e:  # noqa: BLE001 — сбой проверки не должен потерять уже записанное изменение
         report = lint.error_report(e, ws.logs)
     result = ChangeResult(export_hashes=hashes, lint=report)
@@ -154,7 +153,7 @@ def canon_change(
     result.dirty_files = dirty_files(library)
     result.uncommitted = bool(result.dirty_files)
     result.message = (
-        f"{UNCOMMITTED_TEXT} ({len(result.dirty_files)} файл(ов)) — закоммитьте их (`konveyer canon-commit` или "
+        f"{UNCOMMITTED_TEXT} ({len(result.dirty_files)} файл(ов)) — закоммитьте их (`konveyer канон-коммит` или "
         "кнопка «Закоммитить канон» в панели)." if result.uncommitted else "изменений в каноне нет."
     )
     return result

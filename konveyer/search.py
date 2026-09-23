@@ -69,12 +69,10 @@ def find(ws_exports: Path, library: Path, query: str) -> list[Hit]:
             until = f"до тома {b.until_volume}" if b.until_volume else "бессрочно"
             hits.append(Hit("информрежим", b.ban_id, f"{b.text} ({until})"))
 
-    prose_dir = library / "Проза"
-    if prose_dir.exists():
-        for path in sorted(prose_dir.glob("*.md")):
-            for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-                if needle in _norm(line):
-                    hits.append(Hit("проза", f"{path.stem}:{i}", line.strip()[:100]))
+    for path in exporter.docs_of_type(library, "проза", None):  # все документы прозы, включая макеты
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if needle in _norm(line):
+                hits.append(Hit("проза", f"{path.stem}:{i}", line.strip()[:100]))
 
     return hits
 

@@ -67,7 +67,7 @@ def test_повторный_apply_после_сбоя_не_дублирует_з
     _accepted_chapter(ws, library, 1)
     # в пакет — одна строка реестра, чтобы дубликат был виден
     batch = ws.chapter_dir(1) / "пакет_канона.md"
-    batch.write_text(batch.read_text(encoding="utf-8") + "\n- РЕЕСТР 3.1 → | M-777 | Каширин видел записку | Каширин | 1 | гл. 1 | — |\n",
+    batch.write_text(batch.read_text(encoding="utf-8") + "\n- РЕЕСТР эпистемика → | M-777 | Каширин видел записку | Каширин | 1 | гл. 1 | — |\n",
                      encoding="utf-8")
     runner = CliRunner()
     r = runner.invoke(app, ["canonize", "1", "--apply", "-y"])

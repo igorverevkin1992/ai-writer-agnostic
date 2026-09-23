@@ -12,7 +12,7 @@ from pathlib import Path
 
 from jinja2 import Environment, StrictUndefined
 
-from . import circles, exporter, guard, mdparse, realcanon
+from . import catalog, circles, exporter, guard, manifest as manifest_mod, mdparse, names
 from .paths import Workspace
 from .schemas import Arc, Act, Brief, Scene, StopRule
 
@@ -40,21 +40,18 @@ def _template_text(ws: Workspace) -> str:
     return resources.files("konveyer").joinpath("шаблоны/окно.md.j2").read_text(encoding="utf-8")
 
 
-def _style_sections(library: Path) -> str:
-    """«Регистр и стиль» — из 02 §1–4 и §6.1 (FR-C1). Полный файл не включается (FR-C3)."""
-    path = sorted(library.glob("02_*.md"))[0]
-    sections = mdparse.parse_sections(path)
+def _style_sections(library: Path, root: Path | None = None) -> str:
+    """«Регистр и стиль» — секции документа стиля, объявленные типом (`окно.секции_регистра`, FR-DT-3).
+    Полный файл не включается (FR-WN-3); без документа стиля — пусто (FR-WN-7)."""
+    types = catalog.load_types(exporter.project_root_of(library, root))
+    spec = types.get("стиль")
+    pattern = (spec.window.get("секции_регистра") if spec else None) or r"^(?:§\s*)?(?:[1-4]|5|6\.[1-3])\.?\s"
+    rx = re.compile(pattern)
     wanted: list[str] = []
-    for s in sections:
-        # «§1. …» (демо) либо «## 1. …» / «## 6.1. …» (реальный регламент)
-        m = re.match(r"(?:§\s*)?(\d+(?:\.\d+)?)\.?\s", s.title + " ")
-        if not m:
-            continue
-        num = m.group(1)
-        # §5 «Референсная формула» с числовыми ориентирами Р-015 и эталоны/анти-эталоны §6.2–6.3 —
-        # калибровка голоса, без которой Писатель уходит в телеграф (аудит 2, находка 1.9)
-        if num in {"1", "2", "3", "4", "5", "6.1", "6.2", "6.3"}:
-            wanted.append(f"### {s.title}\n{s.body}")
+    for path in exporter.docs_of_type(library, "стиль", None, root):
+        for sec in mdparse.parse_sections(path):
+            if sec.level and rx.match(sec.title + " "):
+                wanted.append(f"### {sec.title}\n{sec.body}")
     return "\n\n".join(wanted)
 
 
@@ -102,7 +99,7 @@ def prior_continuity(events: list, brief: Brief, infobans: list, participants: l
     """Закреплённые детали континуити 3.3, касающиеся участников сцены (внешность, предметы, кабинет):
     без них Писатель дрейфует (аудит 2, находка 1.7). FR-C3: деталь показывается фокалу, только если
     он ПРИСУТСТВОВАЛ в главе, где она закреплена, либо это внешность/манера участника сцены
-    («Имя: …» — видна любому, кто с ним встречался). Зола в печи Лемма (гл. 6, Лемм один) Штерну не показывается."""
+    («Имя: …» — видна любому, кто с ним встречался). Деталь сцены, где фокал был один, другому персонажу не показывается."""
     markers = _focal_markers(brief, infobans)
     names = [n for n in participants if n]
     low_names = [n.lower() for n in names]
@@ -125,17 +122,12 @@ def prior_continuity(events: list, brief: Brief, infobans: list, participants: l
     return out[:PRIOR_CONTINUITY_MAX]
 
 
-def prior_tail(library: Path, briefs: list[Brief], brief: Brief) -> tuple[int | None, str]:
-    """Финал последней принятой в канон главы ТОГО ЖЕ фокала перед текущей — только для сцепки голоса.
-    Текст уже прошёл Э2 и написан из головы фокала, поэтому FR-C3 не нарушает; из проверки утечки
-    окна (V1.6) исключается маркерами TAIL_BEGIN/TAIL_END."""
+def prior_tail(library: Path, briefs: list[Brief], brief: Brief, root: Path | None = None) -> tuple[int | None, str]:
+    """Финал последней принятой в канон главы ТОГО ЖЕ фокала перед текущей — только для сцепки голоса (FR-WN-5).
+    Текст уже прошёл Э2 и написан из головы фокала; из проверки утечки окна исключается маркерами TAIL_BEGIN/TAIL_END."""
     focal_chapters = {b.chapter for b in briefs if b.volume == brief.volume and b.focal == brief.focal and b.chapter < brief.chapter}
     best: tuple[int, Path] | None = None
-    for path in (library / "Проза").glob(f"Том{brief.volume}_Глава*.md") if (library / "Проза").exists() else []:
-        m = re.search(r"Глава(\d+)", path.name)
-        if not m:
-            continue
-        ch = int(m.group(1))
+    for ch, path in exporter.prose_files(library, brief.volume, root):
         if ch in focal_chapters and (best is None or ch > best[0]):
             best = (ch, path)
     if best is None:
@@ -153,11 +145,9 @@ def prior_tail(library: Path, briefs: list[Brief], brief: Brief) -> tuple[int | 
     return best[0], tail
 
 
-def _focalization_laws(library: Path) -> str:
-    """Общие законы фокализации — секция «Общие законы» из 03 (FR-C1)."""
-    path = sorted(library.glob("03_*.md"))[0]
-    sec = mdparse.find_section(mdparse.parse_sections(path), r"Общие законы")
-    return sec.body if sec else ""
+def _focalization_laws(exports_dir: Path) -> str:
+    """Общие законы повествования — из выгрузки narration.json (документ типа «повествование»)."""
+    return "\n\n".join(n.laws for n in exporter.load_narration(exports_dir) if n.laws)
 
 
 def _line_rules(stoplists: list[StopRule], participants: list[str], year: int | None) -> list[dict]:
@@ -194,18 +184,38 @@ def ban_active(b, brief: Brief) -> bool:
     return b.until_volume is None or brief.volume <= b.until_volume
 
 
-# ссылка на том где угодно во фразе: «т.6», «т.3–4», «тома 2–3», «в томе 3», «(т.1)», «цикл II», Ф-19xx, Р-№
-_FUTURE_RE = re.compile(
-    r"(?:\bт\.\s*(\d+)|\bтом(?:а|е|у|ах|ов|ы)?\s+(\d+)|Ф-19\d\d|Р-\d{3}|\bцикл)", re.IGNORECASE
-)
+# ссылка на том где угодно во фразе: «т.6», «т.3–4», «тома 2–3», «в томе 3», «(т.1)»; плюс маркеры проекта
+# (префиксы идентификаторов хронологии и решений, слово «цикл»…) — объявлены типами каталога, не кодом (П-1)
+_FUTURE_BASE = r"(?:\bт\.\s*(\d+)|\bтом(?:а|е|у|ах|ов|ы)?\s+(\d+)"
+_FUTURE_RE = re.compile(_FUTURE_BASE + r")", re.IGNORECASE)
+
+
+def configure_markers(root: Path | None) -> None:
+    """Маркеры будущего/инструмента из каталога типов проекта (`окно.маркеры_будущего`, `окно.маркеры_инструмента`,
+    `префикс_id` хронологии и журнала). Вызывается перед сборкой окна."""
+    global _FUTURE_RE, _TOOL_NOTE_RE, _READER_MARK_RE
+    types = catalog.load_types(root)
+    extra: list[str] = []
+    tool: list[str] = []
+    reader: list[str] = []
+    for t in types.values():
+        extra += [re.escape(m) for m in (t.window.get("маркеры_будущего") or [])]
+        tool += [re.escape(m) for m in (t.window.get("маркеры_инструмента") or [])]
+        reader += [str(m) for m in (t.window.get("маркеры_читателя") or [])]
+        for ext in t.extractions:
+            for fmt in ext.get("форматы", []):
+                if fmt.get("префикс_id_будущего"):
+                    extra.append(re.escape(str(fmt["префикс_id_будущего"])) + r"\d")
+    _FUTURE_RE = re.compile(_FUTURE_BASE + ("|" + "|".join(sorted(set(extra))) if extra else "") + r")", re.IGNORECASE)
+    _TOOL_NOTE_RE = re.compile(r"\s*\((?:[^()]*(?:" + "|".join([_TOOL_NOTE_BASE, *sorted(set(tool))]) + r")[^()]*)\)",
+                               re.IGNORECASE)
+    _READER_MARK_RE = re.compile("|".join([_READER_MARK_BASE, *sorted(set(reader))]), re.IGNORECASE)
 # траектория «от … к …» при любой ссылке на том — путь через тома; стрелка «→» в досье — нотация арки (всегда)
 _TRAJECTORY_RE = re.compile(r"\bот\b.+?\bк\b", re.IGNORECASE)
 _ARC_RE = re.compile(r"→")
-# пометки инструменту/автору: «(⚠ решить при арке т.7)», «(держать в каждой сцене; инструмент обязан …)», «(🔧)»
-_TOOL_NOTE_RE = re.compile(
-    r"\s*\((?:[^()]*(?:⚠|🔧|инструмент|при арке|держать|проверять|финализировать|спроектировать|сформулировать)[^()]*)\)",
-    re.IGNORECASE,
-)
+# пометки инструменту/автору: «(⚠ …)», «(🔧)»; список слов расширяется типами каталога (configure_markers)
+_TOOL_NOTE_BASE = r"⚠|🔧|инструмент"
+_TOOL_NOTE_RE = re.compile(r"\s*\((?:[^()]*(?:" + _TOOL_NOTE_BASE + r")[^()]*)\)", re.IGNORECASE)
 _TOOL_MARK_RE = re.compile(r"[⚠🔧]")
 # граница фразы — точка/восклицание/вопрос + пробел (не после «гл.», «т.», «сц.», «ср.», «Рожд.») или перенос строки
 _SENT_SPLIT_RE = re.compile(r"(?<=[.!?])(?<!\bгл\.)(?<!\bт\.)(?<!\bсц\.)(?<!\bср\.)(?<!\bРожд\.)(?<!\bрожд\.)\s+|\n+")
@@ -258,14 +268,10 @@ def secret_markers(infobans: list, brief: Brief) -> list[str]:
     return markers
 
 
-# клаузы поглавника, адресованные читателю/инструменту, а не Писателю (аудит 2, 1.10): «читатель знает…»,
-# «саспенс читателя», «(матрица №17)», «→ т.6», «ЗАКЛАДКА → т.6», «⚠», «реш. при прозе», «(эхо в гл. 5)»,
-# «улика слоя 1 №3», «арка-парабола …» — клауза (между «;» или в скобках) с маркером убирается целиком
-_READER_MARK_RE = re.compile(
-    r"читател|саспенс|матриц[аы]\s*№|→\s*т\.\s*\d|закладка\s*→|[⚠🔧]|реш\.\s*при\s*прозе|эхо\s+в\s+гл|"
-    r"улика\s+слоя\s+\d|арка-парабол",
-    re.IGNORECASE,
-)
+# клаузы плана глав, адресованные читателю/инструменту, а не Писателю: «читатель знает…», «саспенс», «→ т.6»,
+# «⚠», «🔧» — клауза (между «;» или в скобках) с маркером убирается целиком; список расширяется типами каталога
+_READER_MARK_BASE = r"читател|саспенс|→\s*т\.\s*\d|закладка\s*→|[⚠🔧]"
+_READER_MARK_RE = re.compile(_READER_MARK_BASE, re.IGNORECASE)
 _INNER_PAREN_RE = re.compile(r"\s*\([^()]*\)")
 
 
@@ -296,7 +302,7 @@ def strip_reader_clauses(text: str, markers: list[str] = (), volume: int = 1) ->
     prev = None
     while prev != text:
         prev, text = text, _INNER_PAREN_RE.sub(_paren, text)
-    items = [it for it in realcanon._split_items(text) if not _clause_bad(it, low_markers, volume)]
+    items = [it for it in names.split_items(text) if not _clause_bad(it, low_markers, volume)]
     out = "; ".join(items)
     while "\x00" in out:  # вложенные чистые скобки восстанавливаются снаружи внутрь
         out = re.sub(r"\x00(\d+)\x00", lambda m: kept[int(m.group(1))], out)
@@ -423,8 +429,14 @@ def chapter_documents(exports_dir: Path, brief: Brief) -> list[dict]:
 
 
 def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars: int = 80_000) -> tuple[Path, dict[str, int]]:
-    """Собирает окно главы N. Возвращает (путь, раскладка размеров по секциям)."""
+    """Собирает окно главы N (FR-WN-1…FR-WN-7). Возвращает (путь, раскладка размеров по секциям).
+    Секции появляются только для включённых модулей и только при наличии данных (FR-MD-2)."""
     exports_dir = ws.exports
+    root = ws.root
+    configure_markers(root)
+    man = manifest_mod.effective(root, library, catalog.load_types(root))
+    mods = catalog.load_modules(root)
+    enabled = {m: (man.module_enabled(m, mods)) for m in mods}
     brief = exporter.load_brief(exports_dir, chapter)
     briefs = exporter.load_briefs(exports_dir)
     norms = exporter.load_norms(exports_dir)
@@ -494,7 +506,7 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
         continuity = exporter.load_continuity(exports_dir)
     except FileNotFoundError:
         continuity = []
-    tail_chapter, tail_text = prior_tail(library, briefs, brief)
+    tail_chapter, tail_text = prior_tail(library, briefs, brief, root)
     # карточки сцен поглавника (аудит 2, 1.10): клаузы для читателя/инструмента вырезаны;
     # «кладём» сцен — в техзадание закладок, не в биты; без карточек — строки сцен как есть
     markers = secret_markers(infobans, brief)
@@ -504,6 +516,8 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
 
     env = Environment(undefined=StrictUndefined, trim_blocks=False, lstrip_blocks=False)
     window = env.from_string(_template_text(ws)).render(
+        series=man.проект.имя,
+        modules=enabled,
         brief=brief,
         prior_events=prior_events(briefs, brief, infobans),
         prior_continuity=prior_continuity(continuity, brief, infobans, participants, briefs),
@@ -512,8 +526,8 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
         tail_begin=TAIL_BEGIN,
         tail_end=TAIL_END,
         norms={k: v for k, v in norms.items() if k in WINDOW_NORM_IDS},
-        style_sections=_style_sections(library),
-        focalization_laws=_focalization_laws(library),
+        style_sections=_style_sections(library, root),
+        focalization_laws=_focalization_laws(exports_dir),
         line_rules=_line_rules(stoplists, participants, brief.year),
         dossiers=scene_dossiers,
         known_facts=known,
@@ -528,6 +542,7 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
         volume_norm=norms.get("объём_главы"),
         drama=drama,
         drama_lines=circles.frame_lines(drama),
+        drama_intro=circles.window_intro(ws, drama),
         arc_lines=arcs,
     )
 
