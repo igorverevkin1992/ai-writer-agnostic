@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import exporter, regression as regression_mod, verifier1
+from .. import exporter, guard, regression as regression_mod, verifier1
 from ..errors import StepError, StepExit
 from ..schemas import GoldenTest
 from .common import Confirm, _ctx, _print_verdict, colors, confirm_or_reject, echo, secho
@@ -143,3 +143,45 @@ def add_golden(
     path = regression_mod.add_test(ws, test)
     secho(f"Золотой тест добавлен: {path}", fg=colors.GREEN)
     return path
+
+
+def norms(calibrate_files: list[Path] | None = None, approve: bool = False, yes: bool = False,
+          confirm: Confirm | None = None, from_corpus: bool = False) -> dict | None:
+    """`konveyer нормы`: показать нормы стиля; `--калибровать [файлы]` (без файлов — принятые главы) — предложить
+    коридоры (FR-V1-7); `--утвердить` — записать таблицу норм и решение в журнал (по подтверждению)."""
+    from .. import calibrate, lang as lang_mod, metrics as metrics_mod
+
+    ws, cfg, lib = _ctx()
+    current = exporter.load_norms(ws.exports)
+    if calibrate_files is None and not from_corpus:
+        secho("Нормы стиля (из выгрузок):", bold=True)
+        for nid, n in current.items():
+            m = metrics_mod.REGISTRY.get(nid)
+            echo(f"  {nid}: {metrics_mod.corridor(n)} — {m.description if m else '⚠ неизвестная метрика'}")
+        echo("Калибровка: `konveyer нормы --калибровать <файлы…>` или `--калибровать` без файлов (по принятым главам).")
+        return {"нормы": {k: v.model_dump() for k, v in current.items()}}
+    samples = calibrate.samples_from_files(calibrate_files) if calibrate_files else calibrate.samples_from_corpus(ws, lib)
+    if not samples:
+        raise StepError("образцов нет: укажите файлы прозы или примите хотя бы одну главу.")
+    pr = calibrate.propose(samples, current, lang_mod.for_project(ws.root), exporter.load_stoplists(ws.exports))
+    out = ws.logs / "калибровка.md"
+    _ensure = out.parent.mkdir(parents=True, exist_ok=True)  # noqa: F841
+    guard.write_text(out, pr.report)
+    echo(pr.report)
+    secho(f"Отчёт: {out.relative_to(ws.root)}", fg=colors.GREEN)
+    if not approve:
+        echo("Утвердить и записать в документ стиля + журнал решений: добавьте `--утвердить`.")
+        return {"коридоры": {k: v.model_dump() for k, v in pr.corridors.items()}}
+    confirm_or_reject(yes, confirm, f"Записать {len(pr.corridors)} норм в документ стиля и решение в журнал?")
+    res = calibrate.apply(ws, cfg, lib, pr, author_confirmed=True)
+    secho(f"Нормы записаны: {res.message}", fg=colors.GREEN)
+    return {"коридоры": {k: v.model_dump() for k, v in pr.corridors.items()}, "commit": res.commit}
+
+
+def metrics_doc() -> str:
+    """`konveyer метрики`: реестр метрик Э1 (FR-V1-1)."""
+    from .. import metrics as metrics_mod
+
+    text = metrics_mod.documentation()
+    echo(text)
+    return text

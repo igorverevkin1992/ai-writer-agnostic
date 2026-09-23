@@ -471,8 +471,17 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
         1 for f in matrix
         if f.subject == brief.focal and (f.from_chapter is None or f.from_chapter > chapter)
     )
-    not_knows = list(brief.not_knows) + (
-        [f"ещё {hidden} факт(ов) матрицы фокалу недоступны — никаких намёков в их сторону"] if hidden else []
+    # формулировка брифа, повторяющая содержание недоступной фокалу тайны (маркеры реестра), — тоже скрывается:
+    # запрет показывается фактом запрета, а не содержанием (FR-WN-4)
+    markers = [m.lower() for m in secret_markers(infobans, brief)]
+    explicit: list[str] = []
+    for nk in brief.not_knows:
+        if any(m in nk.lower() for m in markers):
+            hidden += 1
+        else:
+            explicit.append(nk)
+    not_knows = explicit + (
+        [f"ещё {hidden} факт(ов) фокалу недоступны — никаких намёков в их сторону"] if hidden else []
     )
 
     intensifiers = sorted(

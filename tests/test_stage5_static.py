@@ -24,16 +24,17 @@ def _enclosing_functions(tree: ast.AST) -> dict[int, str]:
 def test_в_верификаторе_нет_числовых_порогов():
     """Критерий приёмки 6: все пороги Э1 — из norms.json. В сравнениях verifier1.py допустимы только 0 и 1
     (индексы/пустота), остальные числа — только через _norm_value()."""
-    src = (KONVEYER / "verifier1.py").read_text(encoding="utf-8")
-    tree = ast.parse(src)
-    lines = src.splitlines()
     offenders = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Compare):
-            for comp in [node.left, *node.comparators]:
-                if isinstance(comp, ast.Constant) and isinstance(comp.value, (int, float)) and comp.value not in (0, 1):
-                    if "# не порог" not in lines[node.lineno - 1]:
-                        offenders.append(f"verifier1.py:{node.lineno}: {lines[node.lineno - 1].strip()}")
+    for name in ("verifier1.py", "metrics.py"):
+        src = (KONVEYER / name).read_text(encoding="utf-8")
+        tree = ast.parse(src)
+        lines = src.splitlines()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Compare):
+                for comp in [node.left, *node.comparators]:
+                    if isinstance(comp, ast.Constant) and isinstance(comp.value, (int, float)) and comp.value not in (0, 1):
+                        if "# не порог" not in lines[node.lineno - 1]:
+                            offenders.append(f"{name}:{node.lineno}: {lines[node.lineno - 1].strip()}")
     assert not offenders, "\n".join(offenders)
 
 

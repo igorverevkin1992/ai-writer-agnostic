@@ -12,153 +12,32 @@ import json
 import re
 from pathlib import Path
 
-from . import exporter, guard, textutils
+from . import exporter, guard, lang, metrics, textutils
 from .paths import Workspace
 from .schemas import Brief, CheckResult, DiffReport, Edit, Norm, StopRule, Verdict
 
-MAX_QUOTES = 10
+from .metrics import (  # noqa: E402 — совместимость: прежние имена помощников Э1
+    MAX_QUOTES, MetricContext, corpus_scope, corridor as _corridor, find_items as _find_items,
+    matching_runs as _matching_runs, quote_sentences as _quote_sentences, status_of as _status,
+    stoplist_applies as _stoplist_applies, strip_prose_tail as _strip_prose_tail,
+)
 
 
 def _norm_value(norms: dict[str, Norm], norm_id: str) -> float | None:
-    """Числовое значение нормы-параметра. Пороги берутся ТОЛЬКО из norms.json
-    (критерий приёмки 6): нормы нет или она без числа — метрика пропускается,
-    зашитого в код умолчания нет (FR-MT-3)."""
+    """Числовое значение нормы-параметра: только из norms.json; нет нормы — None (умолчаний в коде нет)."""
     n = norms.get(norm_id)
     if n is None:
         return None
     return n.max if n.max is not None else n.min
 
 
-def _status(actual: float, norm: Norm) -> str:
-    """PASS/FLAG/BRAK по коридору нормы. BRAK — только если задан порог брака."""
-    if norm.brak is not None:
-        if norm.min is not None and actual < norm.brak:
-            return "BRAK"
-        if norm.min is None and norm.max is not None and actual > norm.brak:
-            return "BRAK"
-    if norm.min is not None and actual < norm.min:
-        return "FLAG"
-    if norm.max is not None and actual > norm.max:
-        return "FLAG"
-    return "PASS"
-
-
-def _corridor(norm: Norm) -> str:
-    parts = []
-    if norm.min is not None:
-        parts.append(f"мин {norm.min:g}")
-    if norm.max is not None:
-        parts.append(f"макс {norm.max:g}")
-    if norm.brak is not None:
-        parts.append(f"брак {norm.brak:g}")
-    return ", ".join(parts) + (f" {norm.unit}" if norm.unit else "")
-
-
-def _stoplist_applies(rule: StopRule, brief: Brief) -> bool:
-    applies = rule.applies_to
-    if "focal" in applies:
-        return applies["focal"] == brief.focal
-    if "year" in applies and brief.year is not None:
-        y = applies["year"]
-        if "before" in y:
-            return brief.year < y["before"]
-        if "from" in y:
-            return y["from"] <= brief.year <= y.get("to", 9999)
-    return True
-
-
-# --- стоп-лексика по основам слов (FR-V1.5, аудит 3.3): «отца», «сыну» ловятся стоп-словами «отец», «сын»
-# окончания, отбрасываемые у элемента стоп-листа, чтобы получить основу
-_STEM_ENDINGS = (
-    "ый", "ий", "ой", "ая", "яя", "ое", "ее", "ые", "ие", "ом", "ем", "ам", "ям", "ах", "ях", "ов", "ев", "ей", "ью",
-    "а", "я", "о", "е", "ы", "и", "у", "ю",
-)
-# окончания словоформ, допустимые после основы в тексте (падеж, число, род)
-_INFLECTIONS = (
-    "ами|ями|ого|его|ому|ему|ыми|ими|ый|ий|ой|ей|ая|яя|ое|ее|ые|ие|ым|им|ых|их|ую|юю"
-    "|ом|ем|ам|ям|ах|ях|ов|ев|ою|ею|ью|а|я|о|е|ы|и|у|ю"
-)
-MIN_STEM = 3  # короче — не основа (иначе «сын» → «с»)
-_FLEETING_RE = re.compile(r"^(.+[^аеиоуыэюя])[ео]([йцкнлрхв])$")  # беглая гласная: отец → отц
-
-
 def word_stems(word: str) -> list[str]:
-    """Основы слова: «отец» → [«отец», «отц»], «семья» → [«семь»], «сын» → [«сын»]."""
-    w = word.lower().replace("ё", "е")
-    stem = w
-    for end in sorted(_STEM_ENDINGS, key=len, reverse=True):
-        if w.endswith(end) and len(w) - len(end) >= MIN_STEM:
-            stem = w[: -len(end)]
-            break
-    stems = [stem]
-    m = _FLEETING_RE.match(stem)
-    if m and len(m.group(1)) + 1 >= MIN_STEM:
-        stems.append(m.group(1) + m.group(2))
-    return stems
+    """Основы слова (языковой модуль, FR-V1-3)."""
+    return lang.get().stems(word)
 
 
 def item_pattern(item: str) -> re.Pattern:
-    """Регэксп элемента стоп-листа в нормализованном тексте (нижний регистр, ё→е):
-    одно слово — сама словоформа либо основа + окончание; оборот из нескольких слов — дословно."""
-    needle = item.lower().replace("ё", "е").strip()
-    if len(needle.split()) > 1:
-        return re.compile(r"(?<![а-яa-z])" + re.escape(needle) + r"(?![а-яa-z])")
-    alts = [re.escape(needle)]
-    for stem in word_stems(needle):
-        # основа на «ь» («семь» от «семья») без окончания — другое слово, окончание обязательно
-        alts.append(re.escape(stem) + (f"(?:{_INFLECTIONS})" if stem.endswith("ь") else f"(?:{_INFLECTIONS})?"))
-    return re.compile(r"(?<![а-яa-z])(?:" + "|".join(alts) + r")(?![а-яa-z])")
-
-
-def _find_items(text: str, items: list[str]) -> list[str]:
-    low = text.lower().replace("ё", "е")
-    return [item for item in items if item_pattern(item).search(low)]
-
-
-def _quote_sentences(sentences: list[str], items: set[str]) -> list[str]:
-    """Предложения-цитаты, содержащие любой из элементов (слово в любой форме или оборот)."""
-    patterns = [item_pattern(i) for i in items]
-    quotes = []
-    for s in sentences:
-        low = s.lower().replace("ё", "е")
-        if any(p.search(low) for p in patterns):
-            quotes.append(s)
-        if len(quotes) >= MAX_QUOTES:
-            break
-    return quotes
-
-
-_CORPUS_STEM_RE = re.compile(r"Том0*(\d+)_Глава0*(\d+)")
-
-
-def corpus_scope(corpus_dir: Path, volume: int, part_range: tuple[int, int] | None) -> list[Path]:
-    """Файлы корпуса для TTR-окна (аудит 3.7): том брифа и, если известна часть, её главы;
-    файлы без номера тома/главы в имени не отсеиваются."""
-    files: list[Path] = []
-    for f in sorted(corpus_dir.glob("*.txt"), key=lambda p: p.name):  # по имени: на Windows Path сравнивается без регистра
-        m = _CORPUS_STEM_RE.search(f.stem)
-        if m is not None:
-            vol, ch = int(m.group(1)), int(m.group(2))
-            if vol != volume or (part_range and not part_range[0] <= ch <= part_range[1]):
-                continue
-        files.append(f)
-    return files
-
-
-def _matching_runs(text_tokens: list[str], target_ngrams: set[tuple], n: int) -> list[str]:
-    """Максимальные дословные совпадения длиной ≥ n токенов."""
-    runs: list[str] = []
-    i = 0
-    while i <= len(text_tokens) - n:
-        if tuple(text_tokens[i : i + n]) in target_ngrams:
-            j = i + n
-            while j <= len(text_tokens) - 1 and tuple(text_tokens[j - n + 1 : j + 1]) in target_ngrams:
-                j += 1
-            runs.append(" ".join(text_tokens[i:j]))
-            i = j
-        else:
-            i += 1
-    return runs[:MAX_QUOTES]
+    return lang.get().item_pattern(item)
 
 
 def analyze_text(ws: Workspace, chapter: int, raw: str) -> list[CheckResult]:
@@ -181,6 +60,7 @@ def analyze_text(ws: Workspace, chapter: int, raw: str) -> list[CheckResult]:
         own_stem=own.stem if own else None,
         extra_abbr=ws.root / "сокращения.txt",  # пополняемый словарь (Д-2)
         part_range=part_range_for(ws.exports, chapter),
+        project_root=ws.root,
     )
 
 
@@ -237,12 +117,6 @@ def part_range_for(exports_dir: Path, chapter: int) -> tuple[int, int] | None:
     return None
 
 
-_TAIL_BLOCK_RE = re.compile(r"<!-- ХВОСТ ПРОЗЫ[^>]*-->.*?<!-- КОНЕЦ ХВОСТА -->", re.DOTALL)
-
-
-def _strip_prose_tail(window: str) -> str:
-    return _TAIL_BLOCK_RE.sub("", window)
-
 
 def analyze(
     raw: str,
@@ -255,245 +129,14 @@ def analyze(
     own_stem: str | None = None,
     extra_abbr: Path | None = None,
     part_range: tuple[int, int] | None = None,
+    project_root: Path | None = None,
 ) -> list[CheckResult]:
-    """Чистое ядро Э1: текст + контекст → список результатов проверок.
-
-    part_range — главы части, по корпусу которой считается TTR-окно (без него — весь том)."""
-    text = textutils.narrator_text(raw)
-    sentences = textutils.split_sentences(text, extra_abbr)
-    lengths = [len(textutils.words(s)) for s in sentences if textutils.words(s)]
-    tokens = textutils.normalize(text)
-    n_words = len(tokens)
-    checks: list[CheckResult] = []
-
-    def add(check_id: str, norm_id: str, actual: float, quotes: list[str] | None = None, note: str = "") -> None:
-        norm = norms.get(norm_id)
-        if norm is None:  # нормы в каноне нет — метрика не считается (FR-MT-3)
-            return
-        checks.append(
-            CheckResult(
-                check_id=check_id,
-                status=_status(actual, norm),
-                threshold=_corridor(norm),
-                actual=f"{actual:g}",
-                quotes=quotes or [],
-                rule_source=norm.source,
-                note=note,
-            )
-        )
-
-    # FR-V1.2 — длины фраз и объём
-    avg = sum(lengths) / len(lengths) if lengths else 0.0
-    add("V1.2a_средняя_длина", "средняя_длина", round(avg, 2))
-
-    short_thr = _norm_value(norms, "короткая_фраза_порог")
-    long_thr = _norm_value(norms, "длинная_фраза_порог")
-    if lengths:
-        if short_thr is not None:
-            add("V1.2b_доля_коротких", "доля_коротких", round(sum(1 for x in lengths if x <= short_thr) / len(lengths), 3))
-        if long_thr is not None:
-            add("V1.2c_доля_длинных", "доля_длинных", round(sum(1 for x in lengths if x >= long_thr) / len(lengths), 3))
-        if "максимум_длины" in norms:  # опциональная норма
-            longest = max(zip(lengths, [s for s in sentences if textutils.words(s)], strict=True))
-            add("V1.2d_максимум_длины", "максимум_длины", longest[0], quotes=[longest[1]])
-
-    if not brief.volume_words and "объём_главы" in norms:
-        # норма объёма из канона (Р-019): коридор мин–макс, выход — флаг
-        add("V1.2e_объём", "объём_главы", n_words)
-    elif brief.volume_words and "объём_допуск" in norms:
-        deviation = abs(n_words - brief.volume_words) / brief.volume_words
-        tolerance = _norm_value(norms, "объём_допуск") or 0.0
-        checks.append(
-            CheckResult(
-                check_id="V1.2e_объём",
-                status="BRAK" if deviation > tolerance else "PASS",
-                threshold=f"{brief.volume_words} слов ± {tolerance:.0%}",
-                actual=f"{n_words} слов (отклонение {deviation:.0%})",
-                rule_source=norms["объём_допуск"].source,
-            )
-        )
-
-    # FR-V1.3 — плотность «был/было/были». Формы намеренно зашиты: канон (02 §5) задаёт норму
-    # словами «был/было», перечень форм — решение канона, не порог; не менять без Р-№ (аудит 3.7).
-    byl_forms = {"был", "было", "были", "была"}
-    byl_count = sum(1 for t in tokens if t in byl_forms)
-    add(
-        "V1.3_был",
-        "был_на_250",
-        round(byl_count / n_words * 250, 2) if n_words else 0.0,
-        quotes=_quote_sentences(sentences, byl_forms),
-        note=f"{byl_count} вхождений на {n_words} слов",
-    )
-
-    # FR-V1.4 — наречия-усилители
-    intensifiers = {
-        w.lower().replace("ё", "е") for r in stoplists if r.kind == "усилитель" for w in r.items
-    }
-    if intensifiers and "усилители_на_1000" in norms:
-        int_count = sum(1 for t in tokens if t in intensifiers)
-        add(
-            "V1.4_усилители",
-            "усилители_на_1000",
-            round(int_count / n_words * 1000, 2) if n_words else 0.0,
-            quotes=_quote_sentences(sentences, intensifiers),
-            note=f"{int_count} вхождений",
-        )
-
-    # FR-V1.5 — запрещённая лексика (год главы и фокал)
-    narration = textutils.narration_only(text)
-    for rule in stoplists:
-        if rule.kind != "лексика" or not _stoplist_applies(rule, brief):
-            continue
-        # стоп-лист линии фокала (0.3) касается ВНУТРЕННЕЙ речи: реплики других персонажей
-        # («— Сынок, — сказал он») ложным флагом быть не должны. Лексика эпохи (0.4) — весь текст.
-        scope_text = narration if rule.scope == "0.3" else text
-        found = _find_items(scope_text, rule.items)
-        if found:
-            checks.append(
-                CheckResult(
-                    check_id="V1.5_стоп_лексика",
-                    status="FLAG",
-                    threshold=f"действие: {rule.action}",
-                    actual="; ".join(found),
-                    quotes=_quote_sentences(sentences, {w.lower().replace("ё", "е") for w in found}),
-                    rule_source=f"{rule.rule_id} (реестр {rule.scope})",
-                    note="проверьте значение: прямое значение эпохи допустимо" if rule.action == "флаг" else "",
-                )
-            )
-    if not any(c.check_id == "V1.5_стоп_лексика" for c in checks):
-        checks.append(
-            CheckResult(
-                check_id="V1.5_стоп_лексика", status="PASS", threshold="0 вхождений", actual="0",
-                rule_source="stoplists.json",
-            )
-        )
-
-    # FR-V1.6 — вставка окна («утечка промпта»)
-    leak_n = int(_norm_value(norms, "утечка_нграмма") or 0)
-    if leak_n:
-        # хвост предыдущей главы в окне — цитата канона для сцепки голоса, не промпт: из проверки
-        # утечки исключается (повтор канона ловит V1.7 по корпусу)
-        win_tokens = textutils.normalize(_strip_prose_tail(window_raw))
-        leaks = (
-            _matching_runs(tokens, set(textutils.ngrams(win_tokens, leak_n)), leak_n) if win_tokens else []
-        )
-        checks.append(
-            CheckResult(
-                check_id="V1.6_утечка_окна",
-                status="FLAG" if leaks else "PASS",
-                threshold=f"совпадения ≥ {leak_n} слов с окном",
-                actual=str(len(leaks)),
-                quotes=leaks,
-                rule_source=norms["утечка_нграмма"].source,
-            )
-        )
-
-    # FR-V1.7 — межглавные повторы против корпус/
-    rep_n = int(_norm_value(norms, "повтор_нграмма") or 0)
-    if rep_n:
-        repeats: list[str] = []
-        sources: list[str] = []
-        if corpus_dir is not None and corpus_dir.exists():
-            text_ngrams = set(textutils.ngrams(tokens, rep_n))
-            for f in sorted(corpus_dir.glob("*.txt")):
-                if own_stem and f.stem == own_stem:
-                    continue
-                other = f.read_text(encoding="utf-8").split()
-                hits = _matching_runs(other, text_ngrams, rep_n)
-                if hits:
-                    sources.append(f.stem)
-                    repeats.extend(f"[{f.stem}] {h}" for h in hits[:3])
-        checks.append(
-            CheckResult(
-                check_id="V1.7_межглавные_повторы",
-                status="FLAG" if repeats else "PASS",
-                threshold=f"n-граммы ≥ {rep_n} слов против корпуса",
-                actual=str(len(repeats)),
-                quotes=repeats[:MAX_QUOTES],
-                rule_source=norms["повтор_нграмма"].source,
-                note="главы-источники: " + ", ".join(sources) if sources else "",
-            )
-        )
-
-    # FR-V1.8 — TTR
-    ttr_val = textutils.ttr(tokens)
-    if "ttr_мин" in norms and "ttr_окно_слов" in norms:  # норм TTR в каноне нет — метрика не считается
-        checks.append(
-            CheckResult(
-                check_id="V1.8a_ttr_главы",
-                status="PASS",  # по главе — справочно
-                threshold="справочно",
-                actual=f"{ttr_val:.3f}",
-                rule_source=norms["ttr_мин"].source,
-            )
-        )
-        win_size = int(_norm_value(norms, "ttr_окно_слов") or 0)
-        # корпус окна — принятые главы тома брифа (и части, если она известна), не весь корпус/ (аудит 3.7)
-        part_tokens: list[str] = []
-        scope_files: list[str] = []
-        if corpus_dir is not None and corpus_dir.exists():
-            # окно скользит по ТОМУ: часть тома 1 (10 × 800 слов) короче окна 10 000, и проверка
-            # лексической бедности не срабатывала бы никогда (аудит 2, находка 2.2)
-            for f in corpus_scope(corpus_dir, brief.volume, None):
-                if own_stem and f.stem == own_stem:
-                    continue
-                scope_files.append(f.stem)
-                part_tokens.extend(f.read_text(encoding="utf-8").split())
-        part_tokens.extend(tokens)
-        rolling = textutils.rolling_ttr(part_tokens, win_size)
-        min_ttr = min((v for _, v in rolling), default=None)
-        short_corpus = min_ttr is None and part_tokens
-        if short_corpus:  # тома пока меньше окна — считаем по имеющемуся объёму, справочно
-            uniq = len(set(part_tokens))
-            min_ttr = round(uniq / len(part_tokens), 3)
-        ttr_norm = norms["ttr_мин"]
-        checks.append(
-            CheckResult(
-                check_id="V1.8b_ttr_окно",
-                status=(
-                    "PASS" if short_corpus or min_ttr is None or ttr_norm.min is None
-                    else "BRAK" if ttr_norm.brak is not None and min_ttr < ttr_norm.brak
-                    else "FLAG" if min_ttr < ttr_norm.min else "PASS"
-                ),
-                threshold=f"мин {ttr_norm.min:g}" + (f", брак {ttr_norm.brak:g}" if ttr_norm.brak else "")
-                          + f" в окне {win_size} слов",
-                actual=(f"{min_ttr:.3f}" if min_ttr is not None else "корпус пуст")
-                       + (f" (справочно: том короче окна, {len(part_tokens)} слов)" if short_corpus else ""),
-                rule_source=ttr_norm.source,
-                note=f"корпус: том {brief.volume}" + (f" ({', '.join(scope_files)})" if scope_files else " (корпус пуст)"),
-            )
-        )
-
-    # FR-V1.9 — доля диалога и однострочные абзацы (02 §5): нормы справочные, порог — из канона
-    paras = [p for p in textutils.paragraphs(text) if p.strip()]
-    if paras:
-        dialogue = sum(1 for p in paras if p.lstrip().startswith(("—", "–")))
-        if "доля_диалога" in norms:
-            add("V1.9a_доля_диалога", "доля_диалога", round(dialogue / len(paras), 3),
-                note=f"{dialogue} реплик-абзацев из {len(paras)}")
-        if "фраз_в_абзаце" in norms:
-            per_para = [len([s for s in textutils.split_sentences(p, extra_abbr) if textutils.words(s)]) for p in paras]
-            single = sum(1 for n in per_para if n <= 1)
-            add("V1.9b_фраз_в_абзаце", "фраз_в_абзаце",
-                round(sum(per_para) / len(per_para), 2),
-                note=f"однострочных абзацев: {single} из {len(paras)} (Р-015: приём, не норма)")
-
-    # FR-V1.10 — документ-вставка, назначенная брифом, обязана быть оформлена маркерами
-    if brief.documents:
-        has_block = "→ ДОКУМЕНТ" in raw and "← КОНЕЦ ДОКУМЕНТА" in raw
-        checks.append(
-            CheckResult(
-                check_id="V1.11_документ_вставка",
-                status="PASS" if has_block else "BRAK",
-                threshold="блок `→ ДОКУМЕНТ` … `← КОНЕЦ ДОКУМЕНТА`",
-                actual="есть" if has_block else "нет",
-                rule_source="бриф главы (реестр §6)",
-                note="; ".join(brief.documents)[:200],
-            )
-        )
-
-    return checks
-
+    """Чистое ядро Э1: текст + контекст → результаты проверок по реестру метрик (FR-V1-1).
+    Пороги — только из `norms` (FR-V1-2); язык — модуль проекта (FR-V1-3)."""
+    ctx = MetricContext(raw=raw, brief=brief, norms=norms, stoplists=stoplists,
+                        language=lang.for_project(project_root), window_raw=window_raw, corpus_dir=corpus_dir,
+                        own_stem=own_stem, extra_abbr=extra_abbr, part_range=part_range)
+    return metrics.run(ctx)
 
 
 # ------------------------------------------------------- FR-V1.10 дифф-контроль

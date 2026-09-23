@@ -279,6 +279,29 @@ def cmd_check(
     quality.check(file, chapter=chapter, focal=focal, year=year, volume_words=volume_words)
 
 
+@app.command("нормы", rich_help_panel="Качество и регрессия")
+@_friendly
+def cmd_norms(
+    calibrate: bool = typer.Option(False, "--калибровать", "--calibrate", help="Посчитать метрики по образцам и предложить коридоры."),
+    files: list[Path] = typer.Argument(None, help="Файлы прозы-образцов (пусто — принятые главы корпуса)."),
+    approve: bool = typer.Option(False, "--утвердить", "--approve", help="Записать предложенные нормы в стиль и журнал решений."),
+    yes: bool = typer.Option(False, "--yes", "-y", "--да", help="Подтверждение без вопроса."),
+) -> None:
+    """Нормы стиля: показать; --калибровать — коридоры по образцам автора (FR-V1-7); --утвердить — записать в канон."""
+    if not calibrate and not approve:
+        quality.norms()
+        return
+    quality.norms(calibrate_files=list(files) if files else None, approve=approve, yes=yes,
+                  confirm=lambda q: typer.confirm(q), from_corpus=not files)
+
+
+@app.command("метрики", rich_help_panel="Качество и регрессия")
+@_friendly
+def cmd_metrics() -> None:
+    """Реестр метрик Э1: идентификаторы норм, что считают, единицы, зависимости (FR-V1-1)."""
+    quality.metrics_doc()
+
+
 @app.command("diff", rich_help_panel="Правки и решения")
 @_friendly
 def cmd_diff(

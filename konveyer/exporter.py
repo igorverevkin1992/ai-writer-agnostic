@@ -390,6 +390,13 @@ def _postprocess(col: Collected, volume: int, library: Path, root: Path) -> None
     for norm_id, n in list(d["norms.json"].items()):
         if n.min is None and n.max is None and n.brak is None:
             del d["norms.json"][norm_id]
+    from . import metrics as metrics_mod
+
+    metrics_mod.register_lexeme_norms(d["norms.json"])
+    for norm_id in metrics_mod.unknown_norms(d["norms.json"]):
+        src = d["norms.json"][norm_id].source.split(" (")[0]
+        col.errors.append(MarkupError(library / src, 1, f"норма «{norm_id}» не соответствует ни одной метрике реестра Э1; "
+                                      f"доступные: {', '.join(metrics_mod.available())}"))
 
 
 def _month(date: str) -> int | None:
