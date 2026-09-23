@@ -31,11 +31,11 @@ from typing import Callable
 
 from pydantic import ValidationError
 
-from . import cancel, canonchange, exporter, guard, review, steps, timing, verifier2
+from . import cancel, canonchange, exporter, gitops, guard, review, steps, timing, verifier2
 from .config import Config
 from .fsm import ChapterState
 from .paths import Workspace
-from .steps import canon, quality, tact
+from .steps import canon, onboarding as onboarding_steps, overview, quality, tact, volume as volume_steps
 
 # команды такта, доступные из панели (белый список)
 COMMANDS = {
@@ -43,6 +43,9 @@ COMMANDS = {
     "apply-edits", "diff-check", "diff-check-author", "regress", "canonize", "canonize-apply",
     "story-circles", "circles-canon",
     "lint", "lint-llm", "canon-commit",
+    # этап 6: онбординг, учёт, пере-тест, сохранность, тома, калибровка, доктор — паритет с CLI (FR-PN-7)
+    "import", "onboarding", "onboarding-apply", "accounting", "retest", "backup-archive", "volume-close", "volume-open",
+    "snapshot", "calibrate", "doctor",
 }
 
 # допустимые уровни кругов истории (Р-020) и виды промптов ручного режима
@@ -507,6 +510,73 @@ class PanelAPI:
             return {"text": text, "target": f"черновик_{ChapterState(self.ws, n).draft + 1}.md", "file": p.name}
         raise ValueError(f"неизвестный промпт: {kind} (допустимо: {', '.join(PROMPT_KINDS)})")
 
+    # ------------------------------------------------------- виды «Проект», «Онбординг», «Журналы», «Регрессия» (FR-PN-2)
+
+    def project(self) -> dict:
+        from . import catalog, manifest as manifest_mod, project as project_mod, regression as regression_mod
+
+        types = catalog.load_types(self.ws.root)
+        modules = catalog.load_modules(self.ws.root)
+        man = manifest_mod.effective(self.ws.root, self.library, types)
+        checks = project_mod.readiness(self.ws.root, self.library)
+        remotes = gitops.remotes(self.library) if gitops.is_repo(self.library) else []
+        return {
+            "паспорт": man.проект.model_dump(),
+            "модули": [{"имя": m.name, "описание": m.description, "базовый": m.base,
+                        "включён": m.base or man.module_enabled(m.name, modules),
+                        "требует_типы": list(m.requires_types)} for m in sorted(modules.values(), key=lambda m: (not m.base, m.name))],
+            "готовность": [{"ok": c.ok, "label": c.label, "hint": c.hint} for c in checks],
+            "готов_к_такту": project_mod.ready_for_tact(checks),
+            "карта": [e.model_dump(exclude_none=True) for e in man.библиотека],
+            "вне_карты": manifest_mod.unmapped(man, self.library),
+            "git": {"репозиторий": gitops.is_repo(self.library), "удалённых_копий": len(remotes), "нужно": self.cfg.backup_remotes_min},
+            "регрессия": regression_mod.is_green(self.ws),
+        }
+
+    def onboarding(self) -> dict:
+        from .onboarding import importer, propose
+
+        report = propose.onboarding_dir(self.ws) / "отчёт.md"
+        return {
+            "сырьё": [e.as_dict() for e in importer.load_index(self.ws)],
+            "предложения": [propose.asdict(p) for p in propose.load(self.ws)],
+            "отчёт": report.read_text(encoding="utf-8") if report.exists() else "",
+            "решения": list(propose.DECISIONS),
+        }
+
+    def onboarding_decision(self, file: str, decision: str) -> dict:
+        from .onboarding import propose
+
+        with self.jobs.exclusive():
+            pr = propose.set_decision(self.ws, file, decision)
+        return {"ok": True, "файл": pr.файл, "решение": pr.решение, "тип": pr.тип}
+
+    def journals(self) -> dict:
+        from . import accounting
+
+        acc = accounting.volume_account(self.ws)
+        return {
+            "том": acc.volume, "стоимость": acc.cost, "глав_в_плане": acc.chapters_total,
+            "время_автора_мин": round(acc.author_s / 60, 1), "машинное_мин": round(acc.machine_s / 60, 1),
+            "главы": [{"глава": c.chapter, "состояние": c.state, "вызовов": c.calls, "токены_вх": c.tokens_in,
+                       "токены_вых": c.tokens_out, "стоимость": c.cost, "автор_мин": round(c.author_s / 60, 1),
+                       "машина_мин": round(c.machine_s / 60, 1)} for c in sorted(acc.chapters.values(), key=lambda c: c.chapter)],
+            "по_ролям": [{"роль": r, "вызовов": acc.calls_by_role.get(r, 0), "стоимость": v} for r, v in acc.by_role.items()],
+            "прогноз": acc.forecast(),
+            "предупреждения": accounting.warnings(self.ws, self.cfg),
+            "api": self.api_log(50),
+        }
+
+    def regression(self) -> dict:
+        from . import regression as regression_mod
+
+        report = regression_mod.load_report(self.ws) or {}
+        tests = regression_mod.load_tests(self.ws) if self.ws.regression.exists() else []
+        return {
+            "отчёт": report, "зелёная": regression_mod.is_green(self.ws), "устарел": regression_mod.is_stale(self.ws),
+            "тесты": [{"id": g.test_id, "эшелон": g.echelon, "ожидаемые": list(g.expected_flags), "фрагмент": g.fragment[:200]} for g in tests],
+        }
+
     def find(self, query: str) -> dict:
         from . import search
 
@@ -868,9 +938,30 @@ class PanelAPI:
             "lint-llm": lambda: _job(canon.lint, llm=True, files=list(params.get("files") or []), watch=False, max_calls=40),
             # подтверждение автор дал диалогом в панели (Д-8); сообщение — из поля панели
             "canon-commit": lambda: _job(canon.canon_commit, message=str(params.get("message") or "правка канона из панели"), yes=True),
+            # этап 6 (FR-PN-2/7): онбординг и обзорные команды теми же функциями ядра, что и CLI
+            "import": lambda: _job(onboarding_steps.import_materials, str(params.get("path") or "")),
+            "onboarding": lambda: _job(onboarding_steps.propose_types, use_model=bool(params.get("model")), decisions=None),
+            "onboarding-apply": lambda: _job(onboarding_steps.apply_onboarding, True, None, not bool(params.get("no_commit"))),
+            "accounting": lambda: _job(overview.accounting, params.get("volume")),
+            "retest": lambda: _job(canon.retest, chapter=int(params.get("chapter") or 1), fix=bool(params.get("fix"))),
+            "backup-archive": lambda: _job(canon.backup, archive=True),
+            "volume-close": lambda: _job(volume_steps.volume_close, int(params.get("volume") or self.ws.volume), yes=True,
+                                         again=bool(params.get("again")), next_volume=False),
+            "volume-open": lambda: _job(volume_steps.volume_open, int(params.get("volume") or self.ws.volume + 1)),
+            "snapshot": lambda: _job(canon.snapshot, params.get("volume")),
+            "calibrate": lambda: _job(quality.norms, calibrate_files=None, approve=bool(params.get("approve")), yes=True, from_corpus=True),
+            "doctor": lambda: _job(overview.doctor),
         }
         self.jobs.start(cmd, chapter, fns[cmd])
         return self.jobs.summary()  # type: ignore[return-value]
+
+
+# действия панели помимо фоновых команд (POST-пути и синхронные операции) — для сверки с CLI (FR-PN-7)
+PANEL_ACTIONS = {
+    "state", "chapter", "draft", "diff", "window", "prompt", "find", "circles", "lint", "canon", "log", "job",
+    "project", "onboarding", "journals", "regression", "resolve", "resolve-all", "edits", "canon-batch", "canon-doc",
+    "lint-fix", "circles-manual", "manual-draft", "manual-flags", "accept", "rollback", "onboarding-decision", "job-cancel",
+}
 
 
 def _static_root() -> Path:
@@ -1000,6 +1091,14 @@ def make_handler(api: PanelAPI):
                 m = re.fullmatch(r"/api/chapter/(\d+)/prompt/(\w+)", path)
                 if m:
                     return self._json(api.prompt(int(m.group(1)), m.group(2)))
+                if path == "/api/project":
+                    return self._json(api.project())
+                if path == "/api/onboarding":
+                    return self._json(api.onboarding())
+                if path == "/api/journals":
+                    return self._json(api.journals())
+                if path == "/api/regression":
+                    return self._json(api.regression())
                 if path == "/api/find":
                     from urllib.parse import parse_qs, urlparse
 
@@ -1069,6 +1168,8 @@ def make_handler(api: PanelAPI):
                     return self._json({"job": job})
                 if path == "/api/job/cancel":
                     return self._json({"job": api.jobs.cancel()})
+                if path == "/api/onboarding/decision":
+                    return self._json(api.onboarding_decision(str(body.get("file", "")), str(body.get("decision", ""))))
                 m = re.fullmatch(r"/api/chapter/(\d+)/resolve-all", path)
                 if m:
                     return self._json(api.resolve_all(int(m.group(1)), body.get("decision", ""), body.get("registry")))

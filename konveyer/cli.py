@@ -406,7 +406,7 @@ volume_app = typer.Typer(
     help="Тома (аудит 2, п. 27): сводка тома, закрытие тома (снапшот 3.5, тег, рукопись, статистика), переключение текущего тома.",
     no_args_is_help=True,
 )
-app.add_typer(volume_app, name="volume", rich_help_panel="Канон и бэкап")
+app.add_typer(volume_app, name="volume", rich_help_panel="Канон и бэкап", hidden=True)
 
 
 @volume_app.command("status")
@@ -548,7 +548,7 @@ def cmd_backup(
     canon.backup(folder, push=push, archive=archive, add_remote=add_remote, yes=yes, confirm=typer.confirm)
 
 
-@app.command("init", rich_help_panel="Настройка")
+@app.command("init", rich_help_panel="Настройка проекта")
 @_friendly
 def cmd_init(
     demo: bool = typer.Option(False, "--демо", "--demo", help="Развернуть демо-библиотеку и золотые тесты — играбельный пример."),
@@ -557,7 +557,7 @@ def cmd_init(
     setup.init(demo=demo)
 
 
-@app.command("импорт", rich_help_panel="Настройка")
+@app.command("импорт", rich_help_panel="Онбординг")
 @_friendly
 def cmd_import(source: str = typer.Argument(..., help="Файл, папка или .zip с материалами автора.")) -> None:
     """Импортировать материалы в сырьё/: копии оригиналов, извлечения в Markdown, индекс (раздел 5.1)."""
@@ -567,7 +567,7 @@ def cmd_import(source: str = typer.Argument(..., help="Файл, папка ил
         _fail(str(e))
 
 
-@app.command("онбординг", rich_help_panel="Настройка")
+@app.command("онбординг", rich_help_panel="Онбординг")
 @_friendly
 def cmd_onboarding(
     apply: bool = typer.Option(False, "--применить", "--apply", help="Применить решения: документы в библиотеку, манифест, коммит."),
@@ -596,7 +596,7 @@ project_app = typer.Typer(
     help="Проект серии: создание папки, манифеста и стартового комплекта (этап 1 жизненного цикла).",
     no_args_is_help=True,
 )
-app.add_typer(project_app, name="проект", rich_help_panel="Настройка")
+app.add_typer(project_app, name="проект", rich_help_panel="Настройка проекта")
 
 
 @project_app.command("создать")
@@ -618,6 +618,62 @@ def cmd_project_create(
                              yes=yes, prompt=lambda q, d: typer.prompt(q, default=d))
     except (FileExistsError, FileNotFoundError, ValueError) as e:
         _fail(str(e))
+
+
+# ------------------------------------------------------------------ русские имена команд, латинские синонимы (FR-CL-5)
+
+# основное имя — русское (видно в справке), латинское — скрытый синоним; команды, объявленные по-русски, получают
+# латинский синоним из этой же таблицы
+SYNONYMS = {
+    "export": "экспорт", "compile": "собрать", "write": "написать", "verify1": "проверить1", "verify2": "проверить2",
+    "review": "приёмка", "apply-edits": "правки-внести", "diff-check": "дифф-контроль", "accept": "принять",
+    "canonize": "канон", "status": "статус", "resolve": "решение", "edits": "правки", "check": "проверка",
+    "diff": "дифф", "log": "журнал", "panel": "панель", "find": "найти", "circles": "каркас", "lint": "линтер",
+    "snapshot": "снапшот", "doctor": "доктор", "rollback": "откат", "regress": "регрессия", "add-golden": "золотой",
+    "dashboard": "дашборд", "run": "такт", "canon-commit": "канон-коммит", "library-split": "библиотека-отделить",
+    "backup": "бэкап", "init": "начать", "нормы": "norms", "метрики": "metrics", "учёт": "accounting",
+    "импорт": "import", "онбординг": "onboarding", "пере-тест": "retest",
+}
+
+
+def _register_synonyms(typer_app: typer.Typer) -> None:
+    """Каждая команда доступна под русским и латинским именем: основное имя (в справке) — русское."""
+    existing = {c.name for c in typer_app.registered_commands}
+    for info in list(typer_app.registered_commands):
+        other = SYNONYMS.get(info.name or "")
+        if not other or other in existing:
+            continue
+        latin_primary = (info.name or "").isascii()
+        alias = typer.models.CommandInfo(
+            name=other, cls=info.cls, context_settings=info.context_settings, callback=info.callback, help=info.help,
+            epilog=info.epilog, short_help=info.short_help, options_metavar=info.options_metavar,
+            add_help_option=info.add_help_option, no_args_is_help=info.no_args_is_help,
+            hidden=not latin_primary, deprecated=info.deprecated, rich_help_panel=info.rich_help_panel,
+        )
+        if latin_primary:
+            info.hidden = True  # латинское имя остаётся синонимом, в справке — русское
+        typer_app.registered_commands.append(alias)
+        existing.add(other)
+
+
+_register_synonyms(app)
+_VOLUME_SYNONYMS = {"status": "статус", "close": "закрыть", "open": "открыть"}
+
+
+def _register_group_synonyms(typer_app: typer.Typer, table: dict[str, str]) -> None:
+    existing = {c.name for c in typer_app.registered_commands}
+    for info in list(typer_app.registered_commands):
+        other = table.get(info.name or "")
+        if other and other not in existing:
+            alias = typer.models.CommandInfo(name=other, callback=info.callback, help=info.help, hidden=False,
+                                             rich_help_panel=info.rich_help_panel)
+            info.hidden = True
+            typer_app.registered_commands.append(alias)
+            existing.add(other)
+
+
+_register_group_synonyms(volume_app, _VOLUME_SYNONYMS)
+app.add_typer(volume_app, name="том", rich_help_panel="Канон и бэкап", hidden=False)
 
 
 def main() -> None:  # точка входа для python -m konveyer.cli

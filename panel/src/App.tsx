@@ -3,12 +3,13 @@ import { apiGet, apiPost, isOffline, OFFLINE_MESSAGE } from "./api";
 import { ChapterView } from "./ChapterView";
 import { Canon } from "./Canon";
 import { Circles } from "./Circles";
+import { JournalsView, OnboardingView, ProjectView, RegressionView } from "./Views";
 import { useConfirm } from "./Confirm";
 import { createDirtyRegistry, DirtyContext } from "./drafts";
 import { useOnline, usePending } from "./hooks";
 import { JobCard } from "./JobCard";
 import type { Tab } from "./nextstep";
-import type { ApiLogRow, AppState, Job } from "./types";
+import type { AppState, Job } from "./types";
 
 type View =
   | { kind: "глава"; n: number }
@@ -16,6 +17,9 @@ type View =
   | { kind: "журнал" }
   | { kind: "круги" }
   | { kind: "канон" }
+  | { kind: "проект" }
+  | { kind: "онбординг" }
+  | { kind: "регрессия" }
   | { kind: "поиск"; q: string };
 
 export type Notify = (text: string, kind?: "ok" | "err") => void;
@@ -202,15 +206,23 @@ export default function App() {
         </div>
         <div className="sidebtns">
           <button disabled={busy} onClick={() => run(() => runCommand("export"))}>Экспорт канона</button>
-          <button disabled={busy} onClick={() => run(() => runCommand("regress"))}>Регрессия</button>
+          <button className={view?.kind === "проект" ? "primary" : ""} onClick={() => go({ kind: "проект" })}>
+            Проект
+          </button>
+          <button className={view?.kind === "онбординг" ? "primary" : ""} onClick={() => go({ kind: "онбординг" })}>
+            Онбординг
+          </button>
           <button className={view?.kind === "дашборд" ? "primary" : ""} onClick={() => go({ kind: "дашборд" })}>
             Дашборд
           </button>
           <button className={view?.kind === "журнал" ? "primary" : ""} onClick={() => go({ kind: "журнал" })}>
-            Журнал API
+            Журналы
+          </button>
+          <button className={view?.kind === "регрессия" ? "primary" : ""} onClick={() => go({ kind: "регрессия" })}>
+            Регрессия
           </button>
           <button className={view?.kind === "круги" ? "primary" : ""} onClick={() => go({ kind: "круги" })}>
-            Круги истории
+            Драматургия
           </button>
           <button className={view?.kind === "канон" ? "primary" : ""} onClick={() => go({ kind: "канон" })}>
             Канон{state.lint?.errors ? ` (${state.lint.errors})` : ""}
@@ -267,7 +279,12 @@ export default function App() {
             <iframe className="dash" src="/dashboard" title="Дашборд" />
           </>
         )}
-        {view?.kind === "журнал" && <ApiJournal />}
+        {view?.kind === "журнал" && <JournalsView refreshTick={refreshTick} notify={notify} busy={busy} runCommand={runCommand} />}
+        {view?.kind === "проект" && <ProjectView refreshTick={refreshTick} notify={notify} busy={busy} runCommand={runCommand} />}
+        {view?.kind === "онбординг" && (
+          <OnboardingView refreshTick={refreshTick} notify={notify} busy={busy} runCommand={runCommand} confirm={confirm} />
+        )}
+        {view?.kind === "регрессия" && <RegressionView refreshTick={refreshTick} notify={notify} busy={busy} runCommand={runCommand} />}
         {view?.kind === "круги" && (
           <Circles
             busy={running || offline}
@@ -364,40 +381,6 @@ function SearchView({ q, notify }: { q: string; notify: Notify }) {
           ))}
         </div>
       ))}
-    </>
-  );
-}
-
-function ApiJournal() {
-  const [rows, setRows] = useState<ApiLogRow[]>([]);
-  useEffect(() => {
-    apiGet<ApiLogRow[]>("/api/log").then(setRows).catch(() => setRows([]));
-  }, []);
-  const total = rows.reduce((s, r) => s + (r.cost_est ?? 0), 0);
-  return (
-    <>
-      <h1>Журнал API-вызовов</h1>
-      <p className="muted">журналы/api.jsonl (§6.3){total > 0 && <> · стоимость показанных: ${total.toFixed(4)}</>}</p>
-      <table>
-        <thead>
-          <tr><th>Время</th><th>Роль</th><th>Модель</th><th>Глава</th><th>Токены</th><th>$</th><th>Сек</th><th></th></tr>
-        </thead>
-        <tbody>
-          {rows.slice().reverse().map((r, i) => (
-            <tr key={i}>
-              <td>{r.ts?.slice(0, 19).replace("T", " ")}</td>
-              <td>{r.role}</td>
-              <td>{r.model}</td>
-              <td>{r.chapter ?? "—"}</td>
-              <td>{r.tokens_in ?? "?"} / {r.tokens_out ?? "?"}</td>
-              <td>{r.cost_est != null ? r.cost_est.toFixed(4) : "—"}</td>
-              <td>{r.duration ?? "—"}</td>
-              <td className={r.error ? "bad" : "ok"}>{r.error ? "ошибка" : "✓"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {rows.length === 0 && <p className="muted">Вызовов пока не было.</p>}
     </>
   );
 }
