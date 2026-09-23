@@ -366,8 +366,9 @@ class Resolution(BaseModel):
     """Решение автора по самоволке (FR-V2.5)."""
 
     flag_id: str = Field(pattern=r"^[\w.\-]+$")
-    decision: Literal["вычеркнуть", "канонизировать"] | None = None
+    decision: Literal["вычеркнуть", "канонизировать", "отклонить"] | None = None
     target_registry: str | None = Field(default=None, pattern=r"^[\w.\-]+$")
+    reason: str = ""  # причина отклонения флага (FR-RV-2) — уходит в журнал отклонённых флагов
 
 
 # ------------------------------------------------------------------- правки

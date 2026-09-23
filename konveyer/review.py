@@ -70,6 +70,7 @@ def build_review_pack(ws: Workspace, chapter: int, draft: int) -> Path:
             lines.append(f"  > {f.quote}")
     lines += ["", "---", "", "## ТЕКСТ", "", text]
     guard.write_text(chdir / "приёмка.md", "\n".join(lines) + "\n")
+    guard.write_text(chdir / "приёмка.html", render_html(chapter, draft, lines[:-1], text, checks, flags))
 
     # форма правок
     if not (chdir / "правки.md").exists():
@@ -280,3 +281,57 @@ def load_resolutions(ws: Workspace, chapter: int) -> list[Resolution]:
 
 def unresolved_samovolki(ws: Workspace, chapter: int) -> list[str]:
     return [r.flag_id for r in load_resolutions(ws, chapter) if r.decision is None]
+
+
+# ------------------------------------------------------------ автономный HTML (FR-RV-1) и журнал отклонённых флагов
+
+
+REJECTED_LOG = "отклонённые_флаги.jsonl"
+_HTML_CSS = """body{font:16px/1.5 Georgia,serif;max-width:60em;margin:2em auto;padding:0 1em;color:#222;background:#fff}
+h1,h2{font-family:sans-serif}mark{background:#ffe58a;padding:0 .15em}mark.e2{background:#c9e7ff}mark.sam{background:#ffc9c9}
+.flag{border-left:3px solid #ccc;padding:.3em .8em;margin:.4em 0;font-family:sans-serif;font-size:.9em}
+.flag.критично{border-color:#c00}.flag.важно{border-color:#e90}.flag.мелочь{border-color:#999}.text p{margin:.6em 0}
+a{color:#06c}@media (prefers-color-scheme: dark){body{background:#151515;color:#ddd}mark{color:#111}}"""
+
+
+def _esc(s: str) -> str:
+    import html as _html
+
+    return _html.escape(s, quote=True)
+
+
+def render_html(chapter: int, draft: int, summary_lines: list[str], text: str, checks: list[CheckResult],
+                flags: list[Flag]) -> str:
+    """Автономный HTML пакета приёмки: без сети, CDN и внешних ресурсов; цитаты флагов подсвечены в тексте
+    по якорям 【id】 и ведут на карточки флагов."""
+    body = _esc(text)
+    for c in checks:
+        body = body.replace(_esc(f"【{c.check_id}】"), f'<mark id="q-{c.check_id}" title="{_esc(c.check_id)}">【{_esc(c.check_id)}】</mark>')
+    for f in flags:
+        cls = "sam" if f.kind == "samovolka" else "e2"
+        body = body.replace(_esc(f"【{f.flag_id}】"), f'<mark class="{cls}" id="q-{_esc(f.flag_id)}"><a href="#f-{_esc(f.flag_id)}">【{_esc(f.flag_id)}】</a></mark>')
+    paras = "".join(f"<p>{p}</p>" for p in body.split("\n\n") if p.strip())
+    cards = []
+    for c in checks:
+        cards.append(f'<div class="flag" id="f-{_esc(c.check_id)}"><b>[{_esc(c.status)}] {_esc(c.check_id)}</b> — порог: {_esc(c.threshold)}; '
+                     f'факт: {_esc(c.actual)} <i>({_esc(c.rule_source)})</i></div>')
+    for f in flags:
+        kind = "самоволка — нужно решение автора" if f.kind == "samovolka" else f.severity
+        cards.append(f'<div class="flag {_esc(f.severity)}" id="f-{_esc(f.flag_id)}"><b>{_esc(f.flag_id)} · {_esc(f.type)}</b> [{_esc(kind)}] — '
+                     f'{_esc(f.rule)}; рекомендация: {_esc(f.recommendation)}<br><a href="#q-{_esc(f.flag_id)}">→ к цитате</a>: «{_esc(f.quote)}»</div>')
+    return ("<!DOCTYPE html><html lang=\"ru\"><head><meta charset=\"utf-8\">"
+            f"<title>Приёмка · глава {chapter} · черновик {draft}</title><style>{_HTML_CSS}</style></head><body>"
+            f"<h1>Приёмка · Глава {chapter} · черновик {draft}</h1>"
+            "<p>Решения по самоволкам — <code>решения.json</code> (или <code>konveyer resolve</code>); правки — <code>правки.md</code> "
+            "парами «БЫЛО → СТАЛО» и «УКАЗАНИЕ:».</p><h2>Флаги</h2>" + ("".join(cards) or "<p>флагов нет</p>")
+            + f"<h2>Текст</h2><div class=\"text\">{paras}</div></body></html>\n")
+
+
+def log_rejected(ws: Workspace, chapter: int, flag: Flag | None, flag_id: str, reason: str) -> None:
+    """Отклонённый флаг — в журнал для настройки промптов (FR-RV-2)."""
+    from datetime import datetime, timezone
+
+    entry = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "chapter": chapter, "flag_id": flag_id,
+             "reason": reason, "type": flag.type if flag else None, "kind": flag.kind if flag else None,
+             "rule": flag.rule if flag else None, "quote": flag.quote if flag else None}
+    guard.append_text(ws.logs / REJECTED_LOG, json.dumps(entry, ensure_ascii=False) + "\n")

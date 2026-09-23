@@ -249,14 +249,15 @@ def cmd_status(
 def cmd_resolve(
     chapter: int,
     flag_id: str | None = typer.Argument(None, help="ID самоволки (например F-001)."),
-    decision: str | None = typer.Argument(None, help="«вычеркнуть» или «канонизировать»."),
-    registry: str | None = typer.Option(None, "--реестр", "--registry", help="Целевой реестр (3.1/3.2/3.3/1.2)."),
+    decision: str | None = typer.Argument(None, help="«вычеркнуть», «канонизировать» или «отклонить»."),
+    registry: str | None = typer.Option(None, "--реестр", "--registry", help="Целевой реестр (имя типа: эпистемика, закладки, континуити…)."),
+    reason: str = typer.Option("", "--причина", "--reason", help="Причина отклонения флага (обязательна для «отклонить»)."),
 ) -> None:
-    """Решения по самоволкам без ручной правки JSON (FR-V2.5).
+    """Решения по флагам без ручной правки JSON (FR-RV-2): самоволку — вычеркнуть или канонизировать, любой флаг — отклонить с причиной.
 
     Без аргументов — список; с флагом и решением — записывает решение.
     """
-    edits_mod.resolve(chapter, flag_id, decision, registry=registry)
+    edits_mod.resolve(chapter, flag_id, decision, registry=registry, reason=reason)
 
 
 @app.command("edits", rich_help_panel="Правки и решения")

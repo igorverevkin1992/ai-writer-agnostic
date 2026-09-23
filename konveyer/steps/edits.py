@@ -9,7 +9,8 @@ from ..fsm import ChapterState
 from .common import _ctx, colors, echo, secho
 
 
-def resolve(chapter: int, flag_id: str | None = None, decision: str | None = None, registry: str | None = None) -> list:
+def resolve(chapter: int, flag_id: str | None = None, decision: str | None = None, registry: str | None = None,
+            reason: str = "") -> list:
     """Решения по самоволкам без ручной правки JSON (FR-V2.5).
 
     Без флага — список; с флагом и решением — записывает решение. Возвращает решения главы.
@@ -27,12 +28,20 @@ def resolve(chapter: int, flag_id: str | None = None, decision: str | None = Non
             target = f" → {r.target_registry}" if r.target_registry else ""
             echo(f"  {r.flag_id}: {state}{target}  «{quote}»")
         return resolutions
-    if decision not in ("вычеркнуть", "канонизировать"):
-        raise StepError("решение должно быть «вычеркнуть» или «канонизировать».")
+    if decision not in ("вычеркнуть", "канонизировать", "отклонить"):
+        raise StepError("решение должно быть «вычеркнуть», «канонизировать» или «отклонить» (с --причина).")
+    if decision == "отклонить" and not reason.strip():
+        raise StepError("отклонение флага требует причины: --причина «…» (FR-RV-2).")
+    flags_by_id = {f.flag_id: f for f in verifier2.load_flags(ws, chapter)}
+    if decision == "отклонить" and flag_id not in {r.flag_id for r in resolutions} and flag_id in flags_by_id:
+        resolutions.append(review_mod.Resolution(flag_id=flag_id))  # отклонить можно и флаг-нарушение, не только самоволку
     for r in resolutions:
         if r.flag_id == flag_id:
             r.decision = decision  # type: ignore[assignment]
             r.target_registry = registry if decision == "канонизировать" else None
+            r.reason = reason.strip() if decision == "отклонить" else ""
+            if decision == "отклонить":
+                review_mod.log_rejected(ws, chapter, flags_by_id.get(flag_id), flag_id, reason.strip())
             review_mod.save_resolutions(ws, chapter, resolutions)
             left = review_mod.unresolved_samovolki(ws, chapter)
             secho(f"{flag_id}: {decision}{' → ' + registry if registry else ''}.", fg=colors.GREEN)

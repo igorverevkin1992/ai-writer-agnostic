@@ -538,26 +538,34 @@ class PanelAPI:
         from .canonist import registries
 
         regs = registries()
-        if decision not in ("вычеркнуть", "канонизировать"):
-            raise ValueError("решение: «вычеркнуть» или «канонизировать»")
+        if decision not in ("вычеркнуть", "канонизировать", "отклонить"):
+            raise ValueError("решение: «вычеркнуть», «канонизировать» или «отклонить»")
         if decision == "канонизировать" and registry not in regs:
             raise ValueError(f"реестр: один из {', '.join(regs)}")
 
     @staticmethod
-    def _decide(r, decision: str, registry: str | None) -> None:
+    def _decide(r, decision: str, registry: str | None, reason: str = "") -> None:
         r.decision = decision
         r.target_registry = registry if decision == "канонизировать" else None
+        r.reason = reason if decision == "отклонить" else ""
 
-    def resolve(self, n: int, flag_id: str, decision: str, registry: str | None) -> dict:
+    def resolve(self, n: int, flag_id: str, decision: str, registry: str | None, reason: str = "") -> dict:
         self._check_decision(decision, registry)
+        if decision == "отклонить" and not reason.strip():
+            raise ValueError("отклонение флага требует причины (FR-RV-2)")
         with self.jobs.exclusive():
             resolutions = review.load_resolutions(self.ws, n)
+            flags = {f.flag_id: f for f in verifier2.load_flags(self.ws, n)}
+            if decision == "отклонить" and flag_id in flags and flag_id not in {r.flag_id for r in resolutions}:
+                resolutions.append(review.Resolution(flag_id=flag_id))
             for r in resolutions:
                 if r.flag_id == flag_id:
-                    self._decide(r, decision, registry)
+                    self._decide(r, decision, registry, reason.strip())
+                    if decision == "отклонить":
+                        review.log_rejected(self.ws, n, flags.get(flag_id), flag_id, reason.strip())
                     review.save_resolutions(self.ws, n, resolutions)
                     return {"ok": True}
-        raise ValueError(f"самоволка {flag_id} не найдена")
+        raise ValueError(f"флаг {flag_id} не найден")
 
     def resolve_all(self, n: int, decision: str, registry: str | None) -> dict:
         """Одно решение для всех самоволок без решения (5.6, «Вычеркнуть все»); уже решённые не трогаются."""
