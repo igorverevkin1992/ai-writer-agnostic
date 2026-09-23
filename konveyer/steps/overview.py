@@ -151,6 +151,15 @@ def doctor() -> None:
     else:
         item(arch_age <= 7, f"архив рабочей области: {arch_age:.1f} дн. назад ({backup_mod.latest_archive(arch_dir)})",
              "`konveyer backup --архив`")
+    if lib.exists():
+        from .. import project as project_mod
+
+        checks = project_mod.readiness(ws.root, lib)
+        secho("Готовность к такту (FR-LC-2) и комплектность модулей (FR-ON-20):", bold=True)
+        for c in checks:
+            item(c.ok, c.label, c.hint)
+        if not checks:
+            item(True, "минимальный комплект на месте, модули укомплектованы")
     manifest = ws.exports / "индекс.json"
     item(manifest.exists(), "выгрузки выгрузки/", "выполните `konveyer export`")
     providers = {m.provider for m in cfg.roles().values() if not m.manual}

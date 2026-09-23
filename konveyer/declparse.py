@@ -87,7 +87,16 @@ CONVERTERS: dict[str, Callable[[str], Any]] = {
 }
 
 
+PLACEHOLDER = "⚠ заполнить"  # заглушка стартового комплекта: машина её не читает (значение пустое)
+
+
+def is_placeholder(value: Any) -> bool:
+    return isinstance(value, str) and value.strip().lower().startswith(PLACEHOLDER)
+
+
 def convert(value: str, kind: str | None) -> Any:
+    if is_placeholder(value):
+        value = ""
     if not kind or kind == "строка":
         return value.strip()
     fn = CONVERTERS.get(kind)
@@ -140,6 +149,8 @@ def _record(row: dict[str, str], mapping: dict[str, str], columns: dict, fmt: di
         default = spec.get("по_умолчанию") if isinstance(spec, dict) else None
         header = mapping.get(field)
         raw = row.get(header, "") if header else ""
+        if is_placeholder(raw):
+            raw = ""
         if raw.strip() in EMPTY and kind not in ("строка", None):
             rec[field] = default if default is not None else (None if kind in ("число", "целое", "глава") else convert("", kind))
         elif raw.strip() in EMPTY and kind in ("строка", None):
@@ -277,10 +288,12 @@ def fmt_keyed_sections(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] |
     head = re.compile(fmt.get("заголовок") or r"Глава\s+(\d+)")
     keys: dict = fmt.get("ключи") or {}
     records: list[dict] = []
+    matched = False
     for sec in mdparse.parse_sections(path):
         m = head.match(sec.title)
         if not m:
             continue
+        matched = True
         rec: dict[str, Any] = {"номер": int(m.group(1)) if m.groups() and m.group(1) and m.group(1).isdigit() else m.group(0),
                                "заголовок": sec.title, "_строка": sec.line}
         for field, spec in keys.items():
@@ -292,7 +305,7 @@ def fmt_keyed_sections(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] |
             value: Any = None
             for lb in labels:
                 if kind == "список":
-                    items = mdparse.parse_list_items(sec.body, lb)
+                    items = [i for i in mdparse.parse_list_items(sec.body, lb) if not is_placeholder(i)]
                     if items:
                         value = items
                         break
@@ -304,12 +317,14 @@ def fmt_keyed_sections(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] |
             if value is None:
                 value = [] if kind == "список" else (None if kind in ("число", "целое", "глава") else "")
             rec[field] = value
+        if keys and all(rec[f] in (None, "", []) for f in keys):
+            continue  # секция-заглушка стартового комплекта (все ключи «⚠ заполнить») — записи нет
         if fmt.get("тело"):
             rec[fmt["тело"]] = sec.body
         for k, v in (fmt.get("постоянные") or {}).items():
             rec[k] = _template(v, ctx, path, rec)
         records.append(_apply_mapping(rec, fmt, ctx, path))
-    return records or None
+    return records if matched else None
 
 
 def fmt_sections(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] | None:

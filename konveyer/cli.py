@@ -526,6 +526,34 @@ def cmd_init(
     setup.init(demo=demo)
 
 
+project_app = typer.Typer(
+    help="Проект серии: создание папки, манифеста и стартового комплекта (этап 1 жизненного цикла).",
+    no_args_is_help=True,
+)
+app.add_typer(project_app, name="проект", rich_help_panel="Настройка")
+
+
+@project_app.command("создать")
+@_friendly
+def cmd_project_create(
+    path: str | None = typer.Argument(None, help="Папка нового проекта (пустая или несуществующая)."),
+    name: str | None = typer.Option(None, "--имя", "--name", help="Название серии."),
+    volumes: int | None = typer.Option(None, "--томов", "--volumes", help="Сколько томов в плане."),
+    modules: str | None = typer.Option(None, "--модули", "--modules", help="Модули через запятую (пусто — умолчания)."),
+    methodic: str | None = typer.Option(None, "--методика", "--methodic", help="Методика драматургии."),
+    profile: str | None = typer.Option(None, "--профиль", "--profile", help="Профиль серии (имя из data/профили или папка)."),
+    no_starter: bool = typer.Option(False, "--без-комплекта", help="Не создавать стартовый комплект документов."),
+    no_git: bool = typer.Option(False, "--без-git", help="Не инициализировать git в библиотеке."),
+    yes: bool = typer.Option(False, "--да", "-y", "--yes", help="Без вопросов: умолчания для всего, что не задано."),
+) -> None:
+    """Создать проект серии: папки по раскладке, проект.yaml, стартовый комплект, git библиотеки."""
+    try:
+        setup.project_create(path, name, volumes, modules, methodic, profile, starter=not no_starter, git=not no_git,
+                             yes=yes, prompt=lambda q, d: typer.prompt(q, default=d))
+    except (FileExistsError, FileNotFoundError, ValueError) as e:
+        _fail(str(e))
+
+
 def main() -> None:  # точка входа для python -m konveyer.cli
     app()
 

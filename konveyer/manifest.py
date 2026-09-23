@@ -230,7 +230,7 @@ def validate(manifest: Manifest, library: Path, types: dict[str, catalog.TypeSpe
     for e in manifest.библиотека:
         if e.тип not in types:
             errors.append(f"{where(e.файл)}«{e.файл}»: неизвестный тип «{e.тип}»; доступные: {', '.join(sorted(types))}")
-        if not e.выключен and not _expand(library, e):
+        if not e.выключен and not _expand(library, e) and not (e.is_folder and (library / e.файл.rstrip("/")).is_dir()):
             errors.append(f"{where(e.файл)}«{e.файл}»: файла нет в библиотеке ({library.name}/)")
         if e.множественность and e.множественность not in catalog.MULTIPLICITY:
             errors.append(f"{where(e.файл)}«{e.файл}»: множественность «{e.множественность}» — "

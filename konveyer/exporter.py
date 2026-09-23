@@ -384,10 +384,11 @@ def _postprocess(col: Collected, volume: int, library: Path, root: Path) -> None
     d["acts.json"] = acts
     d["parts.json"] = [{"part": a.act, "title": a.title, "period": a.parts, "from_chapter": a.from_chapter,
                         "to_chapter": a.to_chapter} for a in acts]
-    # нормы: пустые значения — ошибка канона (критерий 6), но только если норма объявлена
+    # нормы без числового значения (каркас стартового комплекта, «—») — нормы нет: метрика не считается (FR-MT-3);
+    # о незаполненной норме объёма скажет `доктор` (FR-LC-2а)
     for norm_id, n in list(d["norms.json"].items()):
         if n.min is None and n.max is None and n.brak is None:
-            col.errors.append(MarkupError(library / "стиль", 1, f"норма «{norm_id}» без числового значения (мин/макс/брак)"))
+            del d["norms.json"][norm_id]
 
 
 def _month(date: str) -> int | None:
