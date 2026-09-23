@@ -80,12 +80,15 @@ def score(prof: DocProfile, spec: catalog.TypeSpec) -> Hypothesis | None:
     low_cols = " ".join(prof.columns).lower()
     low_text = prof.low_text
 
-    def add(key: str, hits: list[str], candidates: list[str], mode: str = "any") -> None:
+    def add(key: str, hits: list[str], candidates: list[str], mode: str = "any", miss_weight: float = 1.0) -> None:
+        """`miss_weight` — какая доля веса ложится в знаменатель при промахе: имя файла и колонки — альтернативные
+        формы (документ без таблиц не «промахивается» по колонкам, а сигнатура имени — подсказка, не требование)."""
         nonlocal total_w, got
         w = WEIGHTS[key] * float(sig.get("вес", 1.0))
-        total_w += w
         if not candidates:
+            total_w += w
             return
+        total_w += w if hits else w * miss_weight
         frac = 1.0 if (mode == "any" and hits) else _frac(len(hits), len(candidates))
         if key in ("заголовки", "слова", "колонки"):
             frac = min(1.0, len(hits) / max(1, min(len(candidates), 3)))
@@ -95,13 +98,14 @@ def score(prof: DocProfile, spec: catalog.TypeSpec) -> Hypothesis | None:
 
     if "имя_файла" in sig:
         cand = [str(s).lower() for s in sig["имя_файла"]]
-        add("имя_файла", [s for s in cand if s in low_name], cand)
+        first_head = (prof.headings[0].lower() if prof.headings else "")
+        add("имя_файла", [s for s in cand if s in low_name or s in first_head], cand, miss_weight=0.5)
     if "заголовки" in sig:
         cand = [str(s).lower() for s in sig["заголовки"]]
         add("заголовки", [s for s in cand if s in low_head], cand, "frac")
     if "колонки" in sig:
         cand = [str(s).lower() for s in sig["колонки"]]
-        add("колонки", [s for s in cand if s in low_cols], cand, "frac")
+        add("колонки", [s for s in cand if s in low_cols], cand, "frac", miss_weight=0.0 if prof.tables == 0 else 1.0)
     if "слова" in sig:
         cand = [str(s).lower() for s in sig["слова"]]
         add("слова", [s for s in cand if s in low_text], cand, "frac")

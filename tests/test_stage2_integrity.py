@@ -187,7 +187,7 @@ def test_apply_batch_откатывает_библиотеку_при_сбое(w
     head = gitops.head(library)
     real_export = exporter.run_export
 
-    def broken_export(lib, exports, logs, volume=1, root=None):
+    def broken_export(lib, exports, logs, volume=1, root=None, **kw):
         raise MarkupError(lib / "31_Матрица_знаний.md", 7, "в таблице 6 колонок, в строке — 5")
 
     monkeypatch.setattr(canonist.exporter, "run_export", broken_export)

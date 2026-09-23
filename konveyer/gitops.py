@@ -28,6 +28,11 @@ def head(repo: Path) -> str:
     return _git(repo, "rev-parse", "HEAD")
 
 
+def has_commits(repo: Path) -> bool:
+    """Есть ли в репозитории хотя бы один коммит (свежий `git init` — нет; откатывать к HEAD нечего)."""
+    return _git(repo, "rev-parse", "--verify", "-q", "HEAD", check=False).strip() != ""
+
+
 def prefix(repo: Path) -> str:
     """Путь папки внутри репозитория («Библиотека/»); пусто, если папка — корень репозитория."""
     return _git(repo, "rev-parse", "--show-prefix", check=False)

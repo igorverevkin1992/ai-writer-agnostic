@@ -85,7 +85,8 @@ def check_git(library: Path, *, commit: bool, require_clean: bool = True, action
 def _rollback(library: Path, ws: Workspace, error: BaseException) -> None:
     """Сбой после открытия сессии записи (2.6): библиотека — к HEAD, выгрузки — пересчитать."""
     try:
-        gitops.restore_library(library)
+        if gitops.has_commits(library):
+            gitops.restore_library(library)
     except RuntimeError as e:
         raise RuntimeError(
             f"изменение канона сорвалось ({error}), и откат библиотеки не удался: {e}. "
@@ -109,6 +110,7 @@ def canon_change(
     require_clean: bool = True,
     action: str = "изменение канона",
     confirm: Callable[[ChangeResult], bool] | None = None,
+    require_docs: bool = True,
 ) -> ChangeResult:
     """Единственный путь записи в библиотеку канона.
 
@@ -129,7 +131,8 @@ def canon_change(
     try:
         with guard.canon_write_session():
             writer()
-        hashes = exporter.run_export(library, ws.exports, ws.logs, ws.volume, ws.root)  # разбирает ВСЁ до записи выгрузок
+        hashes = exporter.run_export(library, ws.exports, ws.logs, ws.volume, ws.root,
+                                     require_docs=require_docs)  # разбирает ВСЁ до записи выгрузок
     except BaseException as e:
         if repo and clean_at_entry:
             _rollback(library, ws, e)

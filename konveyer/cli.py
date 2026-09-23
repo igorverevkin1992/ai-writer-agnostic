@@ -17,7 +17,7 @@ from pathlib import Path
 import typer
 
 from . import cancel, steps
-from .steps import canon, edits as edits_mod, overview, quality, setup, tact, volume as volume_steps
+from .steps import canon, edits as edits_mod, onboarding as onboarding_steps, overview, quality, setup, tact, volume as volume_steps
 from .steps.common import NEXT_STEP as NEXT_STEP  # noqa: F401 — совместимость: `from konveyer.cli import NEXT_STEP`
 from .steps.common import _chapter_flags_summary as _chapter_flags_summary  # noqa: F401
 from .steps.common import _ctx, _ensure_dir as _ensure_dir, _is_git_url as _is_git_url  # noqa: F401
@@ -524,6 +524,41 @@ def cmd_init(
 ) -> None:
     """Создать каркас рабочей области: конфиг.yaml, .env.example, папки (NFR-1)."""
     setup.init(demo=demo)
+
+
+@app.command("импорт", rich_help_panel="Настройка")
+@_friendly
+def cmd_import(source: str = typer.Argument(..., help="Файл, папка или .zip с материалами автора.")) -> None:
+    """Импортировать материалы в сырьё/: копии оригиналов, извлечения в Markdown, индекс (раздел 5.1)."""
+    try:
+        onboarding_steps.import_materials(source)
+    except FileNotFoundError as e:
+        _fail(str(e))
+
+
+@app.command("онбординг", rich_help_panel="Настройка")
+@_friendly
+def cmd_onboarding(
+    apply: bool = typer.Option(False, "--применить", "--apply", help="Применить решения: документы в библиотеку, манифест, коммит."),
+    model: bool = typer.Option(False, "--модель", "--model", help="Подключить модельный слой (роль «архивариус»)."),
+    decision: list[str] = typer.Option(None, "--решение", "-р", help="Решение автора: файл=принять|тип:<имя>|сырьё|отклонить|разбить."),
+    yes: bool = typer.Option(False, "--yes", "-y", "--да", help="Подтверждение без вопроса."),
+    no_commit: bool = typer.Option(False, "--без-коммита", help="Записать документы без git-коммита."),
+) -> None:
+    """Предложение «файл → тип» по сырью с предпросмотром разбора; с --применить — нормализация в библиотеку."""
+    try:
+        if apply:
+            if decision:
+                for d in decision:
+                    f, dec = d.split("=", 1)
+                    from .onboarding import propose as _propose
+
+                    _propose.set_decision(_ctx()[0], f.strip(), dec.strip())
+            onboarding_steps.apply_onboarding(yes, confirm=lambda q: typer.confirm(q), commit=not no_commit)
+        else:
+            onboarding_steps.propose_types(use_model=model, decisions=decision)
+    except (ValueError, KeyError, RuntimeError, PermissionError) as e:
+        _fail(str(e))
 
 
 project_app = typer.Typer(

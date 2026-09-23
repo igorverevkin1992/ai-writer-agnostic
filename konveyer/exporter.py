@@ -217,8 +217,9 @@ def _type_sequence(types: dict[str, catalog.TypeSpec]) -> list[catalog.TypeSpec]
     return first + rest
 
 
-def collect(library: Path, volume: int = 1, root: Path | None = None) -> Collected:
-    """Разбор всех документов тома по манифесту и каталогу типов. Ошибки собираются, ничего не пишется."""
+def collect(library: Path, volume: int = 1, root: Path | None = None, *, require_docs: bool = True) -> Collected:
+    """Разбор всех документов тома по манифесту и каталогу типов. Ошибки собираются, ничего не пишется.
+    `require_docs=False` — отсутствие обязательных для такта документов не ошибка (онбординг, FR-LC-1)."""
     root = project_root_of(library, root)
     types = catalog.load_types(root)
     man = manifest_mod.effective(root, library, types)
@@ -228,7 +229,7 @@ def collect(library: Path, volume: int = 1, root: Path | None = None) -> Collect
         if not spec.extractions:
             continue
         docs = man.docs(library, spec.name, volume, types)
-        if not docs and spec.required_for_tact:
+        if not docs and spec.required_for_tact and require_docs:
             expected = spec.default_name.format(том=volume) if spec.default_name else f"документ типа «{spec.name}»"
             col.errors.append(MarkupError(library / expected, 0,
                                           f"для тома {volume} нет документа типа «{spec.name}» (ожидается {expected}); "
@@ -573,10 +574,11 @@ def find_corpus_file(corpus_dir: Path, chapter: int, volume: int | None = None) 
 # ------------------------------------------------------------------ запуск
 
 
-def run_export(library: Path, exports_dir: Path, logs_dir: Path, volume: int = 1, root: Path | None = None) -> dict[str, str]:
+def run_export(library: Path, exports_dir: Path, logs_dir: Path, volume: int = 1, root: Path | None = None,
+               *, require_docs: bool = True) -> dict[str, str]:
     """Перегенерирует все выгрузки тома `volume` (FR-EX-1): сначала разбирается ВЕСЬ канон (включая план корпуса),
     и только затем пишутся файлы (FR-SC-5). Возвращает {файл: sha256}."""
-    col = collect(library, volume, root)
+    col = collect(library, volume, root, require_docs=require_docs)
     if col.errors:
         raise ExportErrors(col.errors)
     corpus_plan, old_index = _corpus_plan(library, exports_dir, root)
