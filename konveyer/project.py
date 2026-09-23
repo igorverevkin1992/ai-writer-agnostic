@@ -186,6 +186,21 @@ def create(spec: ProjectSpec) -> CreatedProject:
                     entries.append(LibraryEntry(файл=_doc_name(t, v), тип=t.name, том=v if t.per_volume else None))
         (library / "Проза").mkdir(exist_ok=True)
         entries.append(LibraryEntry(файл="Проза/", тип="проза"))
+        journal = next((d for d in docs if d.name.endswith("Журнал_решений.md")), None)
+        if journal is not None:
+            from datetime import date
+
+            from .config import load_config
+            from .paths import Workspace
+
+            cfg = load_config(Workspace(root))
+            roles = "; ".join(f"{r} — {m.provider}/{m.model}" for r, m in cfg.roles().items())
+            journal.write_text(
+                f"# 36. Журнал решений\n\n## Р-001\n\n- Дата: {date.today().strftime('%d.%m.%Y')}\n"
+                f"- Решение: тексты серии уходят только в объявленные в конфиг.yaml API, провайдеры работают в режиме "
+                f"без обучения на данных автора (FR-SC-10). Роли: {roles}.\n"
+                f"- Обоснование: приватность рукописи; смена провайдера или режима — новой записью журнала.\n",
+                encoding="utf-8")
 
     # манифест
     methodics = Methodics()

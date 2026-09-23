@@ -76,6 +76,7 @@ class Config(BaseModel):
     onboarding_model_layer: bool = True  # FR-ON-8: модельный слой онбординга по умолчанию
     onboarding_max_docs: int = 60        # R-9: лимит документов за прогон архивариуса
     classification_threshold: float = 0.35  # Д-11
+    author_pause_min: int = 120          # FR-CT-2: авторская пауза дольше порога — перерыв, не работа
 
     @model_validator(mode="before")
     @classmethod
@@ -104,6 +105,8 @@ class Config(BaseModel):
             d.setdefault("volume", d.pop("текущий_том"))
         if "лимит_окна" in d:
             d.setdefault("window_soft_limit_chars", d.pop("лимит_окна"))
+        if "пауза_автора_мин" in d:
+            d.setdefault("author_pause_min", d.pop("пауза_автора_мин"))
         return d
 
     @field_validator("volume")

@@ -296,6 +296,13 @@ def cmd_norms(
                   confirm=lambda q: typer.confirm(q), from_corpus=not files)
 
 
+@app.command("учёт", rich_help_panel="Обзор")
+@_friendly
+def cmd_accounting(volume: int | None = typer.Option(None, "--том", "--volume", help="Номер тома (по умолчанию — текущий).")) -> None:
+    """Стоимость и время по главам, тому и ролям; прогноз остатка тома (FR-CT-3, FR-EC-4)."""
+    overview.accounting(volume)
+
+
 @app.command("метрики", rich_help_panel="Качество и регрессия")
 @_friendly
 def cmd_metrics() -> None:

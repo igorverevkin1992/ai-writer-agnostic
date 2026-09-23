@@ -61,6 +61,12 @@ def _job_start(rec: dict) -> datetime | None:
 MAX_AUTHOR_PAUSE_S = 2 * 3600
 
 
+def set_pause_threshold(minutes: int | float) -> None:
+    """Порог перерыва из конфига (`пауза_автора_мин`, FR-CT-2); выставляется в `steps.common._ctx()`."""
+    global MAX_AUTHOR_PAUSE_S
+    MAX_AUTHOR_PAUSE_S = float(minutes) * 60
+
+
 def _is_break(t0: datetime, t1: datetime) -> bool:
     if (t1 - t0).total_seconds() > MAX_AUTHOR_PAUSE_S:
         return True

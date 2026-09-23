@@ -160,6 +160,10 @@ def doctor() -> None:
             item(c.ok, c.label, c.hint)
         if not checks:
             item(True, "минимальный комплект на месте, модули укомплектованы")
+    training = [r for r, m in cfg.roles().items() if not m.manual and not m.no_training]
+    item(not training, "провайдеры в режиме без обучения на данных автора (FR-SC-10)"
+         + (f": роли с обучением — {', '.join(training)}" if training else ""),
+         "включите режим без обучения у провайдера и отразите его в конфиге (режим_без_обучения) и журнале решений")
     manifest = ws.exports / "индекс.json"
     item(manifest.exists(), "выгрузки выгрузки/", "выполните `konveyer export`")
     providers = {m.provider for m in cfg.roles().values() if not m.manual}
@@ -211,3 +215,18 @@ def dashboard() -> Path:
     path = dashboard_mod.build_dashboard(ws)
     secho(f"Дашборд: {path}", fg=colors.GREEN)
     return path
+
+
+def accounting(volume: int | None = None) -> str:
+    """`konveyer учёт`: сводка стоимости и времени по тому (FR-CT-3), файл журналы/учёт_томN.md."""
+    from .. import accounting as accounting_mod
+
+    ws, cfg, lib = _ctx()
+    acc = accounting_mod.volume_account(ws, volume)
+    text = accounting_mod.render(acc, cfg)
+    echo(text)
+    path = accounting_mod.save(ws, acc, cfg)
+    for w in accounting_mod.warnings(ws, cfg):
+        secho(f"⚠ {w}", fg=colors.YELLOW)
+    echo(f"Сохранено: {path.relative_to(ws.root)}")
+    return text

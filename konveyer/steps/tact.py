@@ -96,6 +96,18 @@ def write(chapter: int, manual: bool = False, variants: int = 1, choose: str | N
     st.require("собрано", "сгенерировано")
     k = st.draft + 1
     labels = writer.variant_labels(variants)
+    from .. import accounting, pins
+
+    pin_warning = pins.warn_if_changed(ws, cfg, ("писатель",))
+    if pin_warning:
+        secho(f"⚠ {pin_warning}", fg=colors.YELLOW)
+    window_path = ws.window_path(chapter)
+    prompt_chars = len(window_path.read_text(encoding="utf-8")) if window_path.exists() else None
+    est = accounting.estimate_before(cfg.writer, prompt_chars) if prompt_chars and not manual else None
+    if est is not None:
+        echo(f"Оценка стоимости вызова Писателя: ≈ {est * max(1, variants):.3f} $ (по ценам конфига).")
+    for w in accounting.warnings(ws, cfg, chapter, prompt_chars, cfg.writer if not manual else None):
+        secho(f"⚠ {w}", fg=colors.YELLOW)
     if manual:
         missing = [writer.variant_path(ws, chapter, k, lb).name for lb in labels if not writer.variant_path(ws, chapter, k, lb).exists()]
         if missing:

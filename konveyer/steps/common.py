@@ -39,6 +39,9 @@ def _ctx() -> tuple[Workspace, Config, Path]:
     lib = library_dir(ws, cfg)
     guard.set_library_dir(lib)
     apilog.current_volume = ws.volume
+    from .. import timing
+
+    timing.set_pause_threshold(cfg.author_pause_min)
     return ws, cfg, lib
 
 

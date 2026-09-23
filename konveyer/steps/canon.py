@@ -172,26 +172,107 @@ def retest(chapter: int = 1, fix: bool = False) -> Path:
             )
             raise StepError(f"фиксация retest запрещена: {why} (FR-R3). Сначала `konveyer regress` с непустым корпусом.")
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+        from .. import pins
+
+        pins.record(ws, cfg, note=f"пере-тест {stamp}")
         guard.write_text(
             ws.root / "пере-тест" / stamp / "журнал_запись.md",
             f"# Запись в журнал решений (внесите в библиотеку через правку канона)\n\n"
             f"- Дата: {stamp}\n- Решение: пере-тест моделей, результаты приняты автором.\n"
             f"- Конфигурация: " + "; ".join(f"{r} — {m.provider}/{m.model}" for r, m in cfg.roles().items()) + "\n",
         )
-        secho(f"Черновик записи журнала: пере-тест/{stamp}/журнал_запись.md — внесите в журнал решений.", fg=colors.GREEN)
+        secho(f"Пины зафиксированы (журналы/{pins.PINS}). Черновик записи журнала: пере-тест/{stamp}/журнал_запись.md — "
+              f"внесите в журнал решений.", fg=colors.GREEN)
         return ws.root / "пере-тест" / stamp
     exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     dest = ws.root / "пере-тест" / stamp
     # 2.10: окно собирается во временную рабочую область — окно.md главы в работе не трогается
-    _compile_window_to(ws, cfg, lib, chapter, _ensure_dir(dest / "ПРОМПТ_раунд1.md"))
+    prompt_path = _compile_window_to(ws, cfg, lib, chapter, _ensure_dir(dest / "ПРОМПТ_раунд1.md"))
+    ran, skipped = retest_run_models(ws, cfg, chapter, prompt_path, dest)
+    summary = retest_summary(ws, chapter, dest)
+    guard.write_text(dest / "СВОДКА.md", summary)
     guard.write_text(
         dest / "РЕЗУЛЬТАТЫ.md",
-        "# Результаты раунда 1\n\nПоложите ответы моделей файлами `ответ_<модель>.md` в эту папку;\n"
-        "решение — записью в журнал решений (`konveyer пере-тест --зафиксировать`).\n",
+        "# Результаты раунда 1\n\n"
+        + (f"Прогнано автоматически: {', '.join(ran)}.\n" if ran else "Автоматический прогон не состоялся — ключей/моделей нет.\n")
+        + (f"Ручной прогон: {'; '.join(skipped)}.\n" if skipped else "")
+        + "Ответы других моделей положите файлами `ответ_<модель>.md` в эту папку и повторите `konveyer пере-тест` —\n"
+        "сводка метрик Э1 пересчитается (СВОДКА.md); решение — записью в журнал решений "
+        "(`konveyer пере-тест --зафиксировать`).\n",
     )
-    secho(f"Пакет пере-теста готов: {dest}/ (прогон по сторонним моделям — полуручной, Д-10).", fg=colors.GREEN)
+    secho(f"Пакет пере-теста готов: {dest}/ — сводка в СВОДКА.md" + (f"; ручной прогон: {len(skipped)}" if skipped else ""),
+          fg=colors.GREEN)
     return dest
+
+
+def retest_run_models(ws: Workspace, cfg: Config, chapter: int, prompt_path: Path, dest: Path) -> tuple[list[str], list[str]]:
+    """Прогон пакета по доступным моделям ролей (Писатель и все роли с отличающимся пином): ответ — `ответ_<модель>.md`;
+    без ключа/SDK — модель остаётся для ручного прогона (FR-RT-1)."""
+    from .. import adapters
+
+    prompt = prompt_path.read_text(encoding="utf-8")
+    seen: set[str] = set()
+    ran: list[str] = []
+    skipped: list[str] = []
+    for role, mc in cfg.roles().items():
+        if mc.manual or mc.model in seen:
+            continue
+        seen.add(mc.model)
+        target = dest / f"ответ_{mc.model}.md"
+        if target.exists():
+            ran.append(f"{mc.model} (уже есть)")
+            continue
+        try:
+            text = adapters.call_model(mc, cfg.api, "", prompt, ws.logs, role=f"пере-тест ({role})", chapter=chapter)
+        except adapters.ManualModeNeeded as e:
+            skipped.append(f"{mc.model} — {e.reason}")
+            continue
+        except Exception as e:  # noqa: BLE001 — сбой одной модели не срывает пакет
+            skipped.append(f"{mc.model} — {adapters.explain_error(e, role)}")
+            continue
+        guard.write_text(target, text)
+        ran.append(mc.model)
+    return ran, skipped
+
+
+def retest_summary(ws: Workspace, chapter: int, dest: Path) -> str:
+    """Сводная таблица метрик Э1 по ответам моделей (`ответ_<модель>.md`) и флаги Э2, если сохранены
+    (`флаги_<модель>.json`) — FR-RT-1."""
+    import json
+
+    from .. import verifier1
+
+    answers = sorted(dest.glob("ответ_*.md"))
+    lines = [f"# Сводка пере-теста · глава {chapter}", ""]
+    if not answers:
+        lines.append("Ответов моделей пока нет: положите `ответ_<модель>.md` в папку пакета.")
+        return "\n".join(lines) + "\n"
+    rows: dict[str, dict[str, str]] = {}
+    ids: list[str] = []
+    for a in answers:
+        model = a.stem[len("ответ_"):]
+        try:
+            checks = verifier1.analyze_text(ws, chapter, a.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            checks = []
+        rows[model] = {c.check_id: f"{c.actual} [{c.status}]" for c in checks}
+        for c in checks:
+            if c.check_id not in ids:
+                ids.append(c.check_id)
+        flags_path = dest / f"флаги_{model}.json"
+        if flags_path.exists():
+            try:
+                flags = json.loads(flags_path.read_text(encoding="utf-8"))
+                rows[model]["флаги Э2"] = str(len(flags)) if isinstance(flags, list) else "?"
+            except ValueError:
+                rows[model]["флаги Э2"] = "не разобраны"
+    cols = ids + (["флаги Э2"] if any("флаги Э2" in r for r in rows.values()) else [])
+    lines += ["| модель | " + " | ".join(cols) + " |", "|---|" + "---|" * len(cols)]
+    for model, r in rows.items():
+        lines.append(f"| {model} | " + " | ".join(r.get(c, "—") for c in cols) + " |")
+    lines += ["", "Флаги Э2: сохраните ответ Верификатора-2 по каждому тексту как `флаги_<модель>.json`, и столбец появится."]
+    return "\n".join(lines) + "\n"
 
 
 def _compile_window_to(ws: Workspace, cfg: Config, lib: Path, chapter: int, target: Path) -> Path:
