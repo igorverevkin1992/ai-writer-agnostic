@@ -296,6 +296,35 @@ def cmd_norms(
                   confirm=lambda q: typer.confirm(q), from_corpus=not files)
 
 
+@app.command("типы", rich_help_panel="Настройка проекта")
+@_friendly
+def cmd_types(
+    docs: bool = typer.Option(False, "--документация", "--docs", help="Записать «Соглашения типов» и «Реестр метрик» в папку."),
+    out: Path = typer.Option(Path("docs"), "--куда", "--out", help="Папка для сгенерированных документов."),
+) -> None:
+    """Каталог типов документов и модулей (с переопределениями проекта); --документация — сгенерировать docs/*.md (NFR-10)."""
+    from . import catalog, guard, metrics as metrics_mod
+    from .paths import find_workspace
+
+    root: Path | None
+    try:
+        root = find_workspace().root
+    except FileNotFoundError:
+        root = None
+    types, modules = catalog.load_types(root), catalog.load_modules(root)
+    if not docs:
+        for name in sorted(types):
+            t = types[name]
+            typer.echo(f"{name}: {t.purpose or '—'} · модули: {', '.join(t.feeds) or '—'}"
+                       + (" · обязателен для такта" if t.required_for_tact else ""))
+        typer.echo("модули: " + ", ".join(sorted(modules)))
+        return
+    out.mkdir(parents=True, exist_ok=True)
+    guard.write_text(out / "Соглашения_типов.md", catalog.documentation(types, modules))
+    guard.write_text(out / "Реестр_метрик.md", metrics_mod.documentation())
+    typer.echo(f"записано: {out / 'Соглашения_типов.md'}, {out / 'Реестр_метрик.md'}")
+
+
 @app.command("учёт", rich_help_panel="Обзор")
 @_friendly
 def cmd_accounting(volume: int | None = typer.Option(None, "--том", "--volume", help="Номер тома (по умолчанию — текущий).")) -> None:
@@ -632,7 +661,7 @@ SYNONYMS = {
     "snapshot": "снапшот", "doctor": "доктор", "rollback": "откат", "regress": "регрессия", "add-golden": "золотой",
     "dashboard": "дашборд", "run": "такт", "canon-commit": "канон-коммит", "library-split": "библиотека-отделить",
     "backup": "бэкап", "init": "начать", "нормы": "norms", "метрики": "metrics", "учёт": "accounting",
-    "импорт": "import", "онбординг": "onboarding", "пере-тест": "retest",
+    "импорт": "import", "онбординг": "onboarding", "пере-тест": "retest", "типы": "types",
 }
 
 

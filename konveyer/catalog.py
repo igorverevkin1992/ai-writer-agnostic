@@ -186,7 +186,7 @@ def documentation(types: dict[str, TypeSpec], modules: dict[str, ModuleSpec]) ->
                 if kind == "таблица":
                     cols = ", ".join(f"{k} ({'/'.join(v.get('синонимы', [k])) if isinstance(v, dict) else v})"
                                      for k, v in (f.get("колонки") or {}).items())
-                    lines.append(f"  - таблица" + (f" в секции «{f['секция']}»" if f.get("секция") else "") + f": колонки {cols}")
+                    lines.append("  - таблица" + (f" в секции «{f['секция']}»" if f.get("секция") else "") + f": колонки {cols}")
                 elif kind == "плагин":
                     lines.append(f"  - плагин-парсер проекта `{f.get('функция')}`")
                 else:

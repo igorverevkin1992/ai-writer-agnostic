@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from konveyer import catalog, exporter, lint, manifest as manifest_mod
+from konveyer import catalog, lint, manifest as manifest_mod
 from konveyer.config import Config, ModelConfig
 
 PLAN = "23_Поглавник_Том1.md"

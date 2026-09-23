@@ -8,7 +8,7 @@ from pathlib import Path
 from konveyer import declparse
 
 PROFILE = Path(str(resources.files("konveyer").joinpath("data/профили/угар")))
-LIBRARY_ENV = "KONVEYER_ЭТАЛОН"  # путь к библиотеке УГАР для миграционных тестов (FR-MG-*)
+LIBRARY_ENV = "KONVEYER_ETALON"  # путь к библиотеке УГАР для миграционных тестов (FR-MG-*)
 
 
 def plugin(name: str = "угар"):

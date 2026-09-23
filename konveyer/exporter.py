@@ -300,7 +300,7 @@ def _after_type(name: str, col: Collected, volume: int) -> None:
         col.known_names |= {d.name for d in col.data["dossiers.json"] if d.name}
     elif name == "повествование":
         for n in col.data["narration.json"]:
-            n.focal_names = _focal_names(n.focals_text)
+            n.focal_names = n.focal_names or _focal_names(n.focals_text)
             col.known_names |= set(n.focal_names)
 
 

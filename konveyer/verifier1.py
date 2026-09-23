@@ -16,7 +16,7 @@ from . import exporter, guard, lang, metrics, textutils
 from .paths import Workspace
 from .schemas import Brief, CheckResult, DiffReport, Edit, Norm, StopRule, Verdict
 
-from .metrics import (  # noqa: E402 — совместимость: прежние имена помощников Э1
+from .metrics import (  # noqa: E402, F401 — совместимость: прежние имена помощников Э1 (реэкспорт)
     MAX_QUOTES, MetricContext, corpus_scope, corridor as _corridor, find_items as _find_items,
     matching_runs as _matching_runs, quote_sentences as _quote_sentences, status_of as _status,
     stoplist_applies as _stoplist_applies, strip_prose_tail as _strip_prose_tail,

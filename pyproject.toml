@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "konveyer"
-version = "1.6.0"
-description = "КОНВЕЙЕР — производственный конвейер главы книжной серии (ТЗ v1.0)"
+version = "2.0.0"
+description = "КОНВЕЙЕР — универсальный производственный конвейер книжной серии (ТЗ v1.0)"
 requires-python = ">=3.11"
 dependencies = [
     "typer>=0.12",
@@ -28,7 +28,7 @@ konveyer = "konveyer.cli:app"
 packages = ["konveyer"]
 
 [tool.setuptools.package-data]
-konveyer = ["data/**/*", "шаблоны/*"]
+konveyer = ["data/**/*", "шаблоны/*", "типы/*.yaml", "модули/**/*", "методики/**/*", "языки/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

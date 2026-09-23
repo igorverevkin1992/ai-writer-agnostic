@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -13,7 +12,7 @@ from konveyer import adapters, apilog, calibrate, compiler, exporter, gitops, la
 from konveyer.cli import app
 from konveyer.config import Config
 from konveyer.fsm import ChapterState
-from konveyer.schemas import Brief, Norm
+from konveyer.schemas import Brief
 
 runner = CliRunner()
 SAMPLE = ("Поезд ушёл без него. Ветер гнал по перрону обрывки газет, и старуха у кассы прятала лицо в платок. "
@@ -93,7 +92,7 @@ def test_метрики_калибровка(ws, library, tmp_path):
     assert res.commit
     style = (library / "02_Стиль_и_голос.md").read_text(encoding="utf-8")
     n = pr.corridors["объём_главы"]
-    assert f"| объём_главы |" in style and f"| {n.min:g} | {n.max:g} |" in style
+    assert "| объём_главы |" in style and f"| {n.min:g} | {n.max:g} |" in style
     journal = (library / "36_Журнал_решений.md").read_text(encoding="utf-8")
     assert "калиброваны" in journal and "## Р-0" in journal
     assert exporter.load_norms(ws.exports)["объём_главы"].min == n.min  # выгрузки пересобраны

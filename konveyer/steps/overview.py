@@ -117,7 +117,6 @@ def find(query: str) -> dict:
 def doctor() -> None:
     """Диагностика установки и готовности конвейера (NFR-1)."""
     import importlib.util
-    import os
 
     ws, cfg, lib = _ctx()
 

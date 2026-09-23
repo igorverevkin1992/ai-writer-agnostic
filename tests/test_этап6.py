@@ -1,3 +1,4 @@
+# ruff: noqa: F811 — фикстура `panel` импортируется из tests.test_panel и передаётся тестам параметром
 """Этап 6 (раздел 8 ТЗ): командная строка (разделы справки, коды возврата, русские имена и синонимы),
 панель (петлевой интерфейс, заголовок, занятость, конфликт версий, автономность, ошибки без путей),
 локальный API (виды «Проект», «Онбординг», «Журналы», «Регрессия»), паритет CLI и панели."""
@@ -6,7 +7,6 @@ from __future__ import annotations
 
 import json
 import re
-import threading
 import urllib.error
 import urllib.request
 from importlib import resources
@@ -17,7 +17,6 @@ from typer.testing import CliRunner
 
 from konveyer import server
 from konveyer.cli import SYNONYMS, app
-from konveyer.config import Config
 from konveyer.fsm import ChapterState
 from tests.test_panel import _get, _post, _wait_job, panel  # noqa: F401 — фикстура живого сервера
 
@@ -186,7 +185,7 @@ def test_панель_вид_журналы_и_регрессия(panel):
 
 
 # команды, которые по смыслу остаются в терминале: создание проекта, установка, сама панель, разбор произвольного файла
-CLI_ONLY = {"init", "начать", "panel", "панель", "проект", "check", "проверка", "библиотека-отделить", "library-split",
+CLI_ONLY = {"init", "начать", "panel", "панель", "проект", "типы", "types", "check", "проверка", "библиотека-отделить", "library-split",
             "dashboard", "дашборд", "нормы", "norms", "метрики", "metrics", "золотой", "add-golden", "log", "журнал",
             "status", "статус", "find", "найти", "edits", "правки", "diff", "дифф"}
 # CLI ↔ панель: команда → действие панели (фоновая команда или POST-путь)

@@ -21,7 +21,6 @@ import re
 from pathlib import Path
 
 from konveyer import mdparse
-from konveyer import names as _names
 from konveyer.mdparse import MarkupError, cell
 from konveyer.schemas import (
     Act, Arc, Brief, ChronicleEvent, ChronologyEvent, CircleStep, ContinuityEvent, DocumentSpec, Dose, Dossier,
@@ -1303,3 +1302,136 @@ def parse_arcs(path: Path) -> list[Arc]:
             ))
     return arcs
 
+
+
+# ------------------------------------------------------------------ обёртки для форматов «плагин» профиля УГАР
+# Движок вызывает функцию формата с путём документа и (по сигнатуре) `known_names`, `library`, `ctx`, `volume`;
+# всё знание о раскладке библиотеки УГАРа (реестр информрежима как источник брифов, тайн и закладок; журнал
+# как источник словаря усилителей) живёт здесь, в профиле, а не в движке (П-1).
+
+
+def _registry_of(library: Path) -> Path | None:
+    cands = sorted(library.glob("*Реестр_информационного_режима*.md")) or sorted(library.glob("УГАР_Том*_Реестр*.md"))
+    return cands[0] if cands else None
+
+
+def _journal_of(library: Path) -> Path | None:
+    cands = sorted(library.glob("36_*.md"))
+    return cands[0] if cands else None
+
+
+def _dossier_files(library: Path) -> list[Path]:
+    return [p for p in sorted((library / "Досье").glob("*.md")) if "# Досье" in p.read_text(encoding="utf-8")[:200]]
+
+
+def parse_norms_ugar(path: Path, library: Path) -> dict[str, Norm]:
+    """Нормы стилевого регламента УГАРа: таблица §5, иначе числовые ориентиры прозой (Р-015) + порог
+    усилителей из журнала решений (Р-016)."""
+    norms: dict[str, Norm] = {}
+    try:
+        table = mdparse.require_table(path, ["id", "мин", "макс"], section_pattern=r"§\s*5")
+        for row in table.rows:
+            norm_id = cell(row, "id")
+            if norm_id:
+                norms[norm_id] = Norm(min=mdparse.parse_number(cell(row, "мин")), max=mdparse.parse_number(cell(row, "макс")),
+                                      brak=mdparse.parse_number(cell(row, "брак")), unit=cell(row, "единиц"), source=f"{path.name} §5")
+    except MarkupError:
+        norms = parse_norms_prose(path) or {}
+    journal = _journal_of(library)
+    if "усилители_на_1000" not in norms and journal is not None:
+        found = parse_intensifier_norm(journal)
+        if found:
+            norms["усилители_на_1000"] = found[1]
+    # параметры проверок из ТЗ эталона (§5.4): длина совпадения с окном и межглавного повтора — до тех пор, пока
+    # канон серии не задаст их сам в таблице норм
+    norms.setdefault("утечка_нграмма", Norm(min=6, max=6, unit="слов", source="ТЗ «Конвейер УГАР» §5.4 (профиль)"))
+    norms.setdefault("повтор_нграмма", Norm(min=5, max=5, unit="слов", source="ТЗ «Конвейер УГАР» §5.4 (профиль)"))
+    return norms
+
+
+def parse_intensifiers_ugar(path: Path, library: Path) -> list[StopRule]:
+    """Словарь наречий-усилителей: таблица «Усилители» в регламенте, иначе текст решения Р-016 в журнале."""
+    try:
+        t = mdparse.require_table(path, ["слово"], section_pattern=r"[Уу]силител")
+        words = [cell(row, "слово") for row in t.rows if cell(row, "слово")]
+    except MarkupError:
+        journal = _journal_of(library)
+        found = parse_intensifier_norm(journal) if journal is not None else None
+        words = found[0] if found else []
+    if not words:
+        return []
+    return [StopRule(scope="0.3", rule_id="усилители", items=words, applies_to={"all": True}, action="флаг", kind="усилитель")]
+
+
+def parse_stoplists_ugar(path: Path) -> list[StopRule]:
+    """03: «Персональные запреты линий» (стоп-листы фокалов) + прозаические запреты линий для Э2."""
+    rules = parse_focal_stoplists(path)
+    rules.extend(parse_line_prose_bans(path))
+    return rules
+
+
+def parse_narration_ugar(path: Path) -> list:
+    """Общие законы фокализации и таблица фокалов — как у движка (секции), фокалы — для известных имён."""
+    from konveyer.schemas import NarrationRules
+
+    sections = mdparse.parse_sections(path)
+    laws = next((s.body for s in sections if re.search(r"[Оо]бщие законы|[Пп]равила", s.title)), "")
+    focals = next((s.body for s in sections if re.search(r"[Фф]окал", s.title)), "")
+    # имена линий (таблица фокалов и персональные запреты) — известные имена для сцен и карточек досье
+    return [NarrationRules(laws=laws, focals_text=focals, focal_names=sorted(focal_names(path)), file=path.name)]
+
+
+def parse_briefs_ugar(path: Path, known_names: set[str], library: Path) -> list[Brief]:
+    """Брифы глав тома из реестра информрежима (постраничная сетка), обогащённые карточками сцен поглавника
+    и присутствием персонажей из досье («Т.1: … гл. 41»)."""
+    known = set(known_names) | {n for p in sorted(library.glob("03_*.md")) for n in focal_names(p)}
+    briefs = parse_registry_briefs(path, known)
+    for p23 in sorted(library.glob("23_*.md")):
+        enrich_from_poglavnik(briefs, p23, known)
+    enrich_from_dossiers(briefs, _dossier_files(library), known)
+    return briefs
+
+
+def parse_poglavnik_ugar(path: Path) -> list:
+    """Поглавник УГАРа — карточки сцен, а не секции «## Глава N»: брифы даёт реестр (см. parse_briefs_ugar)."""
+    return []
+
+
+def parse_secrets_ugar(path: Path, known_names: set[str], ctx) -> list[InfoBan]:
+    """Реестр тайн тома + строки «НЕ упоминается в томе N» (§7) — запреты информрежима."""
+    matrix = list((ctx.params.get("exports") or {}).get("matrix.json") or [])
+    return parse_secrets(path, set(known_names), matrix) + parse_plant_bans(path)
+
+
+def parse_plants_ugar(path: Path, library: Path) -> list[Plant]:
+    """§7 «Реестр дальних закладок» реестра + закладки из карточек сцен поглавника."""
+    plants = parse_plants_registry(path)
+    _, reg_volume = registry_year_volume(path)
+    for p23 in sorted(library.glob("23_*.md")):
+        plants.extend(parse_poglavnik_plants(p23, reg_volume, plants))
+    return plants
+
+
+def parse_dossier_ugar(path: Path, known_names: set[str], library: Path) -> list[Dossier]:
+    """Карточки «# Досье 1.3: ИМЯ» одного файла (по нескольку в файле); файлы без карточек — пусто."""
+    if "# Досье" not in path.read_text(encoding="utf-8")[:200]:
+        return []
+    files = _dossier_files(library)
+    known = set(known_names) | dossier_names(files, set(known_names))
+    return parse_dossiers_real([path], known)
+
+
+def parse_chronology_ugar(path: Path) -> list[ChronologyEvent]:
+    return parse_chronology(path)
+
+
+def parse_chronicle_ugar(path: Path) -> list[ChronicleEvent]:
+    return parse_chronicle(path)
+
+
+def parse_continuity_ugar(path: Path) -> list[ContinuityEvent]:
+    return parse_continuity_bullets(path)
+
+
+def parse_anachronisms_ugar(path: Path) -> list[StopRule]:
+    return parse_anachronisms(path)

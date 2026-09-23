@@ -16,7 +16,7 @@ from typer.testing import CliRunner
 from konveyer import catalog, exporter, gitops, manifest as manifest_mod, project
 from konveyer.cli import app
 from konveyer.config import Config
-from konveyer.onboarding import apply as apply_mod, classify, extract, importer, normalize, propose, report
+from konveyer.onboarding import apply as apply_mod, classify, importer, normalize, propose, report
 from konveyer.paths import Workspace
 
 DEMO = Path(__file__).resolve().parent.parent / "konveyer" / "data" / "демо"
