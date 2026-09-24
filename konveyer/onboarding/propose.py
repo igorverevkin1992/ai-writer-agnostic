@@ -121,6 +121,8 @@ def _closest(field: str, spec: dict, headers: list[str]) -> str | None:
     cands = [field] + [str(s) for s in (spec.get("синонимы") or [])] if isinstance(spec, dict) else [field]
     for h in headers:
         hl = h.lower()
+        if len(hl) < 3:
+            continue  # «a», «№»: слишком коротко, чтобы угадывать
         for c in cands:
             c = c.lower()
             if len(c) >= 4 and (c[:4] in hl or hl[:4] in c):

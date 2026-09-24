@@ -47,11 +47,12 @@ def build(ws: Workspace, library: Path) -> str:
         if e.статус != "в_каноне" or not e.документ_канона:
             continue
         n_canon += 1
-        spec = types.get(e.тип or "")
         docs = e.документы_канона or [e.документ_канона]
         counts = []
         for d in docs:
             path = library / d
+            entry = man.entry_for(d)
+            spec = types.get(entry.тип if entry is not None else (e.тип or ""))
             counts.append(str(records_in(path, spec, root, volume)) if spec and path.exists() else "—")
         extra = " · ⚠ источник исчез" if e.источник_исчез else ""
         lines.append(f"| {e.файл}{extra} | {e.тип or '—'} | {', '.join(docs)} | {', '.join(counts)} | {_quality(e)} |")

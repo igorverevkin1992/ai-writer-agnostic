@@ -326,14 +326,19 @@ def apply(ws: Workspace, cfg: Config, library: Path, *, author_confirmed: bool, 
                 docs.append(doc)
             if remainder.strip():
                 rspec = types.get(pr.тип)
-                if rspec is not None:
+                norm = normalize.normalize(remainder, rspec, source=source_mark, mapping=mapping,
+                                           title=propose.display_stem(pr.файл), questions=pr.вопросы) if rspec else None
+                readable = rspec is not None and (not rspec.extractions or not check_readable(
+                    ws, rspec, norm.text, pr.файл + "~остаток", volume or man.проект.текущий_том).error)
+                if rspec is not None and readable:
                     doc = propose._proposed_name(rspec, pr.файл, _volume_for(rspec, pr, man), taken, reusable)
                     taken.add(doc)
-                    norm = normalize.normalize(remainder, rspec, source=source_mark, mapping=mapping,
-                                               title=propose.display_stem(pr.файл), questions=pr.вопросы)
                     plan.append(_Item([pr], [raw], rspec, doc, norm.text, True))
                 else:
-                    remainders.append((raw, remainder))  # без типа — отдельным сырьём, ничего не теряется (П-7)
+                    # без типа или машина не читает — отдельным сырьём с вопросом, ничего не теряется (П-7)
+                    remainders.append((raw, remainder))
+                    result.questions.append(f"{pr.файл}: остаток после разбиения ({', '.join(pr.остаток) or 'вступление'}) "
+                                            f"оставлен сырьём — решение по нему в следующем `konveyer онбординг`")
             continue
         parts = sorted(glued.get(pr.файл, []), key=lambda p: propose._sort_key(p.файл))
         text = _glue_text(root, pr, parts) if parts else src_path.read_text(encoding="utf-8", errors="replace")
@@ -485,7 +490,12 @@ def apply(ws: Workspace, cfg: Config, library: Path, *, author_confirmed: bool, 
 
 def _link(raw: importer.RawEntry, spec: catalog.TypeSpec, docs: list[str]) -> None:
     """Обратная связь сырья с каноном (FR-ON-18): все документы, в которые ушёл файл; первый — в документ_канона."""
-    raw.статус, raw.тип = "в_каноне", spec.name
+    raw.статус = "в_каноне"
+    # у разбитого файла несколько типов — перечисляются через запятую в порядке частей
+    known = [t.strip() for t in (raw.тип or "").split(",") if t.strip()] if raw.документы_канона else []
+    if spec.name not in known:
+        known.append(spec.name)
+    raw.тип = ", ".join(known)
     for d in docs:
         if d not in raw.документы_канона:
             raw.документы_канона.append(d)
