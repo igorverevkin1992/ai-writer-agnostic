@@ -16,9 +16,10 @@ from pathlib import Path
 import yaml
 
 ABBR_MASK = "\x01"   # непечатаемый маркер точки внутри сокращения
-DOC_START = "→ ДОКУМЕНТ"
+DOC_START = "→ ДОКУМЕНТ"          # маркеры документа-вставки по умолчанию (язык переопределяет: `документ_начало/конец`)
 DOC_END = "← КОНЕЦ ДОКУМЕНТА"
 DEFAULT = "ru"
+LETTER = "[^\\W\\d_]"                    # буква любого алфавита (язык переопределяет: `буква`)
 
 
 @dataclass
@@ -39,6 +40,13 @@ class Language:
     inflections: str
     min_stem: int
     fleeting_re: re.Pattern | None
+    letter: str = LETTER                          # класс букв (границы слов и сокращений)
+    abbr_context: str = r"[0-9а-яёa-z]"          # перед чем точка контекстного сокращения не завершает фразу
+    continuation_re: re.Pattern | None = None     # что после терминатора означает продолжение фразы
+    initial_not_after_re: re.Pattern | None = None  # начало слова перед одиночной заглавной с точкой — это не инициал
+    doc_start: str = DOC_START
+    doc_end: str = DOC_END
+    paragraph_per_line: bool = True               # текст без пустых строк: каждая строка — абзац
     raw: dict = field(default_factory=dict)
 
     # ---------------------------------------------------------------- слова
@@ -61,13 +69,18 @@ class Language:
 
     # ---------------------------------------------------------------- абзацы и предложения
 
-    @staticmethod
-    def paragraphs(text: str) -> list[str]:
-        """Абзацы: блоки строк, разделённые пустыми строками; переносы внутри блока — пробел."""
+    def paragraphs(self, text: str) -> list[str]:
+        """Абзацы: блоки строк, разделённые пустыми строками; переносы внутри блока — пробел. Строка, начинающаяся
+        тире реплики, всегда открывает абзац; текст без единой пустой строки (обычный вывод редакторов и моделей)
+        читается построчно (`абзац_по_строке`)."""
+        lines = [ln.strip() for ln in text.splitlines()]
+        per_line = self.paragraph_per_line and len([ln for ln in lines if ln]) > 1 and all(lines)
         result: list[str] = []
         block: list[str] = []
-        for line in text.splitlines() + [""]:
-            stripped = line.strip()
+        for stripped in lines + [""]:
+            if stripped and (per_line or stripped.startswith(self.dash_marks)) and block:
+                result.append(" ".join(block))
+                block = []
             if stripped:
                 block.append(stripped)
             elif block:
@@ -78,15 +91,33 @@ class Language:
     def _mask_abbreviations(self, text: str, extra: list[tuple[str, bool]] | None = None) -> str:
         abbrs = sorted({**dict(self.abbreviations), **dict(extra or [])}.items(), key=lambda kv: len(kv[0]), reverse=True)
         for abbr, contextual in abbrs:
-            pattern = r"(?<![А-Яа-яЁёA-Za-z])" + re.escape(abbr)
+            # первая буква — в любом регистре («ул. Ленина» и «Ул. Ленина» в начале фразы)
+            body = (f"[{abbr[0].upper()}{abbr[0].lower()}]" if abbr[0].isalpha() else re.escape(abbr[0])) + re.escape(abbr[1:])
+            pattern = rf"(?<!{self.letter})" + body
             if contextual:
-                pattern += r"(?=\s*[0-9а-яёa-z])"
-            text = re.sub(pattern, abbr.replace(".", ABBR_MASK), text)
+                # контекстное («г.», «с.», «им.»): точка не завершает фразу перед цифрой/строчной («1995 г. в мае») либо
+                # когда сокращение не идёт за числом («в г. Москве», «завод им. Ленина»); «1995 г. Москва» — конец фразы
+                pattern = rf"(?<!{self.letter})(?:(?<!\d)(?<!\d\s){body}|{body}(?=\s*{self.abbr_context}))"
+            text = re.sub(pattern, lambda m: m.group(0).replace(".", ABBR_MASK), text)
         if self.spaced_abbr_re is not None:
             text = self.spaced_abbr_re.sub(lambda m: m.group(0).replace(".", ABBR_MASK), text)
         if self.initial_re is not None:
-            text = self.initial_re.sub(lambda m: m.group(1) + ABBR_MASK, text)
+            text = self.initial_re.sub(self._mask_initial, text)
         return text
+
+    def _mask_initial(self, m: re.Match) -> str:
+        """Одиночная заглавная с точкой — инициал, если за ней идёт ещё инициал («А. Х.») или перед ней нет слова
+        со строчной («группа А. Потом…» — конец фразы; «Петров А. Х.», «А. К. Иванов» — инициалы)."""
+        text = m.string
+        if self.initial_not_after_re is not None and self.initial_re is not None:
+            nxt = m.end()
+            while nxt < len(text) and text[nxt].isspace():
+                nxt += 1
+            if not self.initial_re.match(text, nxt):
+                prev = re.search(r"(\S+)\s*$", text[: m.start()])
+                if prev and self.initial_not_after_re.match(prev.group(1)):
+                    return m.group(0)
+        return m.group(1) + ABBR_MASK
 
     def split_sentences(self, text: str, extra_abbr: Path | list[tuple[str, bool]] | None = None) -> list[str]:
         """Деление на предложения (Д-2): терминатор + закрывающие кавычки; сокращения, инициалы и одинокие
@@ -102,6 +133,8 @@ class Language:
                 end = m.end()
                 if end < len(para) and not para[end].isspace():
                     continue  # терминатор внутри слова (десятичные числа)
+                if self.continuation_re is not None and self.continuation_re.match(para, end):
+                    continue  # после терминатора — строчная («кивнул… потом», «— Стой! — крикнул»): фраза продолжается
                 chunk = para[start:end].strip()
                 if chunk:
                     sentences.append(chunk.replace(ABBR_MASK, "."))
@@ -117,16 +150,18 @@ class Language:
         return para.lstrip().startswith(self.dash_marks)
 
     def narration_only(self, text: str) -> str:
-        """Повествование без реплик персонажей: абзац с тире — реплика отбрасывается до атрибуции
-        («— Сынок, — сказал сосед, и она промолчала» → «и она промолчала»); без атрибуции — целиком."""
+        """Повествование без реплик персонажей: в абзаце с тире реплики и авторская речь чередуются по атрибуциям
+        («— Иди, — сказал он. — Отец ждёт.» → «сказал он»; «— Сынок, — сказал сосед, — иди домой.» → «сказал сосед»);
+        абзац-реплика без атрибуции отбрасывается целиком."""
         kept: list[str] = []
         for para in self.paragraphs(text):
             if not self.is_dialogue_paragraph(para):
                 kept.append(para)
                 continue
-            m = self.speech_attr_re.search(para) if self.speech_attr_re is not None else None
-            if m:
-                kept.append(para[m.end():].strip())
+            if self.speech_attr_re is None:
+                continue
+            segments = self.speech_attr_re.split(para)  # реплика, авторская речь, реплика, …
+            kept.extend(seg.strip() for seg in segments[1::2])
         return "\n\n".join(k for k in kept if k)
 
     # ---------------------------------------------------------------- основы слов
@@ -161,7 +196,7 @@ class Language:
         for w in item.split():
             alts = "|".join(self._unnormalized(re.escape(s)) for s in self.stems(w))
             parts.append(rf"(?:{alts})(?:{inflections})?")
-        return re.compile(r"(?<![А-Яа-яЁёA-Za-z])" + r"\s+".join(parts) + r"(?![А-Яа-яЁёA-Za-z])", re.IGNORECASE)
+        return re.compile(rf"(?<!{self.letter})" + r"\s+".join(parts) + rf"(?!{self.letter})", re.IGNORECASE)
 
     # ---------------------------------------------------------------- лексемы и вставки
 
@@ -171,21 +206,24 @@ class Language:
     def lexemes_raw(self, name: str) -> list[str]:
         return list(self.lexeme_sets.get(name) or [])
 
-    @staticmethod
-    def strip_document_inserts(text: str) -> str:
+    def strip_document_inserts(self, text: str) -> str:
+        """Текст без документов-вставок (блоки между маркерами `документ_начало` … `документ_конец`)."""
         out: list[str] = []
         inside = False
         for line in text.splitlines():
             s = line.strip()
-            if s.startswith(DOC_START):
+            if s.startswith(self.doc_start):
                 inside = True
                 continue
-            if s.startswith(DOC_END):
+            if s.startswith(self.doc_end):
                 inside = False
                 continue
             if not inside:
                 out.append(line)
         return "\n".join(out)
+
+    def has_document_insert(self, text: str) -> bool:
+        return self.doc_start in text and self.doc_end in text
 
 
 # ------------------------------------------------------------------ загрузка
@@ -241,6 +279,13 @@ def _from_data(data: dict) -> Language:
         inflections=str(stems.get("флексии") or ""),
         min_stem=int(stems.get("мин_основа") or 3),
         fleeting_re=re.compile(stems["беглая_гласная"]) if stems.get("беглая_гласная") else None,
+        letter=str(data.get("буква") or LETTER),
+        abbr_context=str(data.get("контекст_сокращения_перед") or r"[0-9а-яёa-z]"),
+        continuation_re=re.compile(data["продолжение_фразы"]) if data.get("продолжение_фразы") else None,
+        initial_not_after_re=re.compile(data["инициал_не_после"]) if data.get("инициал_не_после") else None,
+        doc_start=str(data.get("документ_начало") or DOC_START),
+        doc_end=str(data.get("документ_конец") or DOC_END),
+        paragraph_per_line=bool(data.get("абзац_по_строке", True)),
         raw=data,
     )
 

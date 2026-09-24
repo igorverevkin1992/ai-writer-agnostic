@@ -144,3 +144,72 @@ def test_стоп_лист_ловит_слова_с_ё():
     assert metrics.find_items("Тётя серьёзно посмотрела.", ["тётя", "серьёзно"], L) == ["тётя", "серьёзно"]
     assert metrics.quote_sentences(["Чёрт возьми.", "Тихо."], {"черт"}, L) == ["Чёрт возьми."]
     assert not L.item_pattern("чёрт").search("чертёж")
+
+
+def test_сплиттер_продолжение_фразы_и_сокращения():
+    """Терминатор перед строчной буквой — не граница; контекстное сокращение не после числа; сокращение
+    в начале фразы; инициалы против одиночной заглавной (FR-V1-3)."""
+    L = lang.get()
+    assert L.split_sentences("Он кивнул… потом отвернулся. Всё.") == ["Он кивнул… потом отвернулся.", "Всё."]
+    assert L.split_sentences("Это было... давно. Да.") == ["Это было... давно.", "Да."]
+    assert L.split_sentences("— Стой! — крикнул он. Она замерла.") == ["— Стой! — крикнул он.", "Она замерла."]
+    assert L.split_sentences("Он жил в г. Москве. Потом уехал.") == ["Он жил в г. Москве.", "Потом уехал."]
+    assert L.split_sentences("Это было в 1995 г. Москва спала.") == ["Это было в 1995 г.", "Москва спала."]
+    assert L.split_sentences("Было в 1995 г. в мае.") == ["Было в 1995 г. в мае."]
+    assert L.split_sentences("Завод им. Ленина стоял. Всё.") == ["Завод им. Ленина стоял.", "Всё."]
+    assert L.split_sentences("Ул. Ленина. Конец.") == ["Ул. Ленина.", "Конец."]
+    assert L.split_sentences("Потом группа Б. Конец.") == ["Потом группа Б.", "Конец."]
+    assert L.split_sentences("Лемм А. Х. подписал и вышел.") == ["Лемм А. Х. подписал и вышел."]
+    assert L.split_sentences("Цена 3.5 рубля. Ладно.") == ["Цена 3.5 рубля.", "Ладно."]
+
+
+def test_речь_персонажа_после_атрибуции_не_повествование(ws):
+    """После атрибуции реплика продолжается — она не речь повествователя, стоп-лист линии её не ловит (FR-V1-4)."""
+    L = lang.get()
+    assert L.narration_only("— Иди, — сказал он. — Отец ждёт тебя, сынок.") == "сказал он"
+    assert L.narration_only("— Сынок, — сказал сосед, — иди домой, отец ждёт.") == "сказал сосед"
+    assert L.narration_only("— Иди, — сказал он. Она вздохнула. — Ладно.") == "сказал он. Она вздохнула"
+    assert L.narration_only("— Сынок!\n\nОн промолчал.") == "Он промолчал."
+    from konveyer.schemas import StopRule
+
+    rules = [StopRule(scope="0.3", rule_id="Л-1", items=["отец"], applies_to={"focal": "Штерн"}, action="запрет")]
+    brief = Brief(chapter=1, focal="Штерн")
+    text = "Штерн вошёл.\n\n— Иди, — сказал Бугаев. — Отец ждёт тебя, сынок.\n\nШтерн промолчал."
+    checks = {c.check_id: c for c in verifier1.analyze(text, "", brief, {}, rules)}
+    assert checks["V1.5_стоп_лексика"].status == "PASS"
+    # цитаты нарушения — из повествования, а не из реплик персонажей
+    text2 = "— Отец ждёт, — сказал сосед.\n\nОн вспомнил отца и промолчал."
+    c = {c.check_id: c for c in verifier1.analyze(text2, "", brief, {}, rules)}["V1.5_стоп_лексика"]
+    assert c.status == "FLAG" and c.quotes == ["Он вспомнил отца и промолчал."]
+
+
+def test_абзацы_по_строкам_и_тире():
+    """Текст с одинарными переносами: строка с тире реплики — абзац; без пустых строк — абзац на строку (FR-V1-1)."""
+    L = lang.get()
+    assert L.paragraphs("Он шёл.\n— Стой!\nОн встал.") == ["Он шёл.", "— Стой!", "Он встал."]
+    assert L.paragraphs("Он шёл\nдолго.\n\n— Стой!\nОн встал.") == ["Он шёл долго.", "— Стой! Он встал."]
+    assert L.paragraphs("Он шёл\nдолго.\n\nВсё.") == ["Он шёл долго.", "Всё."]
+    text = "Он шёл.\n— Стой!\n— Иду.\nОн встал."
+    checks = {c.check_id: c for c in verifier1.analyze(text, "", Brief(chapter=0), {"доля_диалога": Norm(min=0, max=1)}, [])}
+    assert checks["V1.9a_доля_диалога"].actual == "0.5"
+
+
+def test_основы_с_мягким_знаком():
+    L = lang.get()
+    assert L.stems("сеть") == ["сет"]
+    for form in ("сеть", "сети", "сетью", "сетей"):
+        assert L.item_pattern("сеть").search(f"в {form} города"), form
+    assert not L.item_pattern("сеть").search("сетка") and not L.item_pattern("сын").search("сынок")
+
+
+def test_язык_маркеры_документа_и_буквы_из_yaml(tmp_path):
+    """Классы букв и маркеры документа-вставки — данные языка, а не константы кода (FR-V1-3)."""
+    (tmp_path / "языки").mkdir()
+    (tmp_path / "языки" / "ru.yaml").write_text("документ_начало: '>>> ДОК'\nдокумент_конец: '<<< ДОК'\n", encoding="utf-8")
+    Lp = lang.get("ru", tmp_path)
+    raw = "Проза.\n\n>>> ДОК\nРапорт.\n<<< ДОК\n\nЕщё проза."
+    assert Lp.strip_document_inserts(raw) == "Проза.\n\n\nЕщё проза." and Lp.has_document_insert(raw)
+    brief = Brief(chapter=1, documents=["№1: рапорт"])
+    c = next(c for c in verifier1.analyze(raw, "", brief, {}, [], project_root=tmp_path) if c.check_id == "V1.11_документ_вставка")
+    assert c.status == "PASS" and ">>> ДОК" in c.threshold
+    assert lang.get().letter == "[А-Яа-яЁёA-Za-z]" and lang.get().doc_start == lang.DOC_START

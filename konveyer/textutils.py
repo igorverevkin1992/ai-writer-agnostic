@@ -23,11 +23,11 @@ def narration_only(text: str) -> str:
 
 
 def paragraphs(text: str) -> list[str]:
-    return lang.Language.paragraphs(text)
+    return _lang().paragraphs(text)
 
 
 def strip_document_inserts(text: str) -> str:
-    return lang.Language.strip_document_inserts(text)
+    return _lang().strip_document_inserts(text)
 
 
 def strip_markdown(text: str) -> str:

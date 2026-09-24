@@ -405,17 +405,20 @@ def m_intensifiers(ctx: MetricContext) -> list[CheckResult]:
 def m_stoplists(ctx: MetricContext) -> list[CheckResult]:
     L = ctx.language
     narration = L.narration_only(ctx.text)
+    narration_sentences = L.split_sentences(narration, ctx.extra_abbr)
     out: list[CheckResult] = []
     for rule in ctx.stoplists:
         if rule.kind != "лексика" or not stoplist_applies(rule, ctx.brief):
             continue
         # стоп-лист линии фокала касается ВНУТРЕННЕЙ речи: реплики других персонажей — не флаг; лексика эпохи — весь текст
-        scope_text = narration if rule.scope == "0.3" else ctx.text
+        line_rule = rule.scope == "0.3"
+        scope_text = narration if line_rule else ctx.text
         found = find_items(scope_text, rule.items, L)
         if found:
             out.append(CheckResult(
                 check_id="V1.5_стоп_лексика", status="FLAG", threshold=f"действие: {rule.action}", actual="; ".join(found),
-                quotes=quote_sentences(ctx.sentences, {L.normalize_word(w) for w in found}, L),
+                # цитаты — оттуда же, где искали: реплика персонажа нарушением линии не считается и в цитаты не идёт
+                quotes=quote_sentences(narration_sentences if line_rule else ctx.sentences, {L.normalize_word(w) for w in found}, L),
                 rule_source=f"{rule.rule_id} (реестр {rule.scope})",
                 note="проверьте значение: прямое значение эпохи допустимо" if rule.action == "флаг" else ""))
     if not out:
@@ -526,9 +529,10 @@ def m_para(ctx: MetricContext) -> list[CheckResult]:
 def m_document(ctx: MetricContext) -> list[CheckResult]:
     if not ctx.brief.documents:
         return []
-    has = lang_mod.DOC_START in ctx.raw and lang_mod.DOC_END in ctx.raw
+    L = ctx.language
+    has = L.has_document_insert(ctx.raw)
     return [CheckResult(check_id="V1.11_документ_вставка", status="PASS" if has else "BRAK",
-                        threshold="блок `→ ДОКУМЕНТ` … `← КОНЕЦ ДОКУМЕНТА`", actual="есть" if has else "нет",
+                        threshold=f"блок `{L.doc_start}` … `{L.doc_end}`", actual="есть" if has else "нет",
                         rule_source="бриф главы (реестр документов)", note="; ".join(ctx.brief.documents)[:200])]
 
 
