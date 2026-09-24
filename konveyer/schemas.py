@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class StopRule(BaseModel):
-    """Строка stoplists.json — из 03/04 и Р-016 (усилители)."""
+    """Строка stoplists.json — из стоп-листов документов повествования/языка и словаря усилителей стиля."""
 
     scope: Literal["0.3", "0.4"]
     rule_id: str
@@ -109,7 +109,7 @@ class ChronologyEvent(BaseModel):
     hidden: bool = False          # «[Скрыто]»
     background: bool = False      # «[Фон]»
     open_question: bool = False   # «⚠» — открытое решение автора
-    note: str = ""                # хвост после видимости («Закладка → т.6», «(Р-007)»)
+    note: str = ""                # хвост после видимости («Закладка → т.6», «(ссылка на решение)»)
     line: int = 0                 # строка документа 12 (для находок линтера)
 
 
@@ -136,13 +136,13 @@ class Plant(BaseModel):
 
 
 class Norm(BaseModel):
-    """Числовой порог Э1 — из 02 §5. Единственный источник порогов (FR критерий 6)."""
+    """Числовой порог Э1 — из норм документа стиля. Единственный источник порогов (FR критерий 6)."""
 
     min: float | None = None
     max: float | None = None
     brak: float | None = None
     unit: str = ""
-    source: str = "02 §5"
+    source: str = "нормы стиля"
 
 
 class ContinuityEvent(BaseModel):
@@ -265,7 +265,7 @@ class InfoBan(BaseModel):
 
 
 class CircleStep(BaseModel):
-    """Шаг круга истории (Р-020): для тома/части — диапазон глав, для главы — место в тексте."""
+    """Шаг круга истории: для тома/части — диапазон глав, для главы — место в тексте."""
 
     n: int
     name: str
@@ -306,8 +306,8 @@ class StoryCircle(BaseModel):
 
 
 class Arc(BaseModel):
-    """Строка таблицы арок тома (arcs.json — документ 2.5 `22_Арки_Том{N}.md`, Р-025, по Уэйланд):
-    персонаж × акт. Писателю выводится ТОЛЬКО `visible` («что видно снаружи», через фильтр тайн Р-022);
+    """Строка таблицы арок тома (arcs.json — документ типа «арки», по Уэйланд):
+    персонаж × акт. Писателю выводится ТОЛЬКО `visible` («что видно снаружи», через фильтр тайн);
     ложь/желание/потребность/положение на арке — внутренний инструмент автора и аналитика кругов."""
 
     character: str

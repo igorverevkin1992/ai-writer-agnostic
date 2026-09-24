@@ -1,4 +1,4 @@
-"""Writer-adapter: вызовы Писателя (FR-W1, FR-W2) и дословные правки кодом (Р-023)."""
+"""Writer-adapter: вызовы Писателя (FR-W1, FR-W2) и дословные правки кодом, без модели."""
 
 from __future__ import annotations
 
@@ -113,7 +113,7 @@ def choose_variant(ws: Workspace, chapter: int, k: int, label: str) -> None:
     guard.write_text(ws.chapter_dir(chapter) / f"черновик_{k}.meta.json", json.dumps(meta, ensure_ascii=False, indent=2) + "\n")
 
 
-# ------------------------------------------------------------ правки кодом (аудит 2, п. 19; Р-023)
+# ------------------------------------------------------------ правки кодом (дословные БЫЛО/СТАЛО без модели)
 
 
 @dataclass
@@ -144,7 +144,7 @@ def find_quote(text: str, quote: str) -> list[tuple[int, int]]:
 
 
 def apply_edits_text(text: str, edits: list[Edit]) -> LocalEdits:
-    """Р-023: пары БЫЛО/СТАЛО, чьё «БЫЛО» найдено в тексте ровно один раз, применяются кодом
+    """Пары БЫЛО/СТАЛО, чьё «БЫЛО» найдено в тексте ровно один раз, применяются кодом
     (пустое «СТАЛО» — удаление). Свободные указания и не найденные / неоднозначные цитаты —
     остаются Писателю. Правки применяются по порядку к уже изменённому тексту."""
     result = LocalEdits(text=text)
@@ -188,7 +188,7 @@ def apply_edits_locally(ws: Workspace, cfg: Config, chapter: int, чернови
 
 def edit_prompt(ws: Workspace, chapter: int, черновик_k: int, edits: list[Edit], draft_text: str | None = None) -> str:
     """FR-W2: принятый черновик + правки + инструкция «внести точно» (шаблон в шаблоны/).
-    `draft_text` — промежуточный текст после правок кодом (Р-023); без него — сам черновик_k."""
+    `draft_text` — промежуточный текст после правок кодом; без него — сам черновик_k."""
     tpl = None
     for cand in (ws.root / "промпты" / "правки.md.j2", ws.templates / "правки.md.j2"):
         if cand.exists():

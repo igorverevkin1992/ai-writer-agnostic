@@ -133,7 +133,7 @@ def doctor() -> None:
         lay = backup_mod.layout(lib, ws.root)
         item(lay.kind != "no-git", "библиотека под git", "git init внутри библиотеки (версионирование канона, §5.1)")
         if lay.kind != "no-git":
-            item(lay.ok, lay.label, lay.hint)  # три раскладки (п. 28): своя / внутри репозитория кода / не под git
+            item(lay.ok, lay.label, lay.hint)  # три раскладки (FR-BK-4): своя / внутри репозитория кода / не под git
         if gitops.is_repo(lib):
             item(gitops.has_identity(lib) or bool(cfg.commit_author), "авторство git настроено",
                  "git config user.email/user.name или commit_author в конфиг.yaml (Д-8)")
@@ -141,15 +141,15 @@ def doctor() -> None:
                  f"завершите или отмените: git {gitops.in_progress(lib) or ''} --abort (в документах могут быть маркеры конфликта)")
             n_remotes = len(gitops.remotes(lib))
             item(n_remotes >= cfg.backup_remotes_min, f"удалённых копий: {n_remotes} (нужно ≥{cfg.backup_remotes_min})",
-                 "`konveyer backup --добавить-remote <имя> <url|папка>` — папка на внешнем диске подходит (NFR-6, §1.3)")
+                 "`konveyer бэкап --добавить-remote <имя> <url|папка>` — папка на внешнем диске подходит (FR-BK-1, §1.3)")
     arch_dir = backup_mod.archive_dir(ws, cfg)
     arch_age = backup_mod.archive_age_days(arch_dir)
     if arch_age is None:
         item(None if cfg.backup_dir is None else False, f"архив рабочей области: ещё не делался ({arch_dir})",
-             "`konveyer backup --архив`; backup_dir в конфиг.yaml — архив после каждой приёмки главы (п. 29)")
+             "`konveyer бэкап --архив`; папка_архива (backup_dir) в конфиг.yaml — архив после каждой приёмки главы (FR-BK-2)")
     else:
         item(arch_age <= 7, f"архив рабочей области: {arch_age:.1f} дн. назад ({backup_mod.latest_archive(arch_dir)})",
-             "`konveyer backup --архив`")
+             "`konveyer бэкап --архив`")
     if lib.exists():
         from .. import project as project_mod
 
@@ -181,7 +181,7 @@ def doctor() -> None:
         item(has_module("google.genai"), "SDK google-genai", "pip install 'konveyer[llm]'")
     if "anthropic" in providers:
         item(has_module("anthropic"), "SDK anthropic", "pip install 'konveyer[llm]'")
-    # пины моделей против API (п. 31): только чтение метаданных, ни одной генерации
+    # пины моделей против API (FR-RT-3): только чтение метаданных, ни одной генерации
     seen: set[tuple[str, str]] = set()
     labels = {"писатель": "Писатель", "верификатор2": "Верификатор-2", "канонист": "Канонист",
               "аналитик": "аналитик", "линтер": "линтер", "архивариус": "архивариус"}
@@ -203,9 +203,9 @@ def doctor() -> None:
         )
     else:
         label = "регрессия зелёная" if green else "регрессия КРАСНАЯ"
-    item(green, label, "`konveyer regress`" if green is None else "пропущенные флаги блокируют смену конфигурации (FR-R3)")
+    item(green, label, "`konveyer regress`" if green is None else "пропущенные флаги блокируют смену конфигурации (FR-RG-3)")
     n_tests = len(regression_mod.load_tests(ws)) if ws.regression.exists() else 0
-    item(n_tests > 0, f"золотых тестов: {n_tests}", "корпус пуст — регрессия не может быть зелёной; пополните: `konveyer add-golden` (FR-R1)")
+    item(n_tests > 0, f"золотых тестов: {n_tests}", "корпус пуст — регрессия не может быть зелёной; пополните: `konveyer золотой` (FR-RG-1)")
 
 
 def dashboard() -> Path:

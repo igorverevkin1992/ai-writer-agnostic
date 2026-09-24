@@ -66,7 +66,7 @@ def required_steps(ws: Workspace, scope: str) -> set[int]:
 def canon_doc_name(volume: int = 1, root: Path | None = None) -> str:
     """Имя документа каркасов тома — из каталога типов (`каркасы.имя_по_умолчанию`)."""
     spec = catalog.load_types(root).get("каркасы")
-    pattern = spec.default_name if spec and spec.default_name else "21_Каркасы_Том{том}.md"
+    pattern = spec.default_name if spec and spec.default_name else "Каркасы_Том{том}.md"
     return pattern.format(том=int(volume))
 
 

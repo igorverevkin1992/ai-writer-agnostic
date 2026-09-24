@@ -24,7 +24,7 @@ class TypeSpec:
     name: str
     purpose: str = ""
     multiplicity: str = "один"          # один | папка | по_тому | несколько
-    default_name: str = ""              # имя файла библиотеки по умолчанию («23_План_глав_Том{том}.md»)
+    default_name: str = ""              # имя файла библиотеки по умолчанию («NN_Имя_Том{том}.md»)
     required_for_tact: bool = False     # минимальный комплект первого такта (FR-LC-2)
     feeds: tuple[str, ...] = ()         # какие модули питает
     extractions: tuple[dict, ...] = ()  # что читает машина: [{имя, выгрузка, схема, результат, форматы: [...]}]

@@ -3,7 +3,7 @@
 Графики: правки/1000 слов по главам; метрики Э1 с коридорами норм и флагом
 отклонения >20% от среднего части; TTR нарастающим окном; расход токенов и
 стоимость по ролям. Плюс: таблица глав с состояниями FSM и временем автора
-(критерий приёмки 1: такт ≤40 минут работы автора).
+(§14.3, п. 7: такт ≤40 минут работы автора).
 """
 
 from __future__ import annotations
@@ -93,7 +93,7 @@ def _chapters_block(ws: Workspace) -> str:
 
 
 def render_dashboard(ws: Workspace) -> str:
-    """HTML дашборда в памяти — панель отдаёт его по GET без записи на диск (аудит 4.3)."""
+    """HTML дашборда в памяти — панель отдаёт его по GET без записи на диск (FR-SC-7: GET без побочных эффектов)."""
     metrics = _read_metrics(ws)
     chapters = [m["chapter"] for m in metrics]
     try:
@@ -185,7 +185,7 @@ def render_dashboard(ws: Workspace) -> str:
 <title>КОНВЕЙЕР · Дашборд</title><style>{CSS}</style></head>
 <body><div class="viz-root">
 <h1>КОНВЕЙЕР · метрики по главам</h1>
-<p class="meta">Сгенерировано `konveyer dashboard`. Пороги — из norms.json (02 §5). Файл самодостаточен, сеть не нужна.</p>
+<p class="meta">Сгенерировано `konveyer dashboard`. Пороги — из norms.json (нормы документа стиля). Файл самодостаточен, сеть не нужна.</p>
 {''.join(figures)}
 </div></body></html>
 """

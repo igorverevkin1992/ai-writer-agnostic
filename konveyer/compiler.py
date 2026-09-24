@@ -223,7 +223,7 @@ _SENT_SPLIT_RE = re.compile(r"(?<=[.!?])(?<!\bгл\.)(?<!\bт\.)(?<!\bсц\.)(?<
 
 def _phrase_safe(phrase: str, low_markers: list[str], volume: int) -> bool:
     """Элемент фразы без маркеров незнакомых фокалу тайн, без ссылок на будущие тома (все ссылки
-    проверяются), без арки «A → B» и без траектории «от … к …» через тома (Р-022)."""
+    проверяются), без арки «A → B» и без траектории «от … к …» через тома."""
     low = phrase.lower()
     if any(m in low for m in low_markers):
         return False
@@ -238,7 +238,7 @@ def _phrase_safe(phrase: str, low_markers: list[str], volume: int) -> bool:
 
 
 def _safe_sentences(text: str, markers: list[str], volume: int) -> str:
-    """Оставляет только фразы без маркеров незнакомых фокалу тайн и без ссылок на будущие тома (Р-022).
+    """Оставляет только фразы без маркеров незнакомых фокалу тайн и без ссылок на будущие тома.
 
     Фраза = предложение до точки; элементы перечисления внутри неё разделены «;». Если хотя бы один
     элемент вычищен, фраза убирается целиком — обрывков списков в окне не бывает. Скобочные пометки
@@ -260,7 +260,7 @@ def _safe_sentences(text: str, markers: list[str], volume: int) -> str:
 
 
 def secret_markers(infobans: list, brief: Brief) -> list[str]:
-    """Маркеры тайн реестра, которых фокал главы ещё не знает (Р-022) — фразы с ними в окно не идут."""
+    """Маркеры тайн реестра, которых фокал главы ещё не знает — фразы с ними в окно не идут."""
     markers: list[str] = []
     for b in infobans:
         if b.secret and not b.known_to(brief.focal, brief.chapter):
@@ -327,7 +327,7 @@ def scene_line(sc: Scene) -> str:
 
 
 def safe_dossier(d, brief: Brief, infobans: list, participants: list[str]):
-    """Проекция досье для окна (FR-C3, Р-022): без каркаса/арки/статуса, без фраз о тайнах,
+    """Проекция досье для окна (FR-C3): без каркаса/арки/статуса, без фраз о тайнах,
     которых фокал не знает к этой главе, без будущих томов; отношения — только к участникам сцены."""
     markers = secret_markers(infobans, brief)
     relations = {
@@ -345,15 +345,15 @@ def safe_dossier(d, brief: Brief, infobans: list, participants: list[str]):
 
 
 def chapter_act(acts: list[Act], chapter: int) -> Act | None:
-    """Акт главы по таблице актов 2.1 (Р-021); None — актов нет или глава вне их границ."""
+    """Акт главы по таблице актов; None — актов нет или глава вне их границ."""
     return next((a for a in acts if a.from_chapter <= chapter <= a.to_chapter), None)
 
 
 def arc_lines(arcs: list[Arc], acts: list[Act], brief: Brief, infobans: list, participants: list[str]) -> list[str]:
-    """Строки «Имя: что видно снаружи» из арок 2.5 (Р-025) для участников сцены и фокала — по акту главы.
+    """Строки «Имя: что видно снаружи» из арок тома для участников сцены и фокала — по акту главы.
 
     FR-C3: ложь / желание / потребность / «где на арке» в окно НЕ выводятся никогда; «что видно снаружи» —
-    через тот же фильтр, что досье (маркеры тайн, которых фокал не знает, Р-022), и без любых ссылок
+    через тот же фильтр, что досье (маркеры тайн, которых фокал не знает), и без любых ссылок
     на тома; пустая ячейка и «⚠ заполнить» — строки нет. Пусто → секции в окне нет."""
     act = chapter_act(acts, brief.chapter)
     if act is None or not arcs:
@@ -500,14 +500,14 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
         _ban_text(b) for b in sorted(infobans, key=lambda b: b.ban_id) if ban_active(b, brief)
     ]
 
-    # каркас драматургии (Р-020): только из канона (2.1 → circles.json), не из черновиков
+    # каркас драматургии: только из канона (2.1 → circles.json), не из черновиков
     try:
         acts = exporter.load_acts(exports_dir)
         drama = circles.frame_for_chapter(exporter.load_circles(exports_dir), acts, chapter)
     except FileNotFoundError:
         acts = []
         drama = circles.frame_for_chapter([], [], chapter)
-    # арки тома 2.5 (Р-025): Писателю — только «что видно снаружи» участников сцены по акту главы
+    # арки тома: Писателю — только «что видно снаружи» участников сцены по акту главы
     arcs = arc_lines(exporter.load_arcs(exports_dir), acts, brief, infobans, participants)
 
     # «что было раньше» глазами фокала (аудит 2, вывод 1): события, детали, хвост предыдущей главы

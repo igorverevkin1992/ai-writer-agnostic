@@ -1,4 +1,4 @@
-"""Единый конвейер изменения канона (этап 5, п. 25; аудит 4.9).
+"""Единый конвейер изменения канона (П-3, FR-SC-1, FR-SC-2).
 
 ЛЮБАЯ запись в `Библиотека/` проходит через `canon_change()`:
 
@@ -59,7 +59,7 @@ def dirty_files(library: Path) -> list[str]:
 
 def check_git(library: Path, *, commit: bool, require_clean: bool = True, action: str = "изменение канона") -> bool:
     """Проверки ДО любой записи. Возвращает, была ли библиотека чистой на входе (тогда при сбое
-    её можно откатить к HEAD, 2.6)."""
+    её можно откатить к HEAD, FR-SC-2)."""
     if not gitops.is_repo(library):
         return False
     in_progress = gitops.in_progress(library)
@@ -83,7 +83,7 @@ def check_git(library: Path, *, commit: bool, require_clean: bool = True, action
 
 
 def _rollback(library: Path, ws: Workspace, error: BaseException) -> None:
-    """Сбой после открытия сессии записи (2.6): библиотека — к HEAD, выгрузки — пересчитать."""
+    """Сбой после открытия сессии записи (FR-SC-2): библиотека — к HEAD, выгрузки — пересчитать."""
     try:
         if gitops.has_commits(library):
             gitops.restore_library(library)
@@ -120,7 +120,7 @@ def canon_change(
     * `commit=True` — `git commit` всех изменений папки библиотеки с авторством `cfg.commit_author` (Д-8);
       `confirm(result)` — последняя возможность отказаться от коммита уже после линта (вопрос автору);
       `commit=False` — изменения остаются на диске, результат несёт `uncommitted=True`;
-    * исключение в `writer`/экспорте откатывает библиотеку к HEAD (2.6) — только если она под git
+    * исключение в `writer`/экспорте откатывает библиотеку к HEAD (FR-SC-2) — только если она под git
       и была чистой на входе (иначе откат стёр бы правки автора, сделанные до вызова).
     * `require_clean=False` — коммит поверх незакоммиченных правок автора допустим (сценарий Б).
     """

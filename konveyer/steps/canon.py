@@ -1,5 +1,5 @@
-"""Канон и бэкап: lint (линтер канона), snapshot (срез тома 3.5), rollback (сценарий Г), retest (сценарий В),
-canon_commit (сценарий Б), backup (NFR-6), library_split (аудит 2, п. 28)."""
+"""Канон и бэкап: lint (линтер канона, FR-LT-*), snapshot (срез тома, FR-VL-2), rollback (откат, FR-SC-4), retest
+(пере-тест, FR-RT-*), canon_commit (правка канона автором, FR-CN-*), backup (сохранность, FR-BK-*), library_split (FR-BK-4)."""
 
 from __future__ import annotations
 
@@ -92,18 +92,19 @@ def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False,
 
 
 def snapshot(volume: int | None = None) -> Path:
-    """Черновик снапшота тома (реестр 3.5): кто что знает, закладки, хронология.
-    В канон снапшот вносит `konveyer volume close N`. Возвращает путь черновика."""
+    """Черновик снапшота тома (срез мира и знаний на конец тома): кто что знает, закладки, хронология.
+    В канон снапшот вносит `konveyer том закрыть N`. Возвращает путь черновика."""
     from .. import snapshot as snapshot_mod
 
     ws, cfg, lib = _ctx()
     volume = volume or ws.volume
     if volume != ws.volume:
-        raise StepError(f"выгрузки — тома {ws.volume}; для среза тома {volume} переключитесь: `konveyer volume open {volume}`.")
+        raise StepError(f"выгрузки — тома {ws.volume}; для среза тома {volume} переключитесь: `konveyer том открыть {volume}`.")
     exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
     path = snapshot_mod.build_snapshot(ws, volume)
     secho(f"Срез тома {volume}: {path}", fg=colors.GREEN)
-    echo("Внесите его в библиотеку правкой канона и `konveyer canon-commit` (FR-K3 соблюдён).")
+    echo(f"В канон срез вносит `konveyer том закрыть {volume}` (при закрытии тома); раньше закрытия — правкой библиотеки "
+         "и `konveyer канон-коммит` (FR-K3 соблюдён).")
     return path
 
 
@@ -113,14 +114,14 @@ def rollback(chapter: int, to: str | None = None, yes: bool = False, confirm: Co
     ws, cfg, lib = _ctx()
     st = ChapterState(ws, chapter)
     if to is None:
-        # 2.11: «предыдущее» — по цепочке STATES, а не по истории (после отката история
+        # «предыдущее» — по цепочке STATES, а не по истории (после отката история
         # указывала бы вперёд, а не назад)
         idx = STATES.index(st.state)
         if idx == 0:
             raise StepError(f"глава {chapter} ещё не начата — откатывать некуда.")
         to = STATES[idx - 1]
         echo(f"Откат на шаг назад: «{st.state}» → «{to}».")
-    # Проверка цели ДО любых побочных эффектов (4.2): опечатка в --to не должна стоить git revert'а
+    # Проверка цели ДО любых побочных эффектов (FR-SC-4): опечатка в --to не должна стоить git revert'а
     if to not in STATES:
         raise StepError(f"неизвестное состояние «{to}»; допустимые: {', '.join(STATES)}.")
     if STATES.index(to) >= STATES.index(st.state):
@@ -388,7 +389,7 @@ def retest_summary(ws: Workspace, chapter: int, dest: Path) -> str:
 
 def _compile_window_to(ws: Workspace, cfg: Config, lib: Path, chapter: int, target: Path) -> Path:
     """Собирает окно главы во временную рабочую область (копия выгрузок и шаблонов) и кладёт
-    результат в target: главы/N/окно.md главы в работе остаётся нетронутым (2.10)."""
+    результат в target: главы/N/окно.md главы в работе остаётся нетронутым."""
     tmp_root = target.parent / "_сборка_окна"
     if tmp_root.exists():
         shutil.rmtree(tmp_root)
@@ -415,17 +416,18 @@ def canon_commit(message: str, yes: bool = False, confirm: Confirm | None = None
     old_norms_hash = None
     if manifest.exists():
         old_norms_hash = json.loads(manifest.read_text(encoding="utf-8"))["files"].get("norms.json")
+    ref = _journal_reference(ws, lib)
 
     def ask(result: canonchange.ChangeResult) -> bool:
         """Между линтом и коммитом: предупреждения автору и вопрос (Д-8)."""
         if (
             old_norms_hash is not None
             and result.export_hashes.get("norms.json") != old_norms_hash
-            and not gitops.check_norm_change_message(message)
+            and not gitops.check_norm_change_message(message, ref["регэксп"])
         ):
             secho(
-                "⚠ Изменены нормы (02 §5), но в сообщении коммита нет ссылки Р-№ на запись "
-                "в 36_Журнал — предупреждение, не блокировка (сценарий Б).",
+                f"⚠ Изменены нормы ({ref['стиль']}), но в сообщении коммита нет ссылки {ref['образец']} на запись "
+                f"в {ref['журнал']} — предупреждение, не блокировка (сценарий Б).",
                 fg=colors.YELLOW,
             )
         if not gitops.dirty(lib):
@@ -455,11 +457,38 @@ def canon_commit(message: str, yes: bool = False, confirm: Confirm | None = None
     return result.commit
 
 
+def _journal_reference(ws: Workspace, lib: Path) -> dict[str, str | None]:
+    """Как ссылаться на запись журнала решений — из каталога типов и манифеста (П-1: имена документов и формат
+    номера записи не в коде): {регэксп, образец, журнал (имя документа), стиль (имя документа норм)}."""
+    from .. import catalog
+
+    types = catalog.load_types(ws.root)
+
+    def doc_name(тип: str) -> str:
+        try:
+            docs = exporter.docs_of_type(lib, тип, ws.volume, ws.root)
+        except Exception:  # noqa: BLE001 — манифест/библиотека нечитаемы: имя типа вместо файла
+            docs = []
+        if docs:
+            return docs[0].name
+        spec = types.get(тип)
+        return spec.default_name if spec and spec.default_name else f"документ «{тип}»"
+
+    spec = types.get("журнал_решений")
+    ref = (spec.raw.get("ссылка_на_запись") or {}) if spec else {}
+    return {
+        "регэксп": str(ref["регэксп"]) if ref.get("регэксп") else None,
+        "образец": str(ref.get("образец") or "на номер записи"),
+        "журнал": doc_name("журнал_решений"),
+        "стиль": doc_name("стиль"),
+    }
+
+
 def library_split(
     target: str | None = None, show: bool = False, with_history: bool = False, yes: bool = False,
     confirm: Confirm | None = None,
 ) -> None:
-    """Вынести библиотеку канона в отдельный git-репозиторий рядом с рабочей областью (аудит 2, п. 28):
+    """Вынести библиотеку канона в отдельный git-репозиторий рядом с рабочей областью (FR-BK-4):
     перенос папки, git init + первый коммит, library_dir в конфиг.yaml, .gitignore в прежнем репозитории."""
     ws, cfg, lib = _ctx()
     try:

@@ -59,15 +59,21 @@ def staged_files(repo: Path) -> list[str]:
 
 
 def restore_library(repo: Path) -> None:
-    """Откат незакоммиченных изменений ТОЛЬКО в папке библиотеки (сбой apply_batch, 2.6):
+    """Откат незакоммиченных изменений ТОЛЬКО в папке библиотеки (сбой записи в канон, FR-SC-2):
     отслеживаемые файлы — к HEAD, новые файлы и папки — удаляются; остальной репозиторий не трогается."""
     _git(repo, "checkout", "--", ".")
     _git(repo, "clean", "-fd", "--", ".")
 
 
-def check_norm_change_message(message: str) -> bool:
-    """Сценарий Б: изменение норм — только со ссылкой Р-№ в сообщении (предупреждение)."""
-    return bool(re.search(r"Р-\d+", message))
+def check_norm_change_message(message: str, pattern: str | None) -> bool:
+    """Сценарий Б: изменение норм — со ссылкой на запись журнала решений в сообщении (предупреждение).
+    `pattern` — регэксп ссылки из типа «журнал_решений» (`ссылка_на_запись.регэксп`); без него правила нет."""
+    if not pattern:
+        return True
+    try:
+        return bool(re.search(pattern, message))
+    except re.error:
+        return True
 
 
 def find_chapter_commit(repo: Path, chapter: int) -> str | None:

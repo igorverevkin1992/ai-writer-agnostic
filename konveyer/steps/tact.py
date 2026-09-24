@@ -68,13 +68,13 @@ def compile(chapter: int) -> Path:  # noqa: A001 — имя команды `konv
     secho(f"Окно собрано: {path} (~{size} символов)", fg=colors.GREEN)
     if breakdown.get("драматургия", 0) and "в канон ещё не внесён" in path.read_text(encoding="utf-8"):
         secho(
-            f"⚠ Каркас драматургии главы {chapter} в канон не внесён (Р-020): `konveyer circles` → "
+            f"⚠ Каркас драматургии главы {chapter} в канон не внесён: `konveyer circles` → "
             "`konveyer circles --в-канон`, затем пересоберите окно.",
             fg=colors.YELLOW,
         )
     if (ws.chapter_dir(chapter) / "window_size_флаг.md").exists() and size > cfg.window_soft_limit_chars:
         secho(
-            f"⚠ Превышен мягкий лимит окна {cfg.window_soft_limit_chars} символов (Д-12) — "
+            f"⚠ Превышен мягкий лимит окна {cfg.window_soft_limit_chars} символов (Д-20) — "
             f"раскладка в {ws.chapter_rel(chapter)}/window_size_флаг.md",
             fg=colors.YELLOW,
         )
@@ -199,7 +199,7 @@ def verify2(chapter: int, manual: bool = False, taste: bool = False, again: bool
     if taste:
         try:
             advice = verifier2.run_taste(ws, cfg, chapter, st.draft)
-            echo(f"Вкус (совещательно, 02 §6.1): замечаний {len(advice)} → {ws.chapter_rel(chapter)}/вкус.json")
+            echo(f"Вкус (совещательно, по правилам вкуса документа стиля): замечаний {len(advice)} → {ws.chapter_rel(chapter)}/вкус.json")
         except adapters.ManualModeNeeded:
             echo(f"Промпт вкуса сохранён: {ws.chapter_rel(chapter)}/промпт_вкуса.md (ответ — в вкус.json).")
         except ValueError as e:
@@ -208,7 +208,7 @@ def verify2(chapter: int, manual: bool = False, taste: bool = False, again: bool
 
 
 def _verify2_again(ws: Workspace, cfg: Config, st: ChapterState, manual: bool) -> list:
-    """Повторный Э2 после правок (аудит 2, п. 24а): по текущему черновику, без смены состояния."""
+    """Повторный Э2 после правок: по текущему черновику, без смены состояния."""
     chapter = st.chapter
     st.require("правки", "дифф-контроль")
     if manual:
@@ -264,7 +264,7 @@ def review(chapter: int) -> Path:
 
 
 def apply_edits(chapter: int, manual: bool = False) -> int:
-    """Внесение правок: дословные БЫЛО/СТАЛО — кодом (Р-023), свободные указания — Писателем (FR-W2, FR-E3).
+    """Внесение правок: дословные БЫЛО/СТАЛО — кодом, без модели; свободные указания — Писателем (FR-W2, FR-E3).
     Возвращает номер нового черновика."""
     ws, cfg, lib = _ctx()
     st = ChapterState(ws, chapter)
@@ -297,7 +297,7 @@ def apply_edits(chapter: int, manual: bool = False) -> int:
     elif local is None:
         raise StepError(f"нет базового черновика {base_path} (FR-E3: правки идут от черновика приёмки).")
     elif not local.needs_model:
-        # Р-023: все пары найдены дословно ровно один раз — модель не нужна, бюджет итераций не расходуется
+        # все пары найдены дословно ровно один раз — модель не нужна, бюджет итераций не расходуется
         new_k, local = writer.apply_edits_locally(ws, cfg, chapter, base, edits, new_k=new_k)
         n_local = len(local.applied)
     else:
@@ -382,7 +382,7 @@ def accept(chapter: int, yes: bool = False, confirm: Confirm | None = None) -> N
         raise StepError(f"не решены самоволки: {', '.join(unresolved)} (решения.json).")
     green = regression_mod.is_green(ws)
     if green is False:
-        secho("⚠ Регрессия КРАСНАЯ (FR-R3) — смена конфигурации запрещена, приёмка под вашу ответственность.", fg=colors.YELLOW)
+        secho("⚠ Регрессия КРАСНАЯ (FR-RG-3) — смена конфигурации запрещена, приёмка под вашу ответственность.", fg=colors.YELLOW)
     confirm_or_reject(yes, confirm, f"Принять главу {chapter}? (y)")
     st.transition("принято", "accept")
     secho(f"Глава {chapter} принята. Далее: `konveyer canonize {chapter}`.", fg=colors.GREEN)
@@ -401,7 +401,7 @@ def canonize(
     batch_path = ws.chapter_dir(chapter) / "пакет_канона.md"
     if not apply:
         if batch_path.exists() and not redo:
-            # 2.11: отредактированный автором пакет не перезаписывается (и вызов LLM не тратится)
+            # отредактированный автором пакет не перезаписывается (и вызов LLM не тратится)
             current = _sha256(batch_path)
             if st.data.get("пакет_хэш") != current:
                 raise StepError(
@@ -426,7 +426,7 @@ def canonize(
             "библиотека не под git — применение пакета невозможно (FR-K2: откат только git-revert'ом). "
             "Инициализируйте репозиторий в библиотеке (git init; git add -A; git commit), затем повторите."
         )
-    # Идемпотентность (4.1): если приёмка уже закоммичена, а состояние не успело смениться
+    # Идемпотентность (FR-SC-3): если приёмка уже закоммичена, а состояние не успело смениться
     # (сбой между коммитом и записью состояние.yaml), повтор НЕ применяет пакет второй раз —
     # он восстанавливает состояние по действующему коммиту «[глава N]».
     existing = gitops.find_chapter_commit(lib, chapter)
@@ -450,7 +450,7 @@ def canonize(
 
 
 def _after_canonize(ws: Workspace, cfg: Config, lib: Path, chapter: int, commit: str) -> None:
-    """После приёмки (аудит 2, п. 28–29): тег версии канона `глава-N` (повторная приёмка после отката —
+    """После приёмки (FR-BK-2, FR-BK-3): тег версии канона `глава-N` (повторная приёмка после отката —
     `глава-N-2`) и архив рабочей области, если в конфиг.yaml задан backup_dir. Ни то, ни другое не может
     сорвать приёмку: она уже закоммичена и состояние сменено; сбой — предупреждение."""
     name = gitops.tag_chapter(lib, chapter, commit)

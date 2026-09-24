@@ -1,5 +1,5 @@
-"""Качество и регрессия: check (Э1 по произвольному файлу), circles (круги истории, Р-020),
-regress (золотые тесты, FR-R2), add_golden (FR-R1)."""
+"""Качество и регрессия: check (Э1 по произвольному файлу), circles (круги истории),
+regress (золотые тесты, FR-RG-2), add_golden (FR-RG-1)."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def circles(
     scope: str = "всё", chapter: int | None = None, redo: bool = False, to_canon: bool = False,
     yes: bool = False, confirm: Confirm | None = None,
 ) -> dict | None:
-    """Круги истории (8 шагов) — каркас драматургии (Р-020): книга → четыре акта → главы; черновики в драматургия/.
+    """Круги истории (8 шагов) — каркас драматургии: книга → четыре акта → главы; черновики в драматургия/.
     `to_canon` — внести черновики в документ 2.1 библиотеки и закоммитить (Д-8). Возвращает результат прогона."""
     from .. import circles as circles_mod
 
@@ -92,13 +92,13 @@ def circles(
 
 
 def regress(llm: bool = False) -> dict:
-    """Прогон регрессионного корпуса золотых тестов (FR-R2). Красная регрессия — `StepExit(1)`."""
+    """Прогон регрессионного корпуса золотых тестов (FR-RG-2). Красная регрессия — `StepExit(1)`."""
     ws, cfg, lib = _ctx()
     report = regression_mod.run_regression(ws, llm=llm, cfg=cfg)
     if not report["всего"]:
         secho(
             "⚠ Корпус золотых тестов ПУСТ (регрессия/золотые/) — регрессия ничего не проверила и зелёной "
-            "считаться не может (FR-R3). Пополните корпус: `konveyer add-golden` (FR-R1).",
+            "считаться не может (FR-RG-3). Пополните корпус: `konveyer золотой` (FR-RG-1).",
             fg=colors.YELLOW,
         )
     elif not report.get("выполнено"):
@@ -120,7 +120,7 @@ def regress(llm: bool = False) -> dict:
         why = report.get("причина") or "пропущены ожидаемые флаги"
         secho(
             f"Регрессия КРАСНАЯ: {why}{' ' + str(report['провалено']) if report['провалено'] else ''} "
-            "(FR-R3: смена конфигурации заблокирована).",
+            "(FR-RG-3: смена конфигурации заблокирована).",
             fg=colors.RED,
         )
         raise StepExit(1)

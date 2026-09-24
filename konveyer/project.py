@@ -74,7 +74,7 @@ def skeleton_for(spec: catalog.TypeSpec, volume: int = 1) -> str:
 
 
 def _title(spec: catalog.TypeSpec, volume: int) -> str:
-    """«21_Каркасы_Том{том}.md» → «21. Каркасы · Том 1»; без имени по умолчанию — имя типа."""
+    """«NN_Имя_Том{том}.md» → «NN. Имя · Том 1»; без имени по умолчанию — имя типа."""
     if not spec.default_name:
         return spec.name
     stem = spec.default_name.split("/")[0].rsplit(".", 1)[0]
@@ -186,8 +186,10 @@ def create(spec: ProjectSpec) -> CreatedProject:
                     entries.append(LibraryEntry(файл=_doc_name(t, v), тип=t.name, том=v if t.per_volume else None))
         (library / "Проза").mkdir(exist_ok=True)
         entries.append(LibraryEntry(файл="Проза/", тип="проза"))
-        journal = next((d for d in docs if d.name.endswith("Журнал_решений.md")), None)
-        if journal is not None:
+        journal_type = types.get("журнал_решений")
+        journal = next((d for d in docs if journal_type and d.name == _doc_name(journal_type, 1)), None)
+        if journal is not None and journal_type is not None:
+            # первая запись журнала — режим приватности (FR-SC-10): каркас и нумерация записи — из типа, не из кода
             from datetime import date
 
             from .config import load_config
@@ -195,12 +197,15 @@ def create(spec: ProjectSpec) -> CreatedProject:
 
             cfg = load_config(Workspace(root))
             roles = "; ".join(f"{r} — {m.provider}/{m.model}" for r, m in cfg.roles().items())
-            journal.write_text(
-                f"# 36. Журнал решений\n\n## Р-001\n\n- Дата: {date.today().strftime('%d.%m.%Y')}\n"
-                f"- Решение: тексты серии уходят только в объявленные в конфиг.yaml API, провайдеры работают в режиме "
-                f"без обучения на данных автора (FR-SC-10). Роли: {roles}.\n"
-                f"- Обоснование: приватность рукописи; смена провайдера или режима — новой записью журнала.\n",
-                encoding="utf-8")
+            text = skeleton_for(journal_type, 1)
+            for key, value in (
+                ("Дата", date.today().strftime("%d.%m.%Y")),
+                ("Решение", "тексты серии уходят только в объявленные в конфиг.yaml API, провайдеры работают в режиме "
+                            f"без обучения на данных автора (FR-SC-10). Роли: {roles}."),
+                ("Обоснование", "приватность рукописи; смена провайдера или режима — новой записью журнала."),
+            ):
+                text = text.replace(f"- {key}: ⚠ заполнить", f"- {key}: {value}", 1)
+            journal.write_text(text, encoding="utf-8")
 
     # манифест
     methodics = Methodics()
