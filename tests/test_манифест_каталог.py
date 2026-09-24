@@ -414,7 +414,9 @@ def test_чек_листы_и_замысел_демо_читаются(ws, libra
     exporter.run_export(library, ws.exports, ws.logs, 1, ws.root)
     col = exporter.collect(library, 1, ws.root)
     checklists = col.data["checklists.json"]
-    assert checklists and "Фокал главы совпадает с планом" in checklists[0].text
+    # секции чек-листа — отдельные записи (привязка к модулям по пометке в заголовке), заголовок 1-го уровня пуст
+    assert checklists and any("Фокал главы совпадает с планом" in c.text for c in checklists)
+    assert any(c.text.strip() and c.module == "эпистемика" for c in checklists)
     method = col.data["method.json"]
     assert method and "цена молчания" in method[0].theme and method[0].principles
 
@@ -467,7 +469,9 @@ def test_стоп_правило_ограничено_томом_и_главой
                    "| Л-4 | Зоя | папа; отец | запрет | 1 | 2 |\n| Л-5 | все | ясно | флаг | — | — |\n", encoding="utf-8")
     ext = next(e for e in catalog.load_types(None)["повествование"].extractions if e["имя"] == "стоп_листы_линий")
     records, _ = declparse.parse_document(doc, ext["форматы"], declparse.ParseContext())
-    assert records[0]["applies_to"] == {"focal": "Зоя", "volume": 1, "until_chapter": 2} and records[0]["scope"] == "линии"
+    # том — диапазон {from, to} (колонка «тома»/«том»: «1», «1–2», «с 3»), как у года; «до главы» — включительно
+    assert records[0]["applies_to"] == {"focal": "Зоя", "volume": {"from": 1, "to": 1}, "until_chapter": 2}
+    assert records[0]["scope"] == "линии"
     assert records[1]["applies_to"] == {"all": True}
 
 

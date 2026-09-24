@@ -1,9 +1,11 @@
 """Калибровка норм стиля (FR-V1-7): `konveyer нормы --калибровать [файлы]`.
 
-Считает все метрики реестра по образцам автора (или по принятым главам корпуса), предлагает коридоры по децилям
-(мин — 10-й перцентиль, макс — 90-й; брак — 5-й для нижней границы и 95-й для верхней) и готовит правку таблицы
-норм документа стиля вместе с записью в журнал решений. Применяет только по подтверждению автора — через
-единственную точку записи в канон (`canonchange.canon_change`).
+Считает калибруемые метрики реестра (`Metric.calibrate`) по образцам автора (или по принятым главам корпуса) теми же
+вычислителями, что и Э1, предлагает коридоры по децилям (мин — 10-й перцентиль, макс — 90-й; брак — 5-й для нижней
+границы и 95-й для верхней) и готовит правку таблицы норм документа стиля вместе с записью в журнал решений.
+Значения, которые калибровка не предлагает (брак при < 3 образцах, односторонние границы), наследуются из текущей
+нормы автора, если согласуются с новым коридором, — иначе снимаются с пометкой в отчёте. Применяет только по
+подтверждению автора — через единственную точку записи в канон (`canonchange.canon_change`).
 """
 
 from __future__ import annotations
@@ -13,20 +15,18 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from . import canonchange, exporter, guard, lang as lang_mod, metrics, textutils
+from . import canonchange, catalog, exporter, guard, lang as lang_mod, metrics
 from .config import Config
 from .paths import Workspace
 from .schemas import Brief, Norm
 
-# метрики, для которых калибровка предлагает коридор: (нижняя граница нужна, верхняя граница нужна)
-CALIBRATED: dict[str, tuple[bool, bool]] = {
-    "средняя_длина": (True, True), "доля_коротких": (True, True), "доля_длинных": (False, True),
-    "максимум_длины": (False, True), "объём_главы": (True, True), "был_на_250": (False, True),
-    "усилители_на_1000": (False, True), "доля_диалога": (True, True), "фраз_в_абзаце": (True, True),
-}
-DECIMALS = {"доля_коротких": 2, "доля_длинных": 2, "доля_диалога": 2, "средняя_длина": 1, "был_на_250": 1,
-            "усилители_на_1000": 1, "фраз_в_абзаце": 1}
 TABLE_RE = re.compile(r"(?:^[ \t]*\|.*\|[ \t]*$\n?)+", re.M)
+MIN_SAMPLES_FOR_BRAK = 3
+DEFAULT_COLUMNS: dict[str, list[str]] = {  # логическая колонка → синонимы заголовка (если тип «стиль» их не объявил)
+    "id": ["id", "метрика", "идентификатор"], "мин": ["мин", "min"], "макс": ["макс", "max"], "брак": ["брак"],
+    "единица": ["единиц", "ед."], "параметр": ["параметр", "описание"],
+}
+DEFAULT_DECISION_PREFIX = "Р-"
 
 
 @dataclass
@@ -38,8 +38,9 @@ class Sample:
 @dataclass
 class Proposal:
     samples: list[Sample]
-    corridors: dict[str, Norm]          # предложенные нормы по калибруемым метрикам
+    corridors: dict[str, Norm]          # предложенные нормы по калибруемым метрикам (с унаследованными значениями)
     current: dict[str, Norm]            # текущие нормы (все)
+    notes: dict[str, list[str]] = field(default_factory=dict)  # что унаследовано / снято по каждой метрике
     report: str = ""
 
 
@@ -52,44 +53,68 @@ def _percentile(values: list[float], p: float) -> float:
     return xs[lo] + (xs[hi] - xs[lo]) * (k - lo)
 
 
-def _round(metric_id: str, v: float) -> float:
-    d = DECIMALS.get(metric_id, 0)
-    return round(v, d) if d else float(round(v))
+def _round(m: metrics.Metric, v: float) -> float:
+    return round(v, m.decimals) if m.decimals else float(round(v))
+
+
+def calibrated_metrics(norms: dict[str, Norm]) -> list[metrics.Metric]:
+    """Калибруемые метрики: реестр (`Metric.calibrate`) плюс лексемные нормы документа стиля."""
+    out = [m for m in metrics.REGISTRY.values() if m.calibrate is not None]
+    for nid in sorted(norms):
+        if nid not in metrics.REGISTRY:
+            lm = metrics.lexeme_metric(nid, norms[nid])
+            if lm is not None and lm.calibrate is not None:
+                out.append(lm)
+    return out
 
 
 def measure(text: str, norms: dict[str, Norm], language: lang_mod.Language, stoplists: list | None = None) -> dict[str, float]:
-    """Значения калибруемых метрик по одному тексту (нормы нужны только как параметры порогов)."""
+    """Значения калибруемых метрик по одному тексту — вычислителями реестра Э1 (нормы нужны как параметры порогов;
+    самим метрикам подставляются фиктивные нормы, чтобы получить факт)."""
+    cal = calibrated_metrics(norms)
+    ctx_norms = {k: v for k, v in norms.items() if metrics.REGISTRY.get(k) and metrics.REGISTRY[k].kind == "параметр"}
+    ctx_norms.update({m.id: Norm(unit=m.unit, source="калибровка") for m in cal})
+    ctx = metrics.MetricContext(raw=text, brief=brief_stub(), norms=ctx_norms, stoplists=list(stoplists or []),
+                                language=language)
     values: dict[str, float] = {}
-    L = language
-    body = textutils.strip_markdown(L.strip_document_inserts(text))
-    sentences = L.split_sentences(body)
-    lengths = [len(L.words(s)) for s in sentences if L.words(s)]
-    tokens = L.normalize(body)
-    paras = [p for p in L.paragraphs(body) if p.strip()]
-    n = len(tokens)
-    if lengths:
-        values["средняя_длина"] = round(sum(lengths) / len(lengths), 2)
-        values["максимум_длины"] = max(lengths)
-        short = norms.get("короткая_фраза_порог")
-        long_ = norms.get("длинная_фраза_порог")
-        if short is not None and (short.max or short.min) is not None:
-            thr = short.max if short.max is not None else short.min
-            values["доля_коротких"] = round(sum(1 for x in lengths if x <= thr) / len(lengths), 3)
-        if long_ is not None and (long_.max or long_.min) is not None:
-            thr = long_.max if long_.max is not None else long_.min
-            values["доля_длинных"] = round(sum(1 for x in lengths if x >= thr) / len(lengths), 3)
-    values["объём_главы"] = n
-    if n:
-        forms = L.lexemes("был")
-        values["был_на_250"] = round(sum(1 for t in tokens if t in forms) / n * 250, 2)
-        ints = {L.normalize_word(w) for r in (stoplists or []) if r.kind == "усилитель" for w in r.items}
-        if ints:
-            values["усилители_на_1000"] = round(sum(1 for t in tokens if t in ints) / n * 1000, 2)
-    if paras:
-        values["доля_диалога"] = round(sum(1 for p in paras if L.is_dialogue_paragraph(p)) / len(paras), 3)
-        per = [len([s for s in L.split_sentences(p) if L.words(s)]) for p in paras]
-        values["фраз_в_абзаце"] = round(sum(per) / len(per), 2)
+    for m in cal:
+        for r in m.compute(ctx):
+            if r.check_id == m.check_id:
+                try:
+                    values[m.id] = float(r.actual.split()[0])
+                except (ValueError, IndexError):
+                    pass
     return values
+
+
+def _inherit(cur: Norm | None, proposed: Norm, need_min: bool, need_max: bool) -> list[str]:
+    """Наследование авторских значений в предложение: брак/мин/макс, которые калибровка не предлагает, остаются,
+    если согласуются с новым коридором; иначе снимаются с пометкой. Возвращает пометки для отчёта."""
+    notes: list[str] = []
+    if cur is None:
+        return notes
+    if proposed.min is None and cur.min is not None:
+        if proposed.max is None or cur.min <= proposed.max:
+            proposed.min = cur.min
+            notes.append(f"мин {cur.min:g} сохранён")
+        else:
+            notes.append(f"мин {cur.min:g} снят: выше нового макс {proposed.max:g}")
+    if proposed.max is None and cur.max is not None:
+        if proposed.min is None or cur.max >= proposed.min:
+            proposed.max = cur.max
+            notes.append(f"макс {cur.max:g} сохранён")
+        else:
+            notes.append(f"макс {cur.max:g} снят: ниже нового мин {proposed.min:g}")
+    if proposed.brak is None and cur.brak is not None:
+        side_ok = ((need_min and not need_max and proposed.min is not None and cur.brak <= proposed.min)
+                   or (need_max and not need_min and proposed.max is not None and cur.brak >= proposed.max)
+                   or (need_min and need_max and metrics.brak_side(Norm(min=proposed.min, max=proposed.max, brak=cur.brak))))
+        if side_ok:
+            proposed.brak = cur.brak
+            notes.append(f"брак {cur.brak:g} сохранён (образцов меньше {MIN_SAMPLES_FOR_BRAK})")
+        else:
+            notes.append(f"брак {cur.brak:g} снят: внутри нового коридора — задайте вручную")
+    return notes
 
 
 def propose(samples: list[tuple[str, str]], norms: dict[str, Norm], language: lang_mod.Language,
@@ -97,39 +122,48 @@ def propose(samples: list[tuple[str, str]], norms: dict[str, Norm], language: la
     """Коридоры по образцам: [(имя, текст)] → нормы с мин/макс/брак по децилям."""
     measured = [Sample(name, measure(text, norms, language, stoplists)) for name, text in samples]
     corridors: dict[str, Norm] = {}
-    for mid, (need_min, need_max) in CALIBRATED.items():
-        vals = [s.values[mid] for s in measured if mid in s.values]
+    notes: dict[str, list[str]] = {}
+    for m in calibrated_metrics(norms):
+        need_min, need_max = m.calibrate  # type: ignore[misc]
+        vals = [s.values[m.id] for s in measured if m.id in s.values]
         if not vals:
             continue
-        unit = norms[mid].unit if mid in norms else metrics.REGISTRY[mid].unit
+        unit = norms[m.id].unit if m.id in norms else m.unit
         lo, hi = _percentile(vals, 0.10), _percentile(vals, 0.90)
         brak = None
         if need_min and not need_max:
             brak = _percentile(vals, 0.05)
         elif need_max and not need_min:
             brak = _percentile(vals, 0.95)
-        elif need_min and need_max and mid == "средняя_длина":
+        elif need_min and need_max and m.id == "средняя_длина":
             brak = _percentile(vals, 0.05)
-        corridors[mid] = Norm(min=_round(mid, lo) if need_min else None, max=_round(mid, hi) if need_max else None,
-                              brak=_round(mid, brak) if brak is not None and len(vals) >= 3 else None,
-                              unit=unit, source=source)
-    pr = Proposal(samples=measured, corridors=corridors, current=norms)
+        n = Norm(min=_round(m, lo) if need_min else None, max=_round(m, hi) if need_max else None,
+                 brak=_round(m, brak) if brak is not None and len(vals) >= MIN_SAMPLES_FOR_BRAK else None,
+                 unit=unit, source=source)
+        kept = _inherit(norms.get(m.id), n, need_min, need_max)
+        corridors[m.id] = n
+        if kept:
+            notes[m.id] = kept
+    pr = Proposal(samples=measured, corridors=corridors, current=norms, notes=notes)
     pr.report = render(pr)
     return pr
 
 
 def render(pr: Proposal) -> str:
-    ids = [m for m in CALIBRATED if any(m in s.values for s in pr.samples)]
+    ids = [m for m in pr.corridors]
     lines = ["# Калибровка норм", "", f"Образцов: {len(pr.samples)}. Коридоры — 10-й и 90-й перцентили; брак — 5-й/95-й "
-             "(при ≥ 3 образцах). Утверждает автор: `konveyer нормы --калибровать … --утвердить`.", "",
+             f"(при ≥ {MIN_SAMPLES_FOR_BRAK} образцах); значения, которых калибровка не предлагает, наследуются из текущих норм. "
+             "Утверждает автор: `konveyer нормы --калибровать … --утвердить`.", "",
              "## Значения по образцам", "", "| образец | " + " | ".join(ids) + " |", "|---|" + "---|" * len(ids)]
     for s in pr.samples:
         lines.append(f"| {s.name} | " + " | ".join(f"{s.values[m]:g}" if m in s.values else "—" for m in ids) + " |")
-    lines += ["", "## Предложение (сейчас → предложено)", "", "| id | мин | макс | брак | единица | сейчас |", "|---|---|---|---|---|---|"]
+    lines += ["", "## Предложение (сейчас → предложено)", "", "| id | мин | макс | брак | единица | сейчас | примечание |",
+              "|---|---|---|---|---|---|---|"]
     for mid, n in pr.corridors.items():
         cur = pr.current.get(mid)
         now = metrics.corridor(cur) if cur else "нормы нет"
-        lines.append(f"| {mid} | {_fmt(n.min)} | {_fmt(n.max)} | {_fmt(n.brak)} | {n.unit} | {now} |")
+        lines.append(f"| {mid} | {_fmt(n.min)} | {_fmt(n.max)} | {_fmt(n.brak)} | {n.unit} | {now} | "
+                     f"{'; '.join(pr.notes.get(mid, [])) or '—'} |")
     return "\n".join(lines) + "\n"
 
 
@@ -140,21 +174,49 @@ def _fmt(v: float | None) -> str:
 # ------------------------------------------------------------------ применение
 
 
-def merged_table(text: str, corridors: dict[str, Norm]) -> str:
-    """Таблица норм документа стиля с заменёнными строками калиброванных метрик (новые — добавляются в конец)."""
+def norm_columns(ws: Workspace | None) -> dict[str, list[str]]:
+    """Синонимы колонок таблицы норм — из извлечения «нормы» типа «стиль» проекта (иначе умолчания)."""
+    cols = {k: list(v) for k, v in DEFAULT_COLUMNS.items()}
+    if ws is None:
+        return cols
+    spec = catalog.load_types(ws.root).get("стиль")
+    if spec is None:
+        return cols
+    for ext in spec.extractions:
+        if ext.get("имя") != "нормы":
+            continue
+        for fmt in ext.get("форматы") or []:
+            for name, col in (fmt.get("колонки") or {}).items():
+                syn = col.get("синонимы") if isinstance(col, dict) else None
+                if syn:
+                    cols[name] = [str(x).lower() for x in syn]
+    return cols
+
+
+def _find_col(headers: list[str], synonyms: list[str]) -> int | None:
+    for i, h in enumerate(headers):
+        if any(h == s or h.startswith(s) for s in synonyms):
+            return i
+    return None
+
+
+def merged_table(text: str, corridors: dict[str, Norm], columns: dict[str, list[str]] | None = None) -> str:
+    """Таблица норм документа стиля с заменёнными строками калиброванных метрик (новые — добавляются в конец).
+    Колонки узнаются по синонимам типа «стиль» (мин/min, макс/max…)."""
+    columns = columns or DEFAULT_COLUMNS
     m = None
+    headers: list[str] = []
     for cand in TABLE_RE.finditer(text):
-        head = cand.group(0).splitlines()[0].lower()
-        if "мин" in head and "макс" in head:
+        headers = [c.strip().lower() for c in cand.group(0).splitlines()[0].strip().strip("|").split("|")]
+        if _find_col(headers, columns["мин"]) is not None and _find_col(headers, columns["макс"]) is not None:
             m = cand
             break
     if m is None:
         raise ValueError("в документе стиля нет таблицы норм с колонками «мин | макс» — заведите её (каркас типа «стиль»)")
     lines = m.group(0).rstrip("\n").splitlines()
-    headers = [c.strip().lower() for c in lines[0].strip().strip("|").split("|")]
-    col = {h: i for i, h in enumerate(headers)}
-    id_i = next((i for h, i in col.items() if h in ("id", "метрика", "идентификатор")), 0)
-    mi, ma, br = col.get("мин"), col.get("макс"), col.get("брак")
+    id_i = _find_col(headers, columns["id"]) or 0
+    mi, ma, br = _find_col(headers, columns["мин"]), _find_col(headers, columns["макс"]), _find_col(headers, columns["брак"])
+    param_i, unit_i = _find_col(headers, columns["параметр"]), _find_col(headers, columns["единица"])
     seen: set[str] = set()
     out = lines[:2]
     for ln in lines[2:]:
@@ -162,12 +224,9 @@ def merged_table(text: str, corridors: dict[str, Norm]) -> str:
         mid = cells[id_i] if len(cells) > id_i else ""
         if mid in corridors:
             n = corridors[mid]
-            if mi is not None and mi < len(cells):
-                cells[mi] = _fmt(n.min)
-            if ma is not None and ma < len(cells):
-                cells[ma] = _fmt(n.max)
-            if br is not None and br < len(cells):
-                cells[br] = _fmt(n.brak)
+            for idx, value in ((mi, n.min), (ma, n.max), (br, n.brak)):
+                if idx is not None and idx < len(cells):
+                    cells[idx] = _fmt(value)
             seen.add(mid)
         out.append("| " + " | ".join(cells) + " |")
     for mid, n in corridors.items():
@@ -175,45 +234,56 @@ def merged_table(text: str, corridors: dict[str, Norm]) -> str:
             continue
         cells = [""] * len(headers)
         cells[id_i] = mid
-        param_i = col.get("параметр")
         if param_i is not None:
-            cells[param_i] = metrics.REGISTRY[mid].description if mid in metrics.REGISTRY else mid
-        if mi is not None:
-            cells[mi] = _fmt(n.min)
-        if ma is not None:
-            cells[ma] = _fmt(n.max)
-        if br is not None:
-            cells[br] = _fmt(n.brak)
-        unit_i = next((i for h, i in col.items() if h.startswith("единиц")), None)
+            cells[param_i] = metrics.describe(mid, n) or mid
+        for idx, value in ((mi, n.min), (ma, n.max), (br, n.brak)):
+            if idx is not None:
+                cells[idx] = _fmt(value)
         if unit_i is not None:
             cells[unit_i] = n.unit
         out.append("| " + " | ".join(c or "—" for c in cells) + " |")
     return text[: m.start()] + "\n".join(out) + "\n" + text[m.end():]
 
 
-def next_decision_id(journal_text: str) -> str:
-    nums = [int(x) for x in re.findall(r"Р-(\d+)", journal_text)]
-    return f"Р-{(max(nums) + 1) if nums else 1:03d}"
+def decision_id_prefix(ws: Workspace | None) -> str:
+    """Префикс номера решения — из образца заголовка типа «журнал_решений» («(Р-\\d+)» → «Р-»)."""
+    if ws is None:
+        return DEFAULT_DECISION_PREFIX
+    spec = catalog.load_types(ws.root).get("журнал_решений")
+    for ext in (spec.extractions if spec else ()):
+        for fmt in ext.get("форматы") or []:
+            head = fmt.get("заголовок")
+            if isinstance(head, str):
+                m = re.search(r"([^\\()\[\]?*+|^$]+?)\\d", head)
+                if m:
+                    return m.group(1)
+    return DEFAULT_DECISION_PREFIX
+
+
+def next_decision_id(journal_text: str, prefix: str = DEFAULT_DECISION_PREFIX) -> str:
+    nums = [int(x) for x in re.findall(re.escape(prefix) + r"(\d+)", journal_text)]
+    return f"{prefix}{(max(nums) + 1) if nums else 1:03d}"
 
 
 def apply(ws: Workspace, cfg: Config, library: Path, pr: Proposal, *, author_confirmed: bool, commit: bool = True,
           rationale: str = "калибровка по образцам автора") -> canonchange.ChangeResult:
     """Правка таблицы норм стиля + запись в журнал решений — одной сессией записи в канон."""
     if not author_confirmed:
-        raise PermissionError("калибровка меняет канон только по подтверждению автора (Д-8).")
+        raise PermissionError("калибровка меняет канон только по подтверждению автора (§10: запись в канон — решение автора).")
     style = exporter.docs_of_type(library, "стиль", None, ws.root)
     if not style:
         raise FileNotFoundError("документа стиля в библиотеке нет — калибровать нечего")
     style_path = style[0]
     journal = exporter.docs_of_type(library, "журнал_решений", None, ws.root)
-    new_text = merged_table(style_path.read_text(encoding="utf-8"), pr.corridors)
+    new_text = merged_table(style_path.read_text(encoding="utf-8"), pr.corridors, norm_columns(ws))
     ids = ", ".join(pr.corridors)
+    prefix = decision_id_prefix(ws)
 
     def writer() -> None:
         guard.write_text(style_path, new_text)
         if journal:
             jt = journal[0].read_text(encoding="utf-8")
-            did = next_decision_id(jt)
+            did = next_decision_id(jt, prefix)
             entry = (f"\n## {did}\n\n- Дата: {date.today().strftime('%d.%m.%Y')}\n"
                      f"- Решение: нормы стиля откалиброваны по {len(pr.samples)} образцам: {ids}.\n"
                      f"- Обоснование: {rationale}; коридоры — 10-й и 90-й перцентили значений образцов.\n")

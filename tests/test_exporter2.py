@@ -173,6 +173,8 @@ def test_карточка_несёт_строку_и_секции(ws):
 
 
 def test_лексемные_нормы_не_текут_между_проектами(ws, library):
+    """Лексемная норма живёт в норме проекта, а не в общем для процесса реестре (П-6): экспорт её принимает,
+    метрика строится из единицы на каждый прогон, другой проект (без такой нормы) её не видит."""
     style = library / "02_Стиль_и_голос.md"
     text = style.read_text(encoding="utf-8")
     anchor = "| повтор_нграмма | длина межглавного повтора | 5 | 5 | — | слов |\n"
@@ -180,10 +182,15 @@ def test_лексемные_нормы_не_текут_между_проекта
     style.write_text(text.replace(anchor, anchor + "| лексемы_тест | тест | — | 2 | — | слово1, слово2 на 1000 |\n"),
                      encoding="utf-8")
     exporter.run_export(library, ws.exports, ws.logs)
-    assert "лексемы_тест" in metrics.REGISTRY
-    # другой проект (без такой нормы) её не видит: экспорт снимает чужие динамические метрики
-    metrics.register_lexeme_norms({})
-    assert "лексемы_тест" not in metrics.REGISTRY and metrics.unknown_norms(["лексемы_тест"]) == ["лексемы_тест"]
+    norms = exporter.load_norms(ws.exports)
+    assert "лексемы_тест" in norms and metrics.unknown_norms(norms) == []
+    assert "лексемы_тест" in {m.id for m in metrics.active_metrics(norms)} and "лексемы_тест" not in metrics.REGISTRY
+    # другой проект (без такой нормы) её не видит: реестр не хранит чужих динамических метрик
+    assert metrics.unknown_norms(["лексемы_тест"]) == ["лексемы_тест"]
+    # норма с неразобранной единицей — ошибка экспорта с подсказкой формата
+    style.write_text(style.read_text(encoding="utf-8").replace("слово1, слово2 на 1000", "доля"), encoding="utf-8")
+    with pytest.raises(exporter.ExportErrors, match="лексемы_тест.*слово1, слово2 на 1000"):
+        exporter.run_export(library, ws.exports, ws.logs)
 
 
 def test_псевдосубъекты_и_исключения_прозы_проекта(ws, library):

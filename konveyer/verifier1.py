@@ -1,8 +1,8 @@
-"""Верификатор-1 (Э1): формальные проверки текста (FR-V1.1…FR-V1.10).
+"""Верификатор-1 (Э1): машинные проверки текста (FR-V1-1…FR-V1-7).
 
-Все пороги — ТОЛЬКО из norms.json (таблица норм документа стиля, FR-V1-2); в коде констант нет
-(критерий приёмки 6). Метрики повествователя считаются без документов-вставок
-(Д-7); деление на предложения — по Д-2.
+Все пороги — ТОЛЬКО из norms.json документа стиля (FR-V1-2, критерий приёмки 14.3.6); в коде констант нет.
+Метрики повествователя считаются без документов-вставок (Д-15); деление на предложения — по языковому модулю
+со словарём сокращений проекта (Д-13).
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import json
 import re
 from pathlib import Path
 
-from . import exporter, guard, lang, metrics, textutils
+from . import compiler, exporter, guard, lang, metrics, textutils
 from .paths import Workspace
 from .schemas import Brief, CheckResult, DiffReport, Edit, Norm, StopRule, Verdict
 
@@ -40,32 +40,44 @@ def item_pattern(item: str) -> re.Pattern:
     return lang.get().item_pattern(item)
 
 
-def analyze_text(ws: Workspace, chapter: int, raw: str) -> list[CheckResult]:
-    """Проверки Э1 для произвольного текста главы в контексте рабочей области (без записи вердикта):
-    нормы и стоп-листы из выгрузок, окно главы, корпус части — как в run_verify1."""
+def analyze_text(ws: Workspace, chapter: int, raw: str, brief: Brief | None = None, window_raw: str | None = None,
+                 *, use_corpus: bool = True) -> list[CheckResult]:
+    """Проверки Э1 для произвольного текста в контексте рабочей области (без записи вердикта) — единственная
+    точка входа Э1 для такта, `check`, вариантов и регрессии: нормы и стоп-листы из выгрузок, окно главы, корпус тома,
+    документы главы из реестра, язык и словарь сокращений проекта. `brief` — свой бриф (глава вне поглавника),
+    `window_raw` — своё окно (пустая строка — без окна)."""
     exports_dir = ws.exports
     norms = exporter.load_norms(exports_dir)
     stoplists = exporter.load_stoplists(exports_dir)
-    brief = exporter.load_brief(exports_dir, chapter)
-    window_path = ws.window_path(chapter)
-    window_raw = window_path.read_text(encoding="utf-8") if window_path.exists() else ""
-    own = exporter.find_corpus_file(ws.corpus, chapter, brief.volume)
+    if brief is None:
+        brief = exporter.load_brief(exports_dir, chapter)
+    if window_raw is None:
+        window_path = ws.window_path(chapter)
+        window_raw = window_path.read_text(encoding="utf-8") if window_path.exists() else ""
+    own = exporter.find_corpus_file(ws.corpus, chapter, brief.volume) if chapter else None
+    documents = [_document_label(d) for d in compiler.chapter_documents(exports_dir, brief)]
     return analyze(
         raw,
         window_raw,
         brief,
         norms,
         stoplists,
-        corpus_dir=ws.corpus,
+        corpus_dir=ws.corpus if use_corpus else None,
         own_stem=own.stem if own else None,
-        extra_abbr=ws.root / "сокращения.txt",  # пополняемый словарь (Д-2)
-        part_range=part_range_for(ws.exports, chapter),
+        extra_abbr=ws.root / "сокращения.txt",  # пополняемый словарь проекта (Д-13)
+        documents=documents,
         project_root=ws.root,
     )
 
 
+def _document_label(doc: dict) -> str:
+    kind = f" ({doc['kind']})" if doc.get("kind") else ""
+    note = f": {doc['note']}" if doc.get("note") else ""
+    return f"№{doc['number']}{kind} — {doc.get('position', 'после главы')}{note}"
+
+
 def variants_summary(ws: Workspace, chapter: int, draft: int, labels: list[str] | None = None) -> dict:
-    """A/B (аудит 2, п. 24б): метрики Э1 по каждому варианту черновика draft (черновик_k.md, черновик_k.alt1.md …)
+    """A/B-варианты (FR-WR-3): метрики Э1 по каждому варианту черновика draft (черновик_k.md, черновик_k.alt1.md …)
     → главы/N/варианты.json. FSM и вердикт.json не трогает."""
     from . import writer
 
@@ -105,19 +117,6 @@ def run_verify1(ws: Workspace, chapter: int, draft: int) -> Verdict:
     return verdict
 
 
-def part_range_for(exports_dir: Path, chapter: int) -> tuple[int, int] | None:
-    """Главы части (акта) реестра, в которую входит глава — границы корпуса для TTR-окна."""
-    try:
-        parts = exporter.load_parts(exports_dir)
-    except FileNotFoundError:
-        return None
-    for p in parts:
-        if p["from_chapter"] <= chapter <= p["to_chapter"]:
-            return (p["from_chapter"], p["to_chapter"])
-    return None
-
-
-
 def analyze(
     raw: str,
     window_raw: str,
@@ -128,22 +127,31 @@ def analyze(
     corpus_dir: Path | None = None,
     own_stem: str | None = None,
     extra_abbr: Path | None = None,
-    part_range: tuple[int, int] | None = None,
+    documents: list[str] | None = None,
     project_root: Path | None = None,
 ) -> list[CheckResult]:
     """Чистое ядро Э1: текст + контекст → результаты проверок по реестру метрик (FR-V1-1).
     Пороги — только из `norms` (FR-V1-2); язык — модуль проекта (FR-V1-3)."""
     ctx = MetricContext(raw=raw, brief=brief, norms=norms, stoplists=stoplists,
                         language=lang.for_project(project_root), window_raw=window_raw, corpus_dir=corpus_dir,
-                        own_stem=own_stem, extra_abbr=extra_abbr, part_range=part_range)
+                        own_stem=own_stem, extra_abbr=extra_abbr, documents=documents)
     return metrics.run(ctx)
 
 
-# ------------------------------------------------------- FR-V1.10 дифф-контроль
+# ------------------------------------------------------- FR-V1-6 дифф-контроль
 
 
 def _norm_ws(s: str) -> str:
     return " ".join(s.split())
+
+
+CLOSE_RATIO = 0.9  # сходство предложения с ожидаемым, при котором правка считается внесённой с мелкой правкой согласования
+
+
+def _close(actual: str, expected: str) -> bool:
+    if not expected or abs(len(actual) - len(expected)) > max(6, len(expected) // 5):
+        return False
+    return difflib.SequenceMatcher(None, actual.lower(), expected.lower(), autojunk=False).ratio() >= CLOSE_RATIO
 
 
 def _edit_text(s: str) -> str:
@@ -171,7 +179,7 @@ def _expected_sentences(old_sents: list[str], edits: list[Edit]) -> tuple[set[st
 
 
 def waive_unauthorized(ws: Workspace, chapter: int, report: DiffReport, fragments: list[str]) -> tuple[list[str], list[str]]:
-    """Авторская правка (`diff-check --авторская-правка`): снимает самоволия и ПИШЕТ в дифф.json,
+    """Авторская правка (`diff-check --авторская-правка`, FR-ED-3): снимает самоволия и ПИШЕТ в дифф.json,
     что именно снято. Без перечня — снимаются все (как прежде); с перечнем `--фрагмент` — только
     совпавшие (номер в списке самоволий или подстрока текста). Возвращает (снято, не найдено)."""
     waived: list[str] = []
@@ -226,7 +234,7 @@ def diff_check(ws: Workspace, chapter: int, draft_before: int, draft_after: int,
     for e in verifiable:
         before, after = e.before.strip(), e.after.strip()
         before_n, after_n = _norm_ws(before), _norm_ws(after)
-        # по счётчикам вхождений (2.5): цитата, встречающаяся в тексте дважды, после правки
+        # по счётчикам вхождений: цитата, встречающаяся в тексте дважды, после правки
         # одного места встречается на один раз меньше — это «внесено», а не «не внесено»
         if after and before_n in after_n:
             # «стало» содержит «было» (дописано продолжение): число «было» не меняется —
@@ -241,15 +249,19 @@ def diff_check(ws: Workspace, chapter: int, draft_before: int, draft_after: int,
         else:
             not_applied.append(e.seq)
 
-    # самовольные изменения — по КАЖДОМУ изменённому предложению (2.5), а не по блоку difflib:
+    # самовольные изменения — по КАЖДОМУ изменённому предложению, а не по блоку difflib:
     # блок из двух предложений, где правкой объяснено одно, второе не «отмывает»
     old_sents = textutils.split_sentences(textutils.strip_markdown(old))
     new_sents = textutils.split_sentences(textutils.strip_markdown(new))
     expected_new, explained_old, afters, befores = _expected_sentences(old_sents, edits)
 
     def new_explained(s: str) -> bool:
+        # объяснено — предложение, ожидаемое из подстановки (с допуском на согласование: «положил» → «положила»),
+        # либо предложение самого «стало»; короткое «стало» («Он» → «Она») подстрокой ничего не отмывает
         sn = _norm_ws(s)
-        return sn in expected_new or any(a in sn or sn in a for a in afters)
+        if sn in expected_new or any(sn in a for a in afters):
+            return True
+        return any(_close(sn, e) for e in expected_new)
 
     def old_explained(s: str) -> bool:
         sn = _norm_ws(s)
@@ -275,7 +287,7 @@ def diff_check(ws: Workspace, chapter: int, draft_before: int, draft_after: int,
         draft_after=draft_after,
         applied_share=round(applied / len(verifiable), 3) if verifiable else 1.0,
         not_applied=not_applied,
-        unauthorized=unauthorized[:MAX_QUOTES * 2],
+        unauthorized=unauthorized,  # полный список: печать обрезает сама, `--фрагмент N` снимает любое по номеру
         unverifiable=unverifiable,
     )
     guard.write_text(

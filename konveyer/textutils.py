@@ -23,11 +23,11 @@ def narration_only(text: str) -> str:
 
 
 def paragraphs(text: str) -> list[str]:
-    return lang.Language.paragraphs(text)
+    return _lang().paragraphs(text)
 
 
 def strip_document_inserts(text: str) -> str:
-    return lang.Language.strip_document_inserts(text)
+    return _lang().strip_document_inserts(text)
 
 
 def strip_markdown(text: str) -> str:
@@ -72,7 +72,7 @@ def ttr(tokens: list[str]) -> float:
 def rolling_ttr(tokens: list[str], window: int) -> list[tuple[int, float]]:
     """TTR нарастающим окном `window` слов: [(позиция конца окна, ttr)]."""
     result: list[tuple[int, float]] = []
-    if len(tokens) < window:
+    if window <= 0 or len(tokens) < window:
         return result
     step = max(1, window // 10)
     for end in range(window, len(tokens) + 1, step):

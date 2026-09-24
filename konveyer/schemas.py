@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -19,8 +20,9 @@ SCOPE_ALL = "эпоха"        # лексика эпохи: действует 
 
 
 class StopRule(BaseModel):
-    """Строка stoplists.json: стоп-лист линии повествования («линии» — внутренняя речь фокала), лексика эпохи
-    («эпоха» — весь текст) или словарь усилителей; область объявляется типом документа, а не кодом."""
+    """Строка stoplists.json: стоп-лист линии повествования («линии» — речь повествователя; тип «повествование»),
+    лексика эпохи («эпоха» — весь текст главы; тип «язык») или словарь усилителей (тип «стиль»); область действия
+    объявляется типом документа, а не кодом."""
 
     # область действия: «линии» (по умолчанию: речь повествователя) или «эпоха» (весь текст главы); объявляет
     # тип документа (`постоянные: {scope: …}`), проектный тип может ввести свою (считается как «линии»)
@@ -98,10 +100,17 @@ class Decision(BaseModel):
 
 
 class Checklist(BaseModel):
-    """checklists.json — чек-лист верификации (текст документа целиком, для Э2)."""
+    """checklists.json — секция чек-листа верификации проекта (для Э2). Пометка «модуль: имя» в заголовке секции
+    привязывает её к модулю: в промпт она идёт, только когда модуль включён; без пометки — базовая."""
 
     file: str = ""
+    title: str = ""
     text: str = ""
+
+    @property
+    def module(self) -> str | None:
+        m = re.search(r"модул[ья]\s*:\s*([\w-]+)", self.title, re.IGNORECASE)
+        return m.group(1).lower() if m else None
 
 
 class ChronologyEvent(BaseModel):
@@ -348,7 +357,7 @@ class Arc(BaseModel):
 
 
 class CheckResult(BaseModel):
-    """Результат одной проверки Э1 (FR-V1-*)."""
+    """Результат одной проверки Э1 (FR-V1-5)."""
 
     check_id: str
     status: Literal["PASS", "FLAG", "BRAK"]
@@ -374,7 +383,7 @@ class Verdict(BaseModel):
 
 
 class Flag(BaseModel):
-    """Флаг Э2 (FR-V2-*). kind=samovolka требует решения автора."""
+    """Флаг Э2 (FR-V2-4). kind=samovolka требует решения автора."""
 
     flag_id: str = Field(pattern=r"^[\w.\-]+$")  # попадает в id/href разметки — только безопасные символы
     type: str
@@ -386,7 +395,7 @@ class Flag(BaseModel):
 
 
 class Resolution(BaseModel):
-    """Решение автора по самоволке (FR-RV-*)."""
+    """Решение автора по самоволке (FR-RV-2)."""
 
     flag_id: str = Field(pattern=r"^[\w.\-]+$")
     decision: Literal["вычеркнуть", "канонизировать", "отклонить"] | None = None
@@ -411,7 +420,7 @@ class Edit(BaseModel):
 
 
 class DiffReport(BaseModel):
-    """Отчёт дифф-контроля (FR-RV-*)."""
+    """Отчёт дифф-контроля (FR-V1-6)."""
 
     chapter: int
     draft_before: int
@@ -431,7 +440,7 @@ class DiffReport(BaseModel):
 
 
 class GoldenTest(BaseModel):
-    """Золотой тест (FR-RG-*)."""
+    """Золотой тест (FR-RG-1)."""
 
     test_id: str
     fragment: str

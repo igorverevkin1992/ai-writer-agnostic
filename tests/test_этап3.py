@@ -68,11 +68,18 @@ VIOLATION = Flag(flag_id="F-002", type="бриф", severity="важно", quote=
 
 
 def test_э2_срезы_без_лишнего(ws, library):
-    """В промпте Э2 — только участники сцены и доступное фокалу; фактов недоступных фокалу тайн нет (FR-V2-1)."""
+    """В промпте Э2 — только участники сцены (FR-V2-1): факты не-участников не передаются; факты участников,
+    ещё не известные им, передаются с пометкой «узнаёт в гл. N» / «НЕ знает» — иначе эпистемику не проверить."""
     _to_review(ws, library, 1)
     system, user = verifier2.build_prompt(ws, 1, 1)
-    assert "M-001" in user and "Каширин" in user  # факт фокала
+    slice_ = user.split("## Срез знаний")[1].split("## Карточки")[0]
+    assert "M-001" in slice_ and "Каширин" in slice_  # факт фокала
     assert "M-008" not in user and "Пронин" not in user.split("## ТЕКСТ ГЛАВЫ")[0]  # не участник сцены гл. 1
+    later = [ln for ln in slice_.splitlines() if "M-003" in ln]
+    assert later and ("узнаёт в гл." in later[0] or "НЕ знает" in later[0])  # известное позже — только с пометкой
+    for ln in slice_.splitlines():
+        if ln.startswith("- ["):
+            assert "(знает всегда)" in ln or "узнаёт в гл." in ln or "(НЕ знает)" in ln, ln
     assert "Гуляев" not in user.split("## Карточки")[1].split("## Бриф")[0] if "## Карточки" in user else True
     assert "31_Матрица_знаний" not in user and "| fact_id |" not in user  # полные документы не передаются
 

@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import lang as lang_mod
+from . import lang as lang_mod, textutils
 from .schemas import Brief, CheckResult, Norm, StopRule
 
 MAX_QUOTES = 10
@@ -36,7 +36,7 @@ class MetricContext:
     corpus_dir: Path | None = None
     own_stem: str | None = None
     extra_abbr: Path | None = None
-    part_range: tuple[int, int] | None = None
+    documents: list[str] | None = None   # документы-вставки главы (реестр + бриф); None — только из брифа
     # производные (считаются один раз)
     text: str = ""
     sentences: list[str] = field(default_factory=list)
@@ -46,6 +46,8 @@ class MetricContext:
 
     def __post_init__(self) -> None:
         L = self.language
+        if self.documents is None:
+            self.documents = list(self.brief.documents)
         self.text = strip_markdown(L.strip_document_inserts(self.raw))
         self.sentences = L.split_sentences(self.text, self.extra_abbr)
         self.lengths = [len(L.words(s)) for s in self.sentences if L.words(s)]
@@ -70,28 +72,63 @@ class MetricContext:
         return quote_sentences(self.sentences, items, self.language)
 
 
-def strip_markdown(text: str) -> str:
-    text = re.sub(r"^#{1,6}\s+.*$", "", text, flags=re.M)
-    text = re.sub(r"^\s*-{3,}\s*$", "", text, flags=re.M)
-    text = re.sub(r"[*_`]{1,3}", "", text)
-    return text
+strip_markdown = textutils.strip_markdown
+ttr = textutils.ttr
+rolling_ttr = textutils.rolling_ttr
 
 
 # ------------------------------------------------------------------ общие помощники
 
 
+def brak_side(norm: Norm) -> str | None:
+    """Сторона порога брака по его положению относительно коридора: «низ» (брак ≤ мин или задан только мин),
+    «верх» (брак ≥ макс или задан только макс); None — брак не задан или его сторона неопределима
+    (брак без мин/макс, брак строго внутри коридора) — такую норму отвергает экспорт (`norm_problems`)."""
+    if norm.brak is None:
+        return None
+    if norm.min is not None and norm.brak <= norm.min:
+        return "низ"
+    if norm.max is not None and norm.brak >= norm.max:
+        return "верх"
+    if norm.min is not None and norm.max is None:
+        return "низ"
+    if norm.max is not None and norm.min is None:
+        return "верх"
+    return None
+
+
 def status_of(actual: float, norm: Norm) -> str:
-    """PASS/FLAG/BRAK по коридору нормы. BRAK — только если задан порог брака."""
-    if norm.brak is not None:
-        if norm.min is not None and actual < norm.brak:
-            return "BRAK"
-        if norm.min is None and norm.max is not None and actual > norm.brak:
-            return "BRAK"
+    """PASS/FLAG/BRAK по коридору нормы. BRAK — только если задан порог брака и его сторона определима."""
+    side = brak_side(norm)
+    if side == "низ" and actual < norm.brak:
+        return "BRAK"
+    if side == "верх" and actual > norm.brak:
+        return "BRAK"
     if norm.min is not None and actual < norm.min:
         return "FLAG"
     if norm.max is not None and actual > norm.max:
         return "FLAG"
     return "PASS"
+
+
+def norm_problems(norms: dict[str, Norm]) -> list[tuple[str, str]]:
+    """Нормы, которые приняты таблицей, но проверяться не будут или будут проверяться неверно (FR-V1-2):
+    брак без мин/макс, брак внутри коридора, норма метрики без нормы-параметра. Возвращает [(id, что не так)]."""
+    out: list[tuple[str, str]] = []
+    for nid, n in norms.items():
+        if n.brak is not None and brak_side(n) is None:
+            if n.min is None and n.max is None:
+                out.append((nid, f"задан брак {n.brak:g} без мин/макс — сторона порога неизвестна; задайте мин или макс"))
+            else:
+                out.append((nid, f"брак {n.brak:g} внутри коридора {n.min:g}–{n.max:g} — брак должен лежать "
+                                 "не выше мин (нижний порог) или не ниже макс (верхний порог)"))
+        m = REGISTRY.get(nid)
+        if m is None or m.kind == "параметр":
+            continue
+        missing = [p for p in m.params if p not in norms]
+        if missing:
+            out.append((nid, f"метрика не будет проверяться: нет нормы-параметра {', '.join(missing)}"))
+    return out
 
 
 def corridor(norm: Norm) -> str:
@@ -105,22 +142,43 @@ def corridor(norm: Norm) -> str:
     return ", ".join(parts) + (f" {norm.unit}" if norm.unit else "")
 
 
-def stoplist_applies(rule: StopRule, brief: Brief) -> bool:
-    """Действует ли правило в главе: линия (фокал), год, том (`volume`) и «до главы» (`until_chapter`)."""
-    applies = rule.applies_to
-    if "volume" in applies and int(applies["volume"]) != brief.volume:
-        return False
+def year_applies(applies: dict, year: int | None) -> bool:
+    """Ограничение правила годом («до 1999», «1990–1999»); год главы неизвестен — правило действует."""
+    if "year" not in applies or year is None:
+        return True
+    y = applies["year"]
+    if "before" in y:
+        return year < y["before"]
+    if "from" in y:
+        return y["from"] <= year <= y.get("to", 9999)
+    return True
+
+
+def volume_applies(applies: dict, volume: int | None) -> bool:
+    """Ограничение правила томом: диапазон «2», «1–2», «с 3» ({from, to}) или один том числом; том главы неизвестен —
+    правило действует (FR-V1-4)."""
+    if "volume" not in applies or volume is None:
+        return True
+    v = applies["volume"]
+    if isinstance(v, dict):
+        return v.get("from", 0) <= volume <= v.get("to", 10**6)
+    return int(v) == volume
+
+
+def chapter_applies(applies: dict, brief: Brief) -> bool:
+    """Правило действует в главе брифа по году, тому и «до главы» (`until_chapter`, включительно); линию не проверяет —
+    окно и Э2 берут правила всех участников сцены, не только фокала."""
     if "until_chapter" in applies and brief.chapter > int(applies["until_chapter"]):
         return False
-    if "focal" in applies:
-        return applies["focal"] == brief.focal
-    if "year" in applies and brief.year is not None:
-        y = applies["year"]
-        if "before" in y:
-            return brief.year < y["before"]
-        if "from" in y:
-            return y["from"] <= brief.year <= y.get("to", 9999)
-    return True
+    return year_applies(applies, brief.year) and volume_applies(applies, brief.volume)
+
+
+def stoplist_applies(rule: StopRule, brief: Brief) -> bool:
+    """Правило действует для главы (FR-V1-4): линия фокала, год, том и «до главы»."""
+    applies = rule.applies_to
+    if "focal" in applies and applies["focal"] != brief.focal:
+        return False
+    return chapter_applies(applies, brief)
 
 
 def find_items(text: str, items: list[str], language: lang_mod.Language | None = None) -> list[str]:
@@ -141,15 +199,13 @@ def quote_sentences(sentences: list[str], items: set[str], language: lang_mod.La
     return out
 
 
-def corpus_scope(corpus_dir: Path, volume: int, part_range: tuple[int, int] | None) -> list[Path]:
-    """Файлы корпуса для TTR-окна: том брифа и, если известна часть, её главы; файлы без номера — не отсеиваются."""
+def corpus_scope(corpus_dir: Path, volume: int) -> list[Path]:
+    """Файлы корпуса для TTR-окна: главы тома брифа; файлы без номера тома — не отсеиваются."""
     files: list[Path] = []
     for f in sorted(corpus_dir.glob("*.txt"), key=lambda p: p.name):
         m = _CORPUS_STEM_RE.search(f.stem)
-        if m is not None:
-            vol, ch = int(m.group(1)), int(m.group(2))
-            if vol != volume or (part_range and not part_range[0] <= ch <= part_range[1]):
-                continue
+        if m is not None and int(m.group(1)) != volume:
+            continue
         files.append(f)
     return files
 
@@ -175,22 +231,6 @@ def strip_prose_tail(window: str) -> str:
     return _TAIL_BLOCK_RE.sub("", window)
 
 
-def ttr(tokens: list[str]) -> float:
-    if not tokens:
-        return 0.0
-    return len({t.lower() for t in tokens}) / len(tokens)
-
-
-def rolling_ttr(tokens: list[str], window: int) -> list[tuple[int, float]]:
-    result: list[tuple[int, float]] = []
-    if window <= 0 or len(tokens) < window:
-        return result
-    step = max(1, window // 10)
-    for end in range(window, len(tokens) + 1, step):
-        result.append((end, ttr(tokens[end - window: end])))
-    return result
-
-
 # ------------------------------------------------------------------ реестр
 
 
@@ -205,16 +245,19 @@ class Metric:
     params: tuple[str, ...] = ()  # нормы-параметры, от которых зависит
     needs: tuple[str, ...] = ()   # бриф | окно | корпус | стоп-листы
     compute: Callable[[MetricContext], list[CheckResult]] | None = None
+    # калибровка (FR-V1-7): (нужна нижняя граница, нужна верхняя); None — по образцам не калибруется
+    calibrate: tuple[bool, bool] | None = None
+    decimals: int = 0             # знаков после запятой в предлагаемых коридорах
 
 
 REGISTRY: dict[str, Metric] = {}
-DYNAMIC: set[str] = set()  # метрики, объявленные нормами проекта (лексемные): перерегистрируются при каждом экспорте
 
 
 def metric(id: str, check_id: str, description: str, unit: str, *, scope: str = "проза", kind: str = "метрика",
-           params: tuple[str, ...] = (), needs: tuple[str, ...] = ()):
+           params: tuple[str, ...] = (), needs: tuple[str, ...] = (), calibrate: tuple[bool, bool] | None = None,
+           decimals: int = 0):
     def deco(fn):
-        REGISTRY[id] = Metric(id, check_id, description, unit, scope, kind, params, needs, fn)
+        REGISTRY[id] = Metric(id, check_id, description, unit, scope, kind, params, needs, fn, calibrate, decimals)
         return fn
     return deco
 
@@ -228,9 +271,11 @@ def available() -> list[str]:
 
 
 def unknown_norms(norms: dict[str, Norm] | list[str]) -> list[str]:
-    """Идентификаторы норм, для которых нет вычислителя (FR-V1-2)."""
-    ids = norms if isinstance(norms, list) else list(norms)
-    return [n for n in ids if n not in REGISTRY]
+    """Идентификаторы норм, для которых нет вычислителя (FR-V1-2); лексемная норма известна, если её единица
+    разобрана («слово1, слово2 на 1000 слов»)."""
+    if isinstance(norms, list):
+        return [n for n in norms if n not in REGISTRY]
+    return [n for n, norm in norms.items() if n not in REGISTRY and lexeme_norm(n, norm) is None]
 
 
 def _result(ctx: MetricContext, m: Metric, actual: float, quotes: list[str] | None = None, note: str = "") -> list[CheckResult]:
@@ -250,14 +295,14 @@ parameter("утечка_нграмма", "длина совпадения с о�
 parameter("повтор_нграмма", "длина межглавного повтора", "слов")
 
 
-@metric("средняя_длина", "V1.2a_средняя_длина", "средняя длина предложения", "слов")
+@metric("средняя_длина", "V1.2a_средняя_длина", "средняя длина предложения", "слов", calibrate=(True, True), decimals=1)
 def m_avg(ctx: MetricContext) -> list[CheckResult]:
     L = ctx.lengths
     return _result(ctx, REGISTRY["средняя_длина"], round(sum(L) / len(L), 2) if L else 0.0)
 
 
 @metric("доля_коротких", "V1.2b_доля_коротких", "доля предложений не длиннее порога короткой фразы", "доля",
-        params=("короткая_фраза_порог",))
+        params=("короткая_фраза_порог",), calibrate=(True, True), decimals=2)
 def m_short(ctx: MetricContext) -> list[CheckResult]:
     thr = ctx.param("короткая_фраза_порог")
     if thr is None or not ctx.lengths:
@@ -266,7 +311,7 @@ def m_short(ctx: MetricContext) -> list[CheckResult]:
 
 
 @metric("доля_длинных", "V1.2c_доля_длинных", "доля предложений не короче порога длинной фразы", "доля",
-        params=("длинная_фраза_порог",))
+        params=("длинная_фраза_порог",), calibrate=(False, True), decimals=2)
 def m_long(ctx: MetricContext) -> list[CheckResult]:
     thr = ctx.param("длинная_фраза_порог")
     if thr is None or not ctx.lengths:
@@ -274,7 +319,7 @@ def m_long(ctx: MetricContext) -> list[CheckResult]:
     return _result(ctx, REGISTRY["доля_длинных"], round(sum(1 for x in ctx.lengths if x >= thr) / len(ctx.lengths), 3))
 
 
-@metric("максимум_длины", "V1.2d_максимум_длины", "самое длинное предложение", "слов")
+@metric("максимум_длины", "V1.2d_максимум_длины", "самое длинное предложение", "слов", calibrate=(False, True))
 def m_max(ctx: MetricContext) -> list[CheckResult]:
     if not ctx.lengths:
         return []
@@ -283,11 +328,13 @@ def m_max(ctx: MetricContext) -> list[CheckResult]:
     return _result(ctx, REGISTRY["максимум_длины"], longest[0], quotes=[longest[1]])
 
 
-@metric("объём_главы", "V1.2e_объём", "объём главы (коридор мин–макс, если бриф не задаёт объём)", "слов", needs=("бриф",))
+@metric("объём_главы", "V1.2e_объём", "объём главы (коридор мин–макс, если бриф не задаёт объём или нет нормы «объём_допуск»)",
+        "слов", needs=("бриф",), calibrate=(True, True))
 def m_volume(ctx: MetricContext) -> list[CheckResult]:
-    if ctx.brief.volume_words:
-        return []
-    return _result(ctx, REGISTRY["объём_главы"], ctx.n_words)
+    if ctx.brief.volume_words and ctx.norm("объём_допуск") is not None:
+        return []  # объём брифа проверяет «объём_брифа»
+    note = f"бриф задаёт {ctx.brief.volume_words} слов, но нормы «объём_допуск» нет — проверен коридор стиля" if ctx.brief.volume_words else ""
+    return _result(ctx, REGISTRY["объём_главы"], ctx.n_words, note=note)
 
 
 @metric("объём_брифа", "V1.2e_объём", "соответствие объёму брифа (допуск — параметр «объём_допуск»)", "слов",
@@ -304,7 +351,8 @@ def m_brief_volume(ctx: MetricContext) -> list[CheckResult]:
                         actual=f"{n} слов (отклонение {deviation:.0%})", rule_source=norm.source)]
 
 
-@metric("был_на_250", "V1.3_был", "плотность лексем «был/было/были» (набор «был» языкового модуля) на 250 слов", "шт/250 слов")
+@metric("был_на_250", "V1.3_был", "плотность лексем «был/было/были» (набор «был» языкового модуля) на 250 слов", "шт/250 слов",
+        calibrate=(False, True), decimals=1)
 def m_byl(ctx: MetricContext) -> list[CheckResult]:
     forms = ctx.language.lexemes("был")
     count = sum(1 for t in ctx.tokens if t in forms)
@@ -312,28 +360,49 @@ def m_byl(ctx: MetricContext) -> list[CheckResult]:
                    quotes=ctx.quote(forms), note=f"{count} вхождений на {ctx.n_words} слов")
 
 
-def lexeme_metric(norm_id: str, lexemes: list[str], per: int = 1000, check_id: str | None = None,
-                  description: str = "") -> Metric:
-    """Плотность заданных лексем (FR-V1-1): норма `лексемы:<имя>` объявляется в стиле со списком слов
-    (колонка «параметр»: «слово1, слово2 на 1000 слов»)."""
-    forms = {lang_mod.get().normalize_word(w) for w in lexemes}
-    cid = check_id or f"V1.3_{norm_id}"
+LEXEME_PREFIX = "лексемы_"
+_LEXEME_UNIT_RE = re.compile(r"^\s*(.+?)\s+на\s+(\d+)")
+
+
+def lexeme_norm(norm_id: str, norm: Norm) -> tuple[list[str], int] | None:
+    """Динамическая метрика плотности заданных лексем (FR-V1-1): норма `лексемы_<имя>` в документе стиля, перечень
+    слов и база — в единице («слово1, слово2 на 1000 слов»). Возвращает (слова, база) или None, если единица
+    не разобрана. Слова живут в норме, не в реестре: правка документа стиля действует с первого прогона."""
+    if not norm_id.startswith(LEXEME_PREFIX):
+        return None
+    m = _LEXEME_UNIT_RE.match(norm.unit or "")
+    if not m:
+        return None
+    words = [w.strip() for w in re.split(r"[,;/]", m.group(1)) if w.strip()]
+    return (words, int(m.group(2))) if words else None
+
+
+def lexeme_metric(norm_id: str, norm: Norm) -> Metric | None:
+    """Вычислитель лексемной нормы (не хранится в реестре — строится на каждый прогон из нормы)."""
+    parsed = lexeme_norm(norm_id, norm)
+    if parsed is None:
+        return None
+    lexemes, per = parsed
 
     def compute(ctx: MetricContext) -> list[CheckResult]:
+        forms = {ctx.language.normalize_word(w) for w in lexemes}
         count = sum(1 for t in ctx.tokens if t in forms)
-        m = REGISTRY[norm_id]
         return _result(ctx, m, round(count / ctx.n_words * per, 2) if ctx.n_words else 0.0,
                        quotes=ctx.quote(forms), note=f"{count} вхождений на {ctx.n_words} слов")
 
-    m = Metric(norm_id, cid, description or f"плотность лексем {', '.join(lexemes)} на {per} слов", f"шт/{per} слов",
-               "проза", "метрика", (), (), compute)
-    REGISTRY[norm_id] = m
-    DYNAMIC.add(norm_id)
+    m = Metric(norm_id, f"V1.3_{norm_id}", f"плотность лексем {', '.join(lexemes)} на {per} слов", f"шт/{per} слов",
+               "проза", "метрика", (), (), compute, (False, True), 1)
     return m
 
 
+def describe(norm_id: str, norm: Norm | None = None) -> str | None:
+    """Описание метрики для нормы: из реестра или из самой нормы (лексемная); None — метрика неизвестна."""
+    m = REGISTRY.get(norm_id) or (lexeme_metric(norm_id, norm) if norm is not None else None)
+    return m.description if m else None
+
+
 @metric("усилители_на_1000", "V1.4_усилители", "плотность наречий-усилителей по словарю стиля на 1000 слов", "шт/1000 слов",
-        needs=("стоп-листы",))
+        needs=("стоп-листы",), calibrate=(False, True), decimals=1)
 def m_intensifiers(ctx: MetricContext) -> list[CheckResult]:
     L = ctx.language
     forms = {L.normalize_word(w) for r in ctx.stoplists if r.kind == "усилитель" for w in r.items}
@@ -349,17 +418,20 @@ def m_intensifiers(ctx: MetricContext) -> list[CheckResult]:
 def m_stoplists(ctx: MetricContext) -> list[CheckResult]:
     L = ctx.language
     narration = L.narration_only(ctx.text)
+    narration_sentences = L.split_sentences(narration, ctx.extra_abbr)
     out: list[CheckResult] = []
     for rule in ctx.stoplists:
         if rule.kind != "лексика" or not stoplist_applies(rule, ctx.brief):
             continue
         # стоп-лист линии фокала касается ВНУТРЕННЕЙ речи: реплики других персонажей — не флаг; лексика эпохи — весь текст
-        scope_text = narration if rule.narrator_only else ctx.text
+        line_rule = rule.narrator_only
+        scope_text = narration if line_rule else ctx.text
         found = find_items(scope_text, rule.items, L)
         if found:
             out.append(CheckResult(
                 check_id="V1.5_стоп_лексика", status="FLAG", threshold=f"действие: {rule.action}", actual="; ".join(found),
-                quotes=quote_sentences(ctx.sentences, {L.normalize_word(w) for w in found}, L),
+                # цитаты — оттуда же, где искали: реплика персонажа нарушением линии не считается и в цитаты не идёт
+                quotes=quote_sentences(narration_sentences if line_rule else ctx.sentences, {L.normalize_word(w) for w in found}, L),
                 rule_source=f"{rule.rule_id} ({rule.scope_label})",
                 note="проверьте значение: прямое значение эпохи допустимо" if rule.action == "флаг" else ""))
     if not out:
@@ -418,31 +490,34 @@ def m_ttr(ctx: MetricContext) -> list[CheckResult]:
     part_tokens: list[str] = []
     scope_files: list[str] = []
     if ctx.corpus_dir is not None and ctx.corpus_dir.exists():
-        for f in corpus_scope(ctx.corpus_dir, ctx.brief.volume, None):
+        for f in corpus_scope(ctx.corpus_dir, ctx.brief.volume):
             if ctx.own_stem and f.stem == ctx.own_stem:
                 continue
             scope_files.append(f.stem)
             part_tokens.extend(f.read_text(encoding="utf-8").split())
+    corpus_len = len(part_tokens)
     part_tokens.extend(ctx.tokens)
     rolling = rolling_ttr(part_tokens, win_size)
-    min_ttr = min((v for _, v in rolling), default=None)
+    # вердикт — только по окнам, захватывающим текст главы: разнообразие уже принятых глав черновик не исправит
+    min_ttr = min((v for end, v in rolling if end > corpus_len), default=None)
+    corpus_min = min((v for end, v in rolling if end <= corpus_len), default=None)
     short_corpus = min_ttr is None and bool(part_tokens)
     if short_corpus:
         min_ttr = round(len(set(part_tokens)) / len(part_tokens), 3)
-    status = ("PASS" if short_corpus or min_ttr is None or ttr_norm.min is None
-              else "BRAK" if ttr_norm.brak is not None and min_ttr < ttr_norm.brak
-              else "FLAG" if min_ttr < ttr_norm.min else "PASS")
+    status = "PASS" if short_corpus or min_ttr is None else status_of(min_ttr, ttr_norm)
+    note = f"корпус: том {ctx.brief.volume}" + (f" ({', '.join(scope_files)})" if scope_files else " (корпус пуст)")
+    if corpus_min is not None:
+        note += f"; справочно: минимум по окнам принятых глав {corpus_min:.3f}"
     out.append(CheckResult(
         check_id="V1.8b_ttr_окно", status=status,
-        threshold=f"мин {ttr_norm.min:g}" + (f", брак {ttr_norm.brak:g}" if ttr_norm.brak else "") + f" в окне {win_size} слов",
+        threshold=f"{corridor(ttr_norm)} в окне {win_size} слов",
         actual=(f"{min_ttr:.3f}" if min_ttr is not None else "корпус пуст")
                + (f" (справочно: том короче окна, {len(part_tokens)} слов)" if short_corpus else ""),
-        rule_source=ttr_norm.source,
-        note=f"корпус: том {ctx.brief.volume}" + (f" ({', '.join(scope_files)})" if scope_files else " (корпус пуст)")))
+        rule_source=ttr_norm.source, note=note))
     return out
 
 
-@metric("доля_диалога", "V1.9a_доля_диалога", "доля абзацев-реплик", "доля", scope="диалог")
+@metric("доля_диалога", "V1.9a_доля_диалога", "доля абзацев-реплик", "доля", scope="диалог", calibrate=(True, True), decimals=2)
 def m_dialogue(ctx: MetricContext) -> list[CheckResult]:
     if not ctx.paragraphs:
         return []
@@ -451,7 +526,7 @@ def m_dialogue(ctx: MetricContext) -> list[CheckResult]:
                    note=f"{d} реплик-абзацев из {len(ctx.paragraphs)}")
 
 
-@metric("фраз_в_абзаце", "V1.9b_фраз_в_абзаце", "среднее число предложений в абзаце", "предложений")
+@metric("фраз_в_абзаце", "V1.9b_фраз_в_абзаце", "среднее число предложений в абзаце", "предложений", calibrate=(True, True), decimals=1)
 def m_para(ctx: MetricContext) -> list[CheckResult]:
     if not ctx.paragraphs:
         return []
@@ -462,15 +537,16 @@ def m_para(ctx: MetricContext) -> list[CheckResult]:
                    note=f"однострочных абзацев: {single} из {len(ctx.paragraphs)} (приём, не норма)")
 
 
-@metric("документ_вставка", "V1.11_документ_вставка", "документ-вставка из брифа оформлен блоком «→ ДОКУМЕНТ … ← КОНЕЦ ДОКУМЕНТА»",
-        "да/нет", needs=("бриф",))
+@metric("документ_вставка", "V1.11_документ_вставка", "документ-вставка главы (реестр документов или бриф) оформлен блоком "
+        "«→ ДОКУМЕНТ … ← КОНЕЦ ДОКУМЕНТА»", "да/нет", needs=("бриф",))
 def m_document(ctx: MetricContext) -> list[CheckResult]:
-    if not ctx.brief.documents:
+    if not ctx.documents:
         return []
-    has = lang_mod.DOC_START in ctx.raw and lang_mod.DOC_END in ctx.raw
+    L = ctx.language
+    has = L.has_document_insert(ctx.raw)
     return [CheckResult(check_id="V1.11_документ_вставка", status="PASS" if has else "BRAK",
-                        threshold="блок `→ ДОКУМЕНТ` … `← КОНЕЦ ДОКУМЕНТА`", actual="есть" if has else "нет",
-                        rule_source="бриф главы (реестр документов)", note="; ".join(ctx.brief.documents)[:200])]
+                        threshold=f"блок `{L.doc_start}` … `{L.doc_end}`", actual="есть" if has else "нет",
+                        rule_source="реестр документов / бриф главы", note="; ".join(ctx.documents)[:200])]
 
 
 # ------------------------------------------------------------------ прогон и документация
@@ -479,46 +555,26 @@ def m_document(ctx: MetricContext) -> list[CheckResult]:
 ALWAYS = {"стоп_лексика", "утечка_окна", "межглавные_повторы", "объём_брифа", "документ_вставка"}  # без своей нормы
 
 
-LEXEME_PREFIX = "лексемы_"
-
-
-def is_lexeme_norm_id(norm_id: str) -> bool:
-    return norm_id.startswith(LEXEME_PREFIX)
-
-
-def lexeme_norm_spec(norm: Norm) -> tuple[list[str], int] | None:
-    """(слова, база) из единицы лексемной нормы «слово1, слово2 на 1000»; None — единица не разобрана."""
-    m = re.match(r"^\s*(.+?)\s+на\s+(\d+)", norm.unit or "")
-    if not m:
-        return None
-    words = [w.strip() for w in re.split(r"[,;/]", m.group(1)) if w.strip()]
-    return (words, int(m.group(2))) if words else None
-
-
-def register_lexeme_norms(norms: dict[str, Norm]) -> None:
-    """Нормы вида `лексемы_<имя>` с перечнем слов в единице («слово1, слово2 на 1000») — динамические метрики.
-    Реестр общий для процесса, поэтому динамические метрики другого проекта снимаются, а свои регистрируются
-    заново: список слов принадлежит проекту, не установке (П-6)."""
-    for nid in sorted(DYNAMIC):
-        REGISTRY.pop(nid, None)
-    DYNAMIC.clear()
-    for nid, n in norms.items():
-        if nid in REGISTRY or not is_lexeme_norm_id(nid):
-            continue
-        spec = lexeme_norm_spec(n)
-        if spec is None:
-            continue
-        lexeme_metric(nid, spec[0], per=spec[1])
-
-
-def run(ctx: MetricContext) -> list[CheckResult]:
-    register_lexeme_norms(ctx.norms)
-    checks: list[CheckResult] = []
+def active_metrics(norms: dict[str, Norm]) -> list[Metric]:
+    """Вычислители прогона: метрики реестра с нормой (или без своей нормы — `ALWAYS`) и лексемные метрики из норм."""
+    out: list[Metric] = []
     for m in REGISTRY.values():
         if m.kind == "параметр" or m.compute is None:
             continue
-        if m.id not in ctx.norms and m.id not in ALWAYS:
+        if m.id not in norms and m.id not in ALWAYS:
             continue  # метрика без нормы не считается (FR-V1-2)
+        out.append(m)
+    for nid in sorted(norms):
+        if nid not in REGISTRY:
+            lm = lexeme_metric(nid, norms[nid])
+            if lm is not None:
+                out.append(lm)
+    return out
+
+
+def run(ctx: MetricContext) -> list[CheckResult]:
+    checks: list[CheckResult] = []
+    for m in active_metrics(ctx.norms):
         checks.extend(m.compute(ctx))
     return checks
 

@@ -1,6 +1,6 @@
-"""Регрессионный корпус золотых тестов (FR-R1…FR-R4).
+"""Регрессионный корпус золотых тестов (FR-RG-1…FR-RG-4).
 
-Пропуск любого ожидаемого флага блокирует смену конфигурации (FR-R3):
+Пропуск любого ожидаемого флага блокирует смену конфигурации (FR-RG-3):
 предупреждение при `accept`, запрет при фиксации `retest`.
 """
 
@@ -31,22 +31,47 @@ def load_tests(ws: Workspace) -> list[GoldenTest]:
 
 
 def safe_file_stem(test_id: str) -> str:
-    """test_id → безопасное имя файла: без разделителей путей и служебных символов (2.11)."""
+    """test_id → безопасное имя файла: без разделителей путей и служебных символов."""
     stem = re.sub(r"[^\w.\-]+", "_", test_id.strip(), flags=re.UNICODE).strip("._")
     if not stem:
         raise ValueError(f"test_id «{test_id}» не годится для имени файла — используйте буквы, цифры, «_» и «-».")
     return stem[:120]
 
 
+def context_slice(ws: Workspace, *, focal: str = "", year: int | None = None, chapter: int | None = None,
+                  window_file: Path | None = None, use_corpus: bool = False, volume_words: int | None = None) -> dict:
+    """Срез контекста золотого теста (FR-RG-1): явные значения поверх брифа и окна главы, где ошибка была поймана.
+    Ключи — те, что читает прогон: chapter, volume, focal, year, volume_words, not_knows, window, use_corpus."""
+    ctx: dict = {"focal": focal, "year": year}
+    if chapter is not None:
+        brief = exporter.load_brief(ws.exports, chapter)
+        ctx.update({"chapter": brief.chapter, "volume": brief.volume, "focal": focal or brief.focal,
+                    "year": year if year is not None else brief.year})
+        if brief.volume_words:
+            ctx["volume_words"] = brief.volume_words
+        if brief.not_knows:
+            ctx["not_knows"] = list(brief.not_knows)
+        window_path = ws.window_path(chapter)
+        if window_path.exists():
+            ctx["window"] = window_path.read_text(encoding="utf-8")
+    if window_file is not None:
+        ctx["window"] = Path(window_file).read_text(encoding="utf-8")
+    if volume_words is not None:
+        ctx["volume_words"] = volume_words
+    if use_corpus:
+        ctx["use_corpus"] = True
+    return ctx
+
+
 def add_test(ws: Workspace, test: GoldenTest) -> Path:
-    """FR-R1: пополнение корпуса из ошибки, пропущенной эшелонами и пойманной автором."""
+    """FR-RG-1: пополнение корпуса из ошибки, пропущенной эшелонами и пойманной автором."""
     path = golden_dir(ws) / f"{safe_file_stem(test.test_id)}.json"
     guard.write_text(path, json.dumps(test.model_dump(), ensure_ascii=False, indent=2) + "\n")
     return path
 
 
 def environment_hashes(ws: Workspace) -> dict[str, str]:
-    """Отпечаток конфигурации, к которой относится отчёт регрессии (2.8):
+    """Отпечаток конфигурации, к которой относится отчёт регрессии (FR-RG-4):
     конфиг.yaml, папка шаблонов, выгрузки/norms.json. Изменилось — отчёт устарел."""
 
     def sha(data: bytes) -> str:
@@ -102,16 +127,10 @@ def _brief_from_context(ctx: dict) -> Brief:
 
 def run_e1_test(ws: Workspace, test: GoldenTest) -> tuple[list[str], list[str], list[str]]:
     """Прогон Э1 по фрагменту: (поймано, пропущено, лишние flag-и по check_id)."""
-    norms = exporter.load_norms(ws.exports)
-    stoplists = exporter.load_stoplists(ws.exports)
-    checks = verifier1.analyze(
-        test.fragment,
-        test.context_slice.get("window", ""),
-        _brief_from_context(test.context_slice),
-        norms,
-        stoplists,
-        corpus_dir=ws.corpus if test.context_slice.get("use_corpus") else None,
-    )
+    ctx = test.context_slice
+    brief = _brief_from_context(ctx)
+    checks = verifier1.analyze_text(ws, brief.chapter if ctx.get("chapter") else 0, test.fragment, brief=brief,
+                                    window_raw=str(ctx.get("window", "")), use_corpus=bool(ctx.get("use_corpus")))
     raised = {c.check_id for c in checks if c.status != "PASS"}
     expected = set(test.expected_flags)
     caught = sorted(raised & expected)
@@ -134,20 +153,18 @@ def run_e2_test(ws: Workspace, cfg: Config, test: GoldenTest) -> tuple[list[str]
             "",
             "## ТЕКСТ",
             "",
-            verifier2.FENCE_OPEN,
-            test.fragment,
-            verifier2.FENCE_CLOSE,
+            verifier2.fenced(test.fragment),
         ]
     )
     raw = adapters.call_role(cfg, "верификатор2", system, user, ws.logs, role="верификатор-2 (регрессия)")
-    flags = verifier2.parse_flags(raw)
+    flags = verifier2.parse_flags(raw, cfg.e2_quote_words, cfg.e2_max_flags)
     raised = {f.type for f in flags} | {"самоволка" for f in flags if f.kind == "samovolka"}
     expected = set(test.expected_flags)
     return sorted(raised & expected), sorted(expected - raised), sorted(raised - expected)
 
 
 def run_regression(ws: Workspace, llm: bool = False, cfg: Config | None = None) -> dict:
-    """FR-R2: Э1 всегда; Э2 — по флагу --llm (при недоступном API — пропуск с пометкой)."""
+    """FR-RG-2: Э1 всегда; Э2 — по флагу --llm (при недоступном API — пропуск с пометкой)."""
     tests = load_tests(ws)
     results = []
     for test in tests:
@@ -167,8 +184,8 @@ def run_regression(ws: Workspace, llm: bool = False, cfg: Config | None = None) 
         )
     missed_total = [r["test_id"] for r in results if r.get("пропущено")]
     executed = [r["test_id"] for r in results if not r.get("skipped")]
-    # «зелёная» — только когда что-то действительно проверено (2.8): пустой корпус или
-    # сплошь пропущенные Э2-тесты доказательством ничего не являются (FR-R3)
+    # «зелёная» — только когда что-то действительно проверено: пустой корпус или
+    # сплошь пропущенные Э2-тесты доказательством ничего не являются (FR-RG-3)
     green = bool(executed) and not missed_total
     if not tests:
         reason = "корпус пуст"
@@ -209,7 +226,7 @@ def is_stale(ws: Workspace) -> bool:
 
 def is_green(ws: Workspace) -> bool | None:
     """None — регрессия ещё не запускалась ИЛИ отчёт устарел (изменились конфиг.yaml,
-    шаблоны или нормы — FR-R3 требует нового прогона)."""
+    шаблоны или нормы — FR-RG-3 требует нового прогона)."""
     report = load_report(ws)
     if report is None or report.get("хэши") != environment_hashes(ws):
         return None

@@ -202,7 +202,7 @@ def verify2(chapter: int, manual: bool = False, taste: bool = False, again: bool
 
 
 def _verify2_again(ws: Workspace, cfg: Config, st: ChapterState, manual: bool) -> list:
-    """Повторный Э2 после правок (аудит 2, п. 24а): по текущему черновику, без смены состояния."""
+    """Повторный Э2 после правок (FR-V2-7): по текущему черновику, без смены состояния."""
     chapter = st.chapter
     st.require("правки", "дифф-контроль")
     if manual:
@@ -320,7 +320,7 @@ def apply_edits(chapter: int, manual: bool = False) -> int:
 
 
 def diff_check(chapter: int, author_fix: bool = False, fragments: list[str] | None = None):
-    """Дифф-контроль до/после правок (FR-V1.10, FR-E3). Возвращает отчёт дифф-контроля."""
+    """Дифф-контроль до/после правок (FR-V1-6, FR-ED-3). Возвращает отчёт дифф-контроля."""
     ws, cfg, lib = _ctx()
     if not isinstance(fragments, list):
         fragments = []
@@ -349,6 +349,8 @@ def diff_check(chapter: int, author_fix: bool = False, fragments: list[str] | No
         secho(f"Самовольные изменения ({len(report.unauthorized)}):", fg=colors.RED)
         for u in report.unauthorized[:10]:
             echo(f"  > {u[:200]}")
+        if len(report.unauthorized) > 10:
+            echo(f"  … и ещё {len(report.unauthorized) - 10} (полный список — в дифф.json главы)")
         if report.unverifiable:
             echo(
                 "Часть изменений может быть следствием свободных указаний — если это так, "

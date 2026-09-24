@@ -547,18 +547,23 @@ def _postprocess(col: Collected, volume: int, library: Path, root: Path, types: 
             del d["norms.json"][norm_id]
     from . import metrics as metrics_mod
 
-    # лексемные нормы проверяются до регистрации в реестре: реестр общий для процесса, и норма, зарегистрированная
-    # другим проектом, не должна делать «известной» норму этого (П-6)
-    for norm_id, n in d["norms.json"].items():
-        if metrics_mod.is_lexeme_norm_id(norm_id) and metrics_mod.lexeme_norm_spec(n) is None:
-            src = n.source.split(" (")[0]
-            col.errors.append(MarkupError(library / src, 1, f"норма «{norm_id}»: единица должна перечислять слова и базу "
-                                                            "(«слово1, слово2 на 1000»)"))
-    metrics_mod.register_lexeme_norms(d["norms.json"])
+    # лексемная норма с неразобранной единицей («слово1, слово2 на 1000») — своя ошибка, точнее общей «нет метрики»
+    bad_lexeme = {nid for nid, n in d["norms.json"].items()
+                  if nid.startswith(metrics_mod.LEXEME_PREFIX) and metrics_mod.lexeme_norm(nid, n) is None}
+    for norm_id in sorted(bad_lexeme):
+        src = d["norms.json"][norm_id].source.split(" (")[0]
+        col.errors.append(MarkupError(library / src, 1, f"норма «{norm_id}»: единица должна перечислять слова и базу "
+                                                        "(«слово1, слово2 на 1000»)"))
     for norm_id in metrics_mod.unknown_norms(d["norms.json"]):
+        if norm_id in bad_lexeme:
+            continue
         src = d["norms.json"][norm_id].source.split(" (")[0]
         col.errors.append(MarkupError(library / src, 1, f"норма «{norm_id}» не соответствует ни одной метрике реестра Э1; "
                                       f"доступные: {', '.join(metrics_mod.available())}"))
+    # норма принята, но проверяться не будет или будет проверяться неверно (брак без стороны, нет параметра) — тоже ошибка
+    for norm_id, problem in metrics_mod.norm_problems(d["norms.json"]):
+        src = d["norms.json"][norm_id].source.split(" (")[0]
+        col.errors.append(MarkupError(library / src, 1, f"норма «{norm_id}»: {problem}"))
 
 
 def _month(date: str, language: lang_mod.Language | None = None) -> int | None:

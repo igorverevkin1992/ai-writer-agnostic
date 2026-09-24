@@ -1,5 +1,5 @@
-"""Качество и регрессия: check (Э1 по произвольному файлу), circles (круги истории, Р-020),
-regress (золотые тесты, FR-R2), add_golden (FR-R1)."""
+"""Качество и регрессия: check (Э1 по произвольному файлу), circles (каркасы драматургии, FR-DR-1…FR-DR-4),
+regress (золотые тесты, FR-RG-2), add_golden (FR-RG-1), norms (нормы и калибровка, FR-V1-7)."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .. import exporter, guard, regression as regression_mod, verifier1
 from ..errors import StepError, StepExit
+from ..mdparse import MarkupError
 from ..schemas import GoldenTest
 from .common import Confirm, _ctx, _print_verdict, colors, confirm_or_reject, echo, secho
 
@@ -19,29 +20,13 @@ def check(
     ws, cfg, lib = _ctx()
     from ..schemas import Brief
 
-    own = None
-    part_range = None
     if chapter is not None:
+        # тот же контекст, что у такта: окно главы, корпус без самой главы, язык и словарь проекта
         brief = exporter.load_brief(ws.exports, chapter)
-        window_path = ws.window_path(chapter)
-        window = window_path.read_text(encoding="utf-8") if window_path.exists() else ""
-        # принятая глава уже лежит в корпусе — не сравнивать текст с самим собой (аудит 3.4)
-        own = exporter.find_corpus_file(ws.corpus, chapter, brief.volume)
-        part_range = verifier1.part_range_for(ws.exports, chapter)
+        checks = verifier1.analyze_text(ws, chapter, file.read_text(encoding="utf-8"))
     else:
         brief = Brief(chapter=0, focal=focal, year=year, volume_words=volume_words)
-        window = ""
-    checks = verifier1.analyze(
-        file.read_text(encoding="utf-8"),
-        window,
-        brief,
-        exporter.load_norms(ws.exports),
-        exporter.load_stoplists(ws.exports),
-        corpus_dir=ws.corpus,
-        own_stem=own.stem if own else None,
-        extra_abbr=ws.root / "сокращения.txt",
-        part_range=part_range,
-    )
+        checks = verifier1.analyze_text(ws, 0, file.read_text(encoding="utf-8"), brief=brief, window_raw="")
     from ..schemas import Verdict
 
     _print_verdict(Verdict(chapter=brief.chapter, draft=0, checks=checks))
@@ -57,19 +42,31 @@ def circles(
     scope: str = "всё", chapter: int | None = None, redo: bool = False, to_canon: bool = False,
     yes: bool = False, confirm: Confirm | None = None,
 ) -> dict | None:
-    """Круги истории (8 шагов) — каркас драматургии (Р-020): книга → четыре акта → главы; черновики в драматургия/.
-    `to_canon` — внести черновики в документ 2.1 библиотеки и закоммитить (Д-8). Возвращает результат прогона."""
+    """Каркасы драматургии по методике проекта (FR-DR-1): книга → акты → главы; черновики в драматургия/.
+    `to_canon` — внести черновики в документ каркасов библиотеки и закоммитить по подтверждению с диффом (FR-DR-4).
+    Возвращает результат прогона."""
     from .. import circles as circles_mod
 
     ws, cfg, lib = _ctx()
     exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
     if to_canon:
-        n = len(circles_mod.drafts(ws))
-        if not n:
-            raise StepError("черновиков кругов нет — сначала `konveyer circles`.")
+        try:
+            preview = circles_mod.canon_preview(ws, lib)
+        except RuntimeError as e:
+            raise StepError(str(e)) from e
+        # FR-DR-4: подтверждение — с предпросмотром и диффом, а не только с числом каркасов
+        for stem, status in sorted(preview["status"].items()):
+            echo(f"  {stem}: {status}")
+        if preview["diff"]:
+            echo(preview["diff"].rstrip("\n"))
+        elif not preview["exists"]:
+            echo(preview["text"].rstrip("\n"))
+        else:
+            echo("(документ каркасов не изменится)")
         confirm_or_reject(
             yes, confirm,
-            f"Внести {n} круг(ов) в {circles_mod.canon_doc_name(ws.volume)} библиотеки и закоммитить? (Д-8) (y)",
+            f"Внести {preview['n']} каркас(ов) в {circles_mod.canon_doc_name(ws.volume, ws.root)} библиотеки "
+            "и закоммитить (см. дифф выше)? (y)",
         )
         try:
             path, commit = circles_mod.commit_to_canon(ws, cfg, lib)
@@ -81,6 +78,8 @@ def circles(
     result = circles_mod.run(ws, cfg, scope, chapter, only_missing=not redo, library=lib)
     for path in result["готово"]:
         secho(f"  ✓ {path}", fg=colors.GREEN)
+    for line in result.get("не_разобрано", []):
+        secho(f"  ✗ ответ модели не разобран: {line}", fg=colors.RED)
     if result["ручной_режим"]:
         secho(f"⚠ {result['ручной_режим']}", fg=colors.YELLOW)
         echo(f"Промпты для ручного прогона ({len(result['промпты'])}): драматургия/промпты/ — "
@@ -91,14 +90,29 @@ def circles(
     return result
 
 
-def regress(llm: bool = False) -> dict:
-    """Прогон регрессионного корпуса золотых тестов (FR-R2). Красная регрессия — `StepExit(1)`."""
+def circles_preview() -> dict:
+    """Предпросмотр внесения каркасов в канон: дифф и статусы черновиков без записи (FR-DR-4)."""
+    from .. import circles as circles_mod
+
     ws, cfg, lib = _ctx()
+    try:
+        return circles_mod.canon_preview(ws, lib)
+    except RuntimeError as e:
+        raise StepError(str(e)) from e
+
+
+def regress(llm: bool = False) -> dict:
+    """Прогон регрессионного корпуса золотых тестов (FR-RG-2). Красная регрессия — `StepExit(1)`."""
+    ws, cfg, lib = _ctx()
+    try:  # выгрузки пересобираются, как перед сборкой окна: регрессия на свежем проекте не падает без norms.json
+        exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
+    except MarkupError as e:
+        secho(f"⚠ выгрузки не пересобраны: {e}", fg=colors.YELLOW)
     report = regression_mod.run_regression(ws, llm=llm, cfg=cfg)
     if not report["всего"]:
         secho(
             "⚠ Корпус золотых тестов ПУСТ (регрессия/золотые/) — регрессия ничего не проверила и зелёной "
-            "считаться не может (FR-R3). Пополните корпус: `konveyer add-golden` (FR-R1).",
+            "считаться не может (FR-RG-3). Пополните корпус: `konveyer add-golden` (FR-RG-1).",
             fg=colors.YELLOW,
         )
     elif not report.get("выполнено"):
@@ -120,7 +134,7 @@ def regress(llm: bool = False) -> dict:
         why = report.get("причина") or "пропущены ожидаемые флаги"
         secho(
             f"Регрессия КРАСНАЯ: {why}{' ' + str(report['провалено']) if report['провалено'] else ''} "
-            "(FR-R3: смена конфигурации заблокирована).",
+            "(FR-RG-3: смена конфигурации заблокирована).",
             fg=colors.RED,
         )
         raise StepExit(1)
@@ -129,14 +143,18 @@ def regress(llm: bool = False) -> dict:
 
 def add_golden(
     test_id: str, fragment_file: Path, expect: list[str] | None = None, focal: str = "", year: int | None = None,
-    echelon: str = "Э1",
+    echelon: str = "Э1", chapter: int | None = None, window_file: Path | None = None, use_corpus: bool = False,
+    volume_words: int | None = None,
 ) -> Path:
-    """Добавить золотой тест из пойманной автором ошибки (FR-R1). Возвращает путь теста."""
+    """Добавить золотой тест из пойманной автором ошибки одной командой (FR-RG-1). Срез контекста: `chapter` берёт
+    бриф главы (фокал, год, том, объём, «НЕ знает») и её окно из папки главы; `window_file` — своё окно (утечка окна);
+    `use_corpus` — прогон против корпуса (межглавные повторы); `volume_words` — объём брифа. Возвращает путь теста."""
     ws, cfg, lib = _ctx()
     test = GoldenTest(
         test_id=test_id,
         fragment=fragment_file.read_text(encoding="utf-8"),
-        context_slice={"focal": focal, "year": year},
+        context_slice=regression_mod.context_slice(ws, focal=focal, year=year, chapter=chapter, window_file=window_file,
+                                                   use_corpus=use_corpus, volume_words=volume_words),
         expected_flags=list(expect or []),
         echelon=echelon,  # type: ignore[arg-type]
     )
@@ -156,8 +174,7 @@ def norms(calibrate_files: list[Path] | None = None, approve: bool = False, yes:
     if calibrate_files is None and not from_corpus:
         secho("Нормы стиля (из выгрузок):", bold=True)
         for nid, n in current.items():
-            m = metrics_mod.REGISTRY.get(nid)
-            echo(f"  {nid}: {metrics_mod.corridor(n)} — {m.description if m else '⚠ неизвестная метрика'}")
+            echo(f"  {nid}: {metrics_mod.corridor(n)} — {metrics_mod.describe(nid, n) or '⚠ неизвестная метрика'}")
         echo("Калибровка: `konveyer нормы --калибровать <файлы…>` или `--калибровать` без файлов (по принятым главам).")
         return {"нормы": {k: v.model_dump() for k, v in current.items()}}
     samples = calibrate.samples_from_files(calibrate_files) if calibrate_files else calibrate.samples_from_corpus(ws, lib)

@@ -146,19 +146,50 @@ def test_стоплист_реплики_персонажей(ws):
 # ------------------------------------------------------------------ окно
 
 
+def _hidden_markers(ws, brief) -> list[str]:
+    """Маркеры тайн, которых фокал главы ещё не знает."""
+    out = []
+    for ban in exporter.load_export(ws.exports, "infobans.json"):
+        if not ban.get("secret"):
+            continue
+        known = ban.get("known_by", {}).get(brief.focal)
+        if known is not None and known <= brief.chapter:
+            continue
+        out.extend(ban.get("markers", []))
+    return out
+
+
 def test_окно_без_тайн(ws, library):
-    """По всем главам: ни один маркер тайны, недоступной фокалу, не встречается в окне (FR-WN-3)."""
-    bans = exporter.load_export(ws.exports, "infobans.json")
+    """По всем главам: ни один маркер тайны, недоступной фокалу, не встречается в окне — по основам слов,
+    а не подстрокой, чтобы ловить и склонённые формы (FR-WN-3)."""
+    from konveyer import lint
+
     for b in exporter.load_briefs(ws.exports):
-        w = compiler.compile_window(ws, library, b.chapter)[0].read_text(encoding="utf-8").lower()
-        for ban in bans:
-            if not ban.get("secret"):
-                continue
-            known = ban.get("known_by", {}).get(b.focal)
-            if known is not None and known <= b.chapter:
-                continue
-            for marker in ban.get("markers", []):
-                assert marker.lower() not in w, f"гл. {b.chapter}: маркер «{marker}» тайны {ban['ban_id']} в окне"
+        w = compiler.compile_window(ws, library, b.chapter)[0].read_text(encoding="utf-8")
+        hit = lint.marker_hit(w, _hidden_markers(ws, b))
+        assert hit is None, f"гл. {b.chapter}: маркер «{hit}» тайны в окне"
+
+
+@pytest.mark.parametrize("registry, old, new, chapter", [
+    ("26_Дозы_прошлого_Том1.md", "| депо 1978 года, бригада на фотографии |", "| депо 1978 года, что сторож жив и прячется у дочери |", 2),
+    ("32_Реестр_закладок.md", "| P-001 | записка без подписи на столе |", "| P-001 | записка о том, что сторож жив |", 1),
+    ("Досье/Персонаж_Каширин.md", "## Профиль\n", "## Профиль\n\nОн подозревал, что сторожа живого видели у дочери.\n", 1),
+])
+@pytest.mark.xfail(reason="утечка маркеров тайн через дозы, закладки и склонённые формы досье — находки кластера «окно»",
+                   strict=False)
+def test_окно_без_тайн_из_реестров(ws, library, registry, old, new, chapter):
+    """Маркер тайны, попавший в дозу, закладку или досье (в косвенном падеже), в окно не выходит (FR-WN-3)."""
+    from konveyer import lint
+
+    path = library / registry
+    text = path.read_text(encoding="utf-8")
+    assert old in text
+    path.write_text(text.replace(old, new), encoding="utf-8")
+    exporter.run_export(library, ws.exports, ws.logs)
+    brief = exporter.load_brief(ws.exports, chapter)
+    assert "сторож жив" in _hidden_markers(ws, brief)
+    w = compiler.compile_window(ws, library, chapter)[0].read_text(encoding="utf-8")
+    assert lint.marker_hit(w, ["сторож жив"]) is None
 
 
 def test_окно_деградация(ws, library):

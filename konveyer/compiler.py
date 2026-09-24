@@ -446,9 +446,11 @@ def _focalization_laws(exports_dir: Path) -> str:
 
 def _line_rules(stoplists: list[StopRule], participants: list[str], year: int | None,
                 brief: Brief | None = None, markers=()) -> list[dict]:
-    """Правила лексики: линий участников сцены (`epoch: False`) и года главы (`epoch: True`); правило с ограничением
-    томом/«до главы» — только в своём томе и до своей главы; слово, совпадающее с маркером недоступной фокалу
-    тайны, из списка убирается."""
+    """Правила лексики: линий участников сцены (`epoch: False`) и года главы (`epoch: True`) — FR-WN-2, FR-V1-4;
+    правило с ограничением томом/«до главы» — только в своём томе и до своей главы; слово, совпадающее с маркером
+    недоступной фокалу тайны, из списка убирается."""
+    from . import metrics as metrics_mod
+
     result = []
     for rule in sorted(stoplists, key=lambda r: (r.scope, r.rule_id)):
         if rule.kind != "лексика":  # усилители и прозаические запреты линий выводятся отдельно
@@ -456,16 +458,10 @@ def _line_rules(stoplists: list[StopRule], participants: list[str], year: int | 
         applies = rule.applies_to
         if "focal" in applies and applies["focal"] not in participants:
             continue
-        if brief is not None and "volume" in applies and int(applies["volume"]) != brief.volume:
+        if not metrics_mod.year_applies(applies, year):
             continue
-        if brief is not None and "until_chapter" in applies and brief.chapter > int(applies["until_chapter"]):
+        if brief is not None and not metrics_mod.chapter_applies(applies, brief):
             continue
-        if "year" in applies and year is not None:
-            y = applies["year"]
-            if "before" in y and year >= y["before"]:
-                continue
-            if "from" in y and not (y["from"] <= year <= y.get("to", 9999)):
-                continue
         if "focal" in applies:
             scope_note, epoch = f"линия «{applies['focal']}»", False
         elif rule.narrator_only:

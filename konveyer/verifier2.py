@@ -21,6 +21,15 @@ from .schemas import Flag
 
 FENCE_OPEN = "<текст_главы>"
 FENCE_CLOSE = "</текст_главы>"
+_FENCE_RE = re.compile(r"<(/?)\s*текст_главы\s*>", re.IGNORECASE)
+TASTE_SECTIONS_DEFAULT = r"[Вв]кус"   # секции вкуса, если тип «стиль» проекта не объявил `окно.секции_вкуса`
+
+
+def fenced(text: str) -> str:
+    """Текст главы в ограждении (FR-V2-2): маркеры внутри прозы обезвреживаются («‹/текст_главы›»), чтобы текст
+    не мог закрыть ограждение и подсунуть Верификатору инструкции."""
+    safe = _FENCE_RE.sub(lambda m: f"‹{m.group(1)}текст_главы›", text)
+    return f"{FENCE_OPEN}\n{safe}\n{FENCE_CLOSE}"
 
 
 def _template(ws: Workspace, name: str) -> str:
@@ -90,11 +99,25 @@ def chronicle_slice(events: list, brief) -> list[str]:
     return out
 
 
+def project_checklists(ws: Workspace) -> list[str]:
+    """Секции чек-листов проекта (тип «чек_листы»): базовые всегда, с пометкой «модуль: имя» — только при включённом
+    модуле (FR-V2-3): выключенная эпистемика не оставляет требования «сверить с матрицей», которой в срезах нет."""
+    man = _manifest(ws)
+    mods = catalog.load_modules(ws.root)
+    out: list[str] = []
+    for c in exporter.load_checklists(ws.exports):
+        if not c.text.strip():
+            continue
+        if c.module and c.module in mods and not man.module_enabled(c.module, mods):
+            continue
+        out.append(f"### {c.title}\n{c.text.strip()}" if c.title else c.text.strip())
+    return out
+
+
 def system_prompt(ws: Workspace, cfg: Config) -> str:
     man = _manifest(ws)
-    project_checks = "\n\n".join(c.text for c in exporter.load_checklists(ws.exports) if c.text)
     return Environment().from_string(_template(ws, "верификатор2_система.md")).render(
-        series=man.проект.имя, checks=checklists(ws), project_checklists=project_checks,
+        series=man.проект.имя, checks=checklists(ws), project_checklists="\n\n".join(project_checklists(ws)),
         quote_words=cfg.e2_quote_words, max_flags=cfg.e2_max_flags,
     )
 
@@ -129,16 +152,19 @@ def build_prompt(ws: Workspace, chapter: int, draft: int, cfg: Config | None = N
         "- (каркас в канон не внесён — проверка драматургии ограничивается собственным движением главы)"
     ]
     participants = sorted(set([brief.focal, *brief.participants]) - {""})
+
+    def rule_for_scene(r) -> bool:
+        """Правило линии участника сцены, действующее в главе (том, «до главы», год) — как в окне Писателя."""
+        return (("focal" not in r.applies_to or r.applies_to["focal"] in participants)
+                and metrics.chapter_applies(r.applies_to, brief))
+
     line_rules = [
         f"- [{r.rule_id}] {r.applies_to.get('focal', 'все линии')}: {'; '.join(sorted(r.items))} ({r.action})"
-        for r in stoplists
-        if r.kind == "лексика" and r.narrator_only and ("focal" not in r.applies_to or r.applies_to["focal"] in participants)
-        and metrics.stoplist_applies(r, brief)
+        for r in stoplists if r.kind == "лексика" and r.narrator_only and rule_for_scene(r)
     ]
     prose_rules = [
         f"- [{r.rule_id}] {r.applies_to.get('focal', 'все линии')}: {item}"
-        for r in stoplists
-        if r.kind == "проза" and ("focal" not in r.applies_to or r.applies_to["focal"] in participants)
+        for r in stoplists if r.kind == "проза" and rule_for_scene(r)
         for item in r.items
     ]
     dossier_slice: list[str] = []
@@ -165,40 +191,55 @@ def build_prompt(ws: Workspace, chapter: int, draft: int, cfg: Config | None = N
     blocks.append(["## Бриф главы", f"- Сцены: {'; '.join(brief.scenes)}", f"- Биты: {'; '.join(brief.beats)}",
                    f"- Запреты: {'; '.join(brief.bans)}", f"- Фокал НЕ знает: {'; '.join(brief.not_knows)}",
                    *([f"- Что нового должен узнать читатель: {brief.reader_learns}"] if brief.reader_learns else []), ""])
-    if on.get("закладки"):
+    if on.get("закладки") and plants:
         blocks.append(["## Закладки, назначенные главе", *[f"- [{p.plant_id}] {p.what}" for p in plants], ""])
     if on.get("дозы_прошлого") and dose_lines:
         blocks.append(["## Доза прошлого этой главы", *dose_lines, ""])
     if on.get("документы_вставки") and document_lines:
         blocks.append(["## Документ-вставка этой главы — блок `→ ДОКУМЕНТ` … `← КОНЕЦ ДОКУМЕНТА` обязателен", *document_lines, ""])
-    if on.get("информрежим"):
-        blocks.append(["## Запреты информрежима (резервы будущих томов)",
-                       *[f"- [{b.ban_id}] {b.text}" for b in infobans if compiler.ban_active(b, brief)], ""])
+    active_bans = [f"- [{b.ban_id}] {b.text}" for b in infobans if compiler.ban_active(b, brief)]
+    if on.get("информрежим") and active_bans:
+        blocks.append(["## Запреты информрежима (резервы будущих томов)", *active_bans, ""])
     if on.get("фокализация"):
-        blocks.append(["## Стоп-листы линий (фокализация)", *line_rules, ""])
+        if line_rules:
+            blocks.append(["## Стоп-листы линий (фокализация)", *line_rules, ""])
         if prose_rules:
             blocks.append(["## Прозаические запреты линий", *prose_rules, ""])
     if on.get("драматургия"):
         blocks.append(["## Драматургия: каркас", *drama_lines, ""])
-    if on.get("континуити"):
-        blocks.append(["## Континуити (детали, которые обязаны совпасть)",
-                       *[f"- {c}" for c in compiler.prior_continuity(continuity, brief, infobans, participants, briefs)], ""])
-    if on.get("хроника_эпохи") and chronicle:
-        blocks.append(["## Хроника эпохи (анахронизмы) — месяц главы ± 1", *chronicle_slice(chronicle, brief), ""])
-    blocks.append(["## ТЕКСТ ГЛАВЫ", "", FENCE_OPEN, text, FENCE_CLOSE])
+    prior = [f"- {c}" for c in compiler.prior_continuity(continuity, brief, infobans, participants, briefs)]
+    if on.get("континуити") and prior:
+        blocks.append(["## Континуити (детали, которые обязаны совпасть)", *prior, ""])
+    events = chronicle_slice(chronicle, brief) if on.get("хроника_эпохи") else []
+    if events:
+        blocks.append(["## Хроника эпохи (анахронизмы) — месяц главы ± 1", *events, ""])
+    blocks.append(["## ТЕКСТ ГЛАВЫ", "", fenced(text)])
     user = "\n".join(line for block in blocks for line in block)
     return system_prompt(ws, cfg), user
 
 
-def parse_flags(raw: str, max_words: int | None = None) -> list[Flag]:
+SEVERITY_ORDER = {"критично": 0, "важно": 1, "мелочь": 2}
+
+
+def parse_flags(raw: str, max_words: int | None = None, max_flags: int | None = None, prefix: str = "F") -> list[Flag]:
+    """Флаги из ответа модели (FR-V2-4): цитата не длиннее `max_words` слов, повторяющиеся или негодные `flag_id`
+    получают свои («F-001», «F-001-2»), а при `max_flags` остаются самые серьёзные (порядок внутри серьёзности сохранён)."""
     try:
         data = llmjson.extract_json(raw, list)
     except ValueError as e:
         raise ValueError(f"Ответ Верификатора-2: {e}") from e
     flags = []
+    seen: set[str] = set()
     for i, item in enumerate(data, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"Невалидный флаг №{i}: ожидался объект, получено {type(item).__name__}")
         if not isinstance(item.get("flag_id"), str) or not re.fullmatch(r"[\w.\-]+", item["flag_id"]):
-            item["flag_id"] = f"F-{i:03d}"
+            item["flag_id"] = f"{prefix}-{i:03d}"
+        fid, k = item["flag_id"], 2
+        while item["flag_id"] in seen:
+            item["flag_id"] = f"{fid}-{k}"
+            k += 1
+        seen.add(item["flag_id"])
         if max_words and isinstance(item.get("quote"), str):
             words = item["quote"].split()
             if len(words) > max_words:
@@ -207,13 +248,15 @@ def parse_flags(raw: str, max_words: int | None = None) -> list[Flag]:
             flags.append(Flag.model_validate(item))
         except ValidationError as e:
             raise ValueError(f"Невалидный флаг №{i}: {e}") from e
+    if max_flags is not None and len(flags) > max_flags:
+        flags = sorted(flags, key=lambda f: SEVERITY_ORDER.get(f.severity, 9))[:max_flags]
     return flags
 
 
 def _call_and_parse(ws: Workspace, cfg: Config, chapter: int, system: str, user: str, *, role: str, raw_name: str) -> list[Flag]:
     raw = adapters.call_role(cfg, "верификатор2", system, user, ws.logs, role=role, chapter=chapter)
     try:
-        return parse_flags(raw, cfg.e2_quote_words)
+        return parse_flags(raw, cfg.e2_quote_words, cfg.e2_max_flags)
     except ValueError:
         # FR-AD-3: неразбираемый ответ сохраняется целиком и предъявляется автору
         guard.write_text(ws.chapter_dir(chapter) / raw_name, raw)
@@ -261,8 +304,7 @@ def taste_rules(ws: Workspace) -> str:
 
     library = guard._library() or library_dir(ws, load_config(ws))
     spec = catalog.load_types(ws.root).get("стиль")
-    pattern = (spec.window.get("секции_вкуса") if spec else None) or r"^(?:§\s*)?6\.[12]\.?\s|[Вв]кус"
-    rx = re.compile(pattern)
+    rx = re.compile((spec.window.get("секции_вкуса") if spec else None) or TASTE_SECTIONS_DEFAULT)
     wanted: list[str] = []
     for path in exporter.docs_of_type(library, "стиль", None, ws.root):
         for s in mdparse.parse_sections(path):
@@ -275,10 +317,9 @@ def build_taste_prompt(ws: Workspace, chapter: int, draft: int, cfg: Config | No
     cfg = cfg or Config()
     man = _manifest(ws)
     text = ws.draft_path(chapter, draft).read_text(encoding="utf-8")
-    user = (f"# Вкус: глава {chapter}\n\n## Правила вкуса автора\n\n{taste_rules(ws)}\n\n## ТЕКСТ ГЛАВЫ\n\n"
-            f"{FENCE_OPEN}\n{text}\n{FENCE_CLOSE}\n")
+    user = f"# Вкус: глава {chapter}\n\n## Правила вкуса автора\n\n{taste_rules(ws)}\n\n## ТЕКСТ ГЛАВЫ\n\n{fenced(text)}\n"
     system = Environment().from_string(_template(ws, "верификатор2_вкус_система.md")).render(
-        series=man.проект.имя, quote_words=cfg.e2_quote_words)
+        series=man.проект.имя, quote_words=cfg.e2_quote_words, max_flags=cfg.e2_max_flags)
     return system, user
 
 
@@ -286,7 +327,13 @@ def run_taste(ws: Workspace, cfg: Config, chapter: int, draft: int) -> list[Flag
     system, user = build_taste_prompt(ws, chapter, draft, cfg)
     guard.write_text(ws.chapter_dir(chapter) / "промпт_вкуса.md", f"<!-- system -->\n{system}\n\n<!-- user -->\n{user}\n")
     raw = adapters.call_role(cfg, "верификатор2", system, user, ws.logs, role="вкус", chapter=chapter)
-    flags = [f.model_copy(update={"severity": "мелочь", "type": "вкус", "kind": "violation"}) for f in parse_flags(raw)]
+    try:
+        parsed = parse_flags(raw, cfg.e2_quote_words, cfg.e2_max_flags, prefix="V")
+    except ValueError:
+        # FR-AD-3: неразбираемый ответ сохраняется целиком и предъявляется автору
+        guard.write_text(ws.chapter_dir(chapter) / "ответ_вкуса_сырой.md", raw)
+        raise ValueError(f"ответ модели не разобран — сохранён целиком в {ws.chapter_rel(chapter)}/ответ_вкуса_сырой.md") from None
+    flags = [f.model_copy(update={"severity": "мелочь", "type": "вкус", "kind": "violation"}) for f in parsed]
     guard.write_text(ws.chapter_dir(chapter) / "вкус.json", json.dumps([f.model_dump() for f in flags], ensure_ascii=False, indent=2) + "\n")
     return flags
 
