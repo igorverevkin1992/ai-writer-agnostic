@@ -416,9 +416,11 @@ def cmd_lint(
     watch: bool = typer.Option(False, "--watch", "--следить", help="Следить за библиотекой и перепроверять при каждом изменении."),
     max_calls: int = typer.Option(40, "--лимит", "--max-calls", help="Предел оплачиваемых вызовов модели за прогон (--llm)."),
     strict: bool = typer.Option(True, "--strict/--no-strict", help="Код возврата 1 при ошибках канона (для скриптов); панель вызывает --no-strict."),
+    answers: list[str] = typer.Option([], "--ответ", "--answer", help="Ответ модели, полученный вручную по сохранённому промпту: документ=файл_ответа."),
 ) -> None:
-    """Проверка канона на противоречия и ошибки логики повествования (машинный слой; --llm — модель)."""
-    errors = canon.lint(llm=llm, files=files, watch=watch, max_calls=max_calls)
+    """Проверка канона на противоречия и ошибки логики повествования (машинный слой; --llm — модель;
+    --ответ — принять ответ модели по документу из ручного прогона)."""
+    errors = canon.lint(llm=llm, files=files, watch=watch, max_calls=max_calls, answers=answers)
     if not watch and errors and strict:
         raise typer.Exit(code=1)
 

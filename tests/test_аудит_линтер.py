@@ -352,3 +352,170 @@ def test_тайна4_документ_снимает_проверку_тольк
     _edit(library / PLAN, "- Документы: №1 (после главы): рапорт Пронина о закрытии дела",
           "- Документы: №1 (после главы): письмо, из которого ясно, что сторож жив")
     assert "ТАЙНА-4" not in _codes(_lint(ws, library))
+
+
+# ------------------------------------------------------------------ КОНТ-2: континуити против прозы
+
+
+def test_конт2_признак_в_прозе_против_континуити(ws, library):
+    prose = library / "Проза" / "Том1_Глава03.md"
+    _edit(prose, "Пронин кивнул,", "Она вспомнила шрам над правой бровью Каширина. Пронин кивнул,")
+    report = _lint(ws, library)
+    found = [f for f in report.findings if f.code == "КОНТ-2"]
+    assert len(found) == 1 and found[0].file == "Проза/Том1_Глава03.md" and found[0].line == 1
+    assert "Каширин, увечья — в прозе «правое», а континуити фиксирует «левое»" in found[0].message
+    assert "шрам над правой бровью" in found[0].quote and "Что сделать" in found[0].message
+    # признак из карточки (не из континуити): ожоги на правой руке Гуляева против «левой» в прозе
+    _edit(prose, "Она вспомнила шрам над правой бровью Каширина.", "Она вспомнила ожог на левой руке Гуляева.")
+    found = [f for f in _lint(ws, library).findings if f.code == "КОНТ-2"]
+    assert len(found) == 1 and "Гуляев, увечья" in found[0].message and "карточка фиксирует «правое»" in found[0].message
+    # признак в реплике персонажа (абзац-реплика до атрибуции) — не показание фокала
+    _edit(prose, "Она вспомнила ожог на левой руке Гуляева. ", "")
+    _edit(prose, "Пронин пришёл к киоску", "— Ожог у Гуляева на левой руке, — сказал Пронин.\n\nПронин пришёл к киоску")
+    assert "КОНТ-2" not in _codes(_lint(ws, library))
+    # модуль «континуити» выключен — проверки нет
+    _edit(prose, "— Ожог у Гуляева на левой руке, — сказал Пронин.", "Она вспомнила ожог на левой руке Гуляева.")
+    assert "КОНТ-2" in _codes(_lint(ws, library))
+    man = manifest_mod.load(ws.root)
+    man.модули["континуити"] = "выкл"
+    manifest_mod.save(ws.root, man)
+    assert "КОНТ-2" not in _codes(_lint(ws, library))
+
+
+# ------------------------------------------------------------------ кэш линтера: канон + конфигурация
+
+
+def test_кэш_линтера_учитывает_конфигурацию_проекта(ws, library):
+    _edit(library / "32_Реестр_закладок.md", "| P-002 | царапины на замке гаража №14 | т1 гл5 | т1 гл6; т2 |",
+          "| P-002 | царапины на замке гаража №14 | т1 гл5 | т1 гл2; т2 |")
+    r1 = lint.run_lint(library, ws.exports, ws.logs)
+    assert "ЗАКЛ-2" in _codes(r1)
+    assert lint.run_lint(library, ws.exports, ws.logs).ts == r1.ts  # тот же канон и конфигурация — прежний отчёт
+    man = manifest_mod.load(ws.root)
+    man.модули["закладки"] = "выкл"
+    manifest_mod.save(ws.root, man)
+    r2 = lint.run_lint(library, ws.exports, ws.logs)  # кэш включён — выключение модуля пересчитывает отчёт
+    assert r2.ts != r1.ts and r2.fingerprint != r1.fingerprint and "ЗАКЛ-2" not in _codes(r2)
+    # плагин линтера проекта — тоже часть конфигурации
+    (ws.root / "линтер").mkdir()
+    (ws.root / "линтер" / "свой.py").write_text(
+        "from konveyer.schemas import LintFinding\n"
+        "def checks(ctx):\n    return [LintFinding(code='СВОЙ-1', severity='заметка', file='x', message='свой')]\n", encoding="utf-8")
+    r3 = lint.run_lint(library, ws.exports, ws.logs)
+    assert "СВОЙ-1" in _codes(r3) and r3.fingerprint != r2.fingerprint
+    # обязательные шаги методики — тоже
+    man = manifest_mod.load(ws.root)
+    man.методики.обязательные_шаги = {"глава": [1]}
+    manifest_mod.save(ws.root, man)
+    assert lint.run_lint(library, ws.exports, ws.logs).fingerprint != r3.fingerprint
+
+
+# ------------------------------------------------------------------ модельный слой: промпт, отмена, ручной ответ
+
+
+def test_промпт_модельного_слоя_отрендерен(ws, library, monkeypatch):
+    from konveyer.config import Config
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    _, prompts = lint.run_lint_llm(ws, Config(), library, [library / PLAN])
+    text = Path(prompts[0]).read_text(encoding="utf-8")
+    assert "{{" not in text and "«Гаражи»" in text
+
+
+def test_отмена_между_вызовами_модельного_слоя(ws, library, monkeypatch):
+    from konveyer import adapters, cancel
+    from konveyer.config import Config
+
+    calls: list[str] = []
+
+    def fake_call(system, user, mc, api, logs_dir, *, role, **kw):
+        calls.append(user.split("\n", 1)[0])
+        cancel.request()
+        return "[]"
+
+    monkeypatch.setattr(adapters, "call_anthropic", fake_call)
+    docs = [library / PLAN, library / "31_Матрица_знаний.md"]
+    with pytest.raises(cancel.Cancelled):
+        lint.run_lint_llm(ws, Config(), library, docs)
+    assert len(calls) == 1
+    cancel.clear()
+
+
+def test_ручной_ответ_модельного_слоя_cli_и_панель(ws, library, monkeypatch):
+    """Без API промпты сохранены; ответ модели по документу принимается командой `lint --ответ` и POST /api/lint/manual,
+    заменяя прежние модельные находки только по этому документу."""
+    import json
+    import threading
+    import urllib.request
+
+    from typer.testing import CliRunner
+
+    from konveyer import server
+    from konveyer.cli import app
+    from konveyer.config import Config
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.chdir(ws.root)
+    answer = ws.root / "ответ_план.md"
+    answer.write_text('[{"quote": "Зоя впервые упоминает гаражи", "problem": "гаражи названы в гл. 1", "suggestion": "убрать", "severity": "заметка"}]',
+                      encoding="utf-8")
+    r = CliRunner().invoke(app, ["lint", "--ответ", f"{PLAN}={answer}"])
+    assert r.exit_code == 0 and "находок принято 1" in r.output, r.output
+    report = lint.load_report(ws.logs)
+    assert [f for f in report.findings if f.source == "модель" and f.file == PLAN and f.line]
+    r = CliRunner().invoke(app, ["lint", "--ответ", "нет.md=" + str(answer)])
+    assert r.exit_code == 1 and "не принят" in r.output
+    # панель: ответ по тому же документу заменяет прежний, по другому — добавляется
+    srv = server.serve(ws, Config(), library, port=0, watch=False)
+    port = srv.server_address[1]
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        def post(body):
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/api/lint/manual", data=json.dumps(body).encode(), method="POST",
+                                         headers={"Content-Type": "application/json", "X-Konveyer-Panel": "1"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return json.loads(resp.read().decode())
+        two = '[{"quote": "x", "problem": "а", "severity": "заметка"}, {"quote": "y", "problem": "б", "severity": "заметка"}]'
+        assert post({"doc": PLAN, "text": two})["added"] == 2
+        assert post({"doc": "31_Матрица_знаний.md", "text": '[{"quote": "M-001", "problem": "в", "severity": "заметка"}]'})["added"] == 1
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    model = [(f.file, f.message) for f in lint.load_report(ws.logs).findings if f.source == "модель"]
+    assert sorted(model) == [(PLAN, "а"), (PLAN, "б"), ("31_Матрица_знаний.md", "в")]
+    assert "lint-manual" in server.PANEL_ACTIONS
+
+
+# ------------------------------------------------------------------ каркасы: битый ответ модели по одной цели
+
+
+def test_каркасы_битый_ответ_не_прерывает_прогон(ws, library, monkeypatch):
+    import json
+
+    from konveyer import adapters, circles
+    from konveyer.config import Config
+
+    exporter.run_export(library, ws.exports, ws.logs, 2)
+    from konveyer.config import set_volume
+    set_volume(ws, 2)
+    ws2 = type(ws)(ws.root, 2)
+    calls: list[int] = []
+
+    def fake(system, user, mc, api, logs_dir, *, role, chapter=None):
+        calls.append(1)
+        if len(calls) == 1:
+            return "[1, 2, 3]"
+        if len(calls) == 2:
+            return json.dumps({"title": "т", "steps": [{"n": "два", "name": "x", "text": "…"}]}, ensure_ascii=False)
+        return json.dumps({"title": "т", "summary": "суть", "steps": [{"n": 1, "name": "Ты", "text": "…", "chapters": "гл. 3–4"}]}, ensure_ascii=False)
+
+    monkeypatch.setattr(adapters, "call_anthropic", fake)
+    result = circles.run(ws2, Config(), "всё")
+    assert len(calls) == 1 + 2 + 4 and len(result["сбои"]) == 2 and len(result["готово"]) == 5
+    assert "не найден корректный JSON" in result["сбои"][0] or "JSON" in result["сбои"][0]
+    assert "не число" in result["сбои"][1] and len(result["промпты"]) == 2
+    assert (ws2.root / "драматургия" / "промпты" / "книга.ответ_сырой.md").read_text(encoding="utf-8") == "[1, 2, 3]"
+    # битый файл черновика не роняет окно, статус и внесение; доктор его видит
+    (ws2.root / "драматургия" / "акт_9.json").write_text('{"scope": "акт", "key": 9, "steps": "нет"}', encoding="utf-8")
+    assert len(circles.drafts(ws2)) == 5 and "акт_9" not in circles.canon_status(ws2)
+    assert circles.broken_drafts(ws2) == ["акт_9.json: в ответе поле «steps» должно быть списком шагов"]

@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import re
 import sys
@@ -21,7 +22,9 @@ from importlib import resources
 from pathlib import Path
 from typing import Callable
 
-from . import adapters, catalog, exporter, guard, llmjson, manifest as manifest_mod, names, textutils, verifier1
+from jinja2 import Environment
+
+from . import adapters, cancel, catalog, exporter, guard, llmjson, manifest as manifest_mod, names, textutils, verifier1
 from .config import Config
 from .mdparse import MarkupError
 from .paths import Workspace
@@ -1002,6 +1005,49 @@ def check_prose(ctx: LintContext) -> list[LintFinding]:
     return out
 
 
+@check("КОНТ-2")
+def check_prose_continuity(ctx: LintContext) -> list[LintFinding]:
+    """Континуити против принятой прозы: признак персонажа (сторона шрама, цвет глаз, рост…), закреплённый
+    континуити или карточкой, в предложении прозы с этим персонажем описан иначе."""
+    prose = _prose(ctx)
+    if not prose:
+        return []
+    fixed: dict[str, dict[str, tuple[set[str], str, str]]] = {}  # имя → признак → (значения, откуда, цитата)
+    for c in ctx.continuity:
+        for name in names.find_names(c.event, ctx.known, ctx.pseudo):
+            for feature, (values, quote) in _feature_values(c.event).items():
+                seen = fixed.setdefault(name, {}).get(feature)
+                fixed[name][feature] = ((seen[0] | values) if seen else values, "континуити", quote[:60])
+    for d in ctx.dossiers:
+        for feature, (values, quote) in _feature_values(" ".join([d.profile, d.physique, d.code])).items():
+            if feature not in fixed.get(d.name, {}):
+                fixed.setdefault(d.name, {})[feature] = (values, "карточка", quote[:60])
+    if not fixed:
+        return []
+    patterns = {name: names.name_pattern(name) for name in fixed}
+    out: list[LintFinding] = []
+    for ch, path, _b in prose:
+        for i, line in enumerate(_lines(path), start=1):
+            narration = textutils.narration_only(line) if line.strip() else ""
+            if not narration.strip():
+                continue
+            for sentence in textutils.split_sentences(narration):
+                present = [n for n, rx in patterns.items() if rx.search(sentence)]
+                if not present:
+                    continue
+                found = _feature_values(sentence)
+                for name in present:
+                    for feature, (values, _q) in found.items():
+                        known = fixed[name].get(feature)
+                        if not known or not values or (known[0] & values):
+                            continue
+                        out.append(_f("КОНТ-2", "предупреждение", ctx.rel(path), i,
+                                      f"гл. {ch}: {name}, {feature} — в прозе «{', '.join(sorted(values))}», а {known[1]} фиксирует "
+                                      f"«{', '.join(sorted(known[0]))}» ({known[2]})",
+                                      "согласуйте прозу с континуити или внесите новую деталь в канон", quote=sentence.strip()[:120]))
+    return out
+
+
 @check("ПРОЗА-3")
 def check_accepted_prose(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
@@ -1153,13 +1199,45 @@ def run_checks(ctx: LintContext) -> list[LintFinding]:
     return findings
 
 
+_CONFIG_FOLDERS = ("типы", "модули", "методики", "линтер", "языки", "промпты")
+
+
+def config_fingerprint(root: Path) -> str:
+    """Отпечаток конфигурации проверки: манифест проекта (модули, методики, карта), переопределения проекта
+    (типы, модули, методики, плагины линтера, язык) и набор проверок движка — вместе с отпечатком канона
+    образует ключ кэша (FR-LT-5): смена конфигурации при том же каноне даёт новый прогон."""
+    h = hashlib.sha256()
+    man = root / "проект.yaml"
+    if man.is_file():
+        try:
+            h.update(man.read_bytes())
+        except OSError:
+            pass
+    for folder in _CONFIG_FOLDERS:
+        base = root / folder
+        if not base.is_dir():
+            continue
+        for p in sorted(x for x in base.rglob("*") if x.is_file() and x.suffix in (".yaml", ".py", ".md", ".j2", ".json")):
+            h.update(p.relative_to(root).as_posix().encode("utf-8"))
+            h.update(b"\0")
+            try:
+                h.update(p.read_bytes())
+            except OSError:
+                pass
+            h.update(b"\0")
+    from . import __version__
+
+    h.update(f"{__version__}:{','.join(sorted(c for codes, _ in CHECKS for c in codes))}".encode("utf-8"))
+    return h.hexdigest()
+
+
 def run_lint(library: Path, exports_dir: Path, logs_dir: Path, export: bool = True, volume: int = 1,
              root: Path | None = None, use_cache: bool = True) -> LintReport:
-    """Машинный слой: экспорт + все проверки тома. Кэш по отпечатку канона (FR-LT-5): при том же отпечатке и той же
-    конфигурации модулей возвращается прежний отчёт."""
+    """Машинный слой: экспорт + все проверки тома. Кэш по отпечатку канона и конфигурации (FR-LT-5): при том же
+    каноне, той же конфигурации модулей/методик/типов и том же томе возвращается прежний отчёт."""
     root = exporter.project_root_of(library, root)
     fingerprint = exporter.canon_fingerprint(library)
-    key = f"{fingerprint}:{volume}"
+    key = f"{fingerprint}:{config_fingerprint(root)[:16]}:{volume}"
     if use_cache:
         cached = load_report(logs_dir)
         if cached is not None and cached.fingerprint == key:
@@ -1252,6 +1330,16 @@ def _template(root: Path | None = None) -> str:
     return resources.files("konveyer").joinpath("шаблоны/линтер_канона_система.md").read_text(encoding="utf-8")
 
 
+def system_prompt(ws: Workspace, library: Path) -> str:
+    """Системный промпт модельного слоя, отрендеренный по манифесту (имя серии — из проекта, П-1)."""
+    try:
+        man = manifest_mod.effective(ws.root, library, catalog.load_types(ws.root))
+        series = man.проект.имя
+    except (OSError, ValueError):
+        series = ""
+    return Environment().from_string(_template(ws.root)).render(series=series)
+
+
 def _context_slices(exports_dir: Path) -> str:
     briefs = exporter.load_briefs(exports_dir)
     infobans = exporter.load_infobans(exports_dir)
@@ -1304,7 +1392,7 @@ def run_lint_llm(ws: Workspace, cfg: Config, library: Path, files: list[Path] | 
     docs = files or _library_docs(library)
     if max_calls is not None and len(docs) > max_calls:
         raise ValueError(f"документов {len(docs)}, лимит вызовов модели {max_calls}: укажите --файл или поднимите --лимит")
-    system = _template(ws.root)
+    system = system_prompt(ws, library)
     context = _context_slices(ws.exports)
     if max_cost_usd is not None:
         mc = cfg.role("линтер")
@@ -1315,11 +1403,13 @@ def run_lint_llm(ws: Workspace, cfg: Config, library: Path, files: list[Path] | 
                              f"сузьте список --файл или поднимите бюджет")
     findings: list[LintFinding] = []
     prompts: list[str] = []
-    for doc in docs:
+    for n, doc in enumerate(docs):
         rel = doc.relative_to(library).as_posix()
         user = f"# Документ: {rel}\n\n<документ>\n{doc.read_text(encoding='utf-8')}\n</документ>\n\n# Контекст канона\n\n{context}"
         prompt_path = ws.logs / "линтер_промпты" / (re.sub(r"[^\w.\-]+", "_", rel) + ".md")
         guard.write_text(prompt_path, f"<!-- system -->\n{system}\n\n<!-- user -->\n{user}\n")
+        if n:
+            cancel.check(f"линтер: перед {rel}")  # «Остановить» действует между вызовами (FR-AD-7)
         try:
             raw = adapters.call_role(cfg, "линтер", system, user, ws.logs, role="линтер канона")
             findings += parse_llm_findings(raw, library, doc)
@@ -1358,3 +1448,15 @@ def error_report(exc: BaseException, logs_dir: Path, files: int = 0) -> LintRepo
 def merge_llm(report: LintReport, extra: list[LintFinding], logs_dir: Path) -> LintReport:
     findings = [f for f in report.findings if f.source != "модель"] + extra
     return _finish(findings, logs_dir, report.files_checked, report.fingerprint)
+
+
+def accept_llm_answer(ws: Workspace, library: Path, doc: str, raw: str) -> tuple[LintReport, int]:
+    """Ручной режим модельного слоя (FR-RL-3): ответ модели по документу (из сохранённого промпта) разбирается
+    и вливается в текущий отчёт вместо прежних модельных находок по этому документу. Возвращает (отчёт, сколько
+    находок принято)."""
+    path = resolve_library_files(library, [doc])[0]
+    rel = path.relative_to(library.resolve()).as_posix()
+    found = parse_llm_findings(raw, library.resolve(), path)
+    report = load_report(ws.logs) or run_lint(library, ws.exports, ws.logs, volume=ws.volume, root=ws.root, use_cache=False)
+    findings = [f for f in report.findings if not (f.source == "модель" and f.file == rel)] + found
+    return _finish(findings, ws.logs, report.files_checked, report.fingerprint), len(found)

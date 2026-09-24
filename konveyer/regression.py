@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
 
-from . import adapters, exporter, guard, verifier1, verifier2
+from . import adapters, cancel, exporter, guard, verifier1, verifier2
 from .config import Config
 from .paths import Workspace
 from .schemas import Brief, GoldenTest
@@ -155,6 +155,7 @@ def run_regression(ws: Workspace, llm: bool = False, cfg: Config | None = None) 
             if not llm:
                 results.append({"test_id": test.test_id, "skipped": "Э2 (запустите с --llm)"})
                 continue
+            cancel.check(f"регрессия: перед {test.test_id}")
             try:
                 caught, missed, extra = run_e2_test(ws, cfg or Config(), test)
             except adapters.ManualModeNeeded as e:

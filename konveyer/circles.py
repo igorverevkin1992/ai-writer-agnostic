@@ -155,12 +155,21 @@ def to_model(data: dict, step_names: list[str] | None = None) -> StoryCircle:
     имени в ответе — из методики (`step_names`), иначе «шаг N»."""
     names_ = step_names or []
     steps = []
-    for i, st in enumerate(data.get("steps", []), start=1):
+    raw_steps = data.get("steps", [])
+    if not isinstance(raw_steps, list):
+        raise ValueError("в ответе поле «steps» должно быть списком шагов")
+    for i, st in enumerate(raw_steps, start=1):
+        if not isinstance(st, dict):
+            raise ValueError(f"шаг {i} ответа — не объект")
         chapters = str(st.get("chapters", "") or "").strip()
         lo, hi = chapter_range(chapters)
         default_name = names_[min(i, len(names_)) - 1] if names_ else f"шаг {i}"
+        try:
+            n = int(st.get("n", i))
+        except (TypeError, ValueError):
+            raise ValueError(f"шаг {i}: номер «{st.get('n')}» — не число") from None
         steps.append(CircleStep(
-            n=int(st.get("n", i)), name=str(st.get("name", "") or default_name).strip(),
+            n=n, name=str(st.get("name", "") or default_name).strip(),
             text=str(st.get("text", "") or "").strip(), chapters=chapters, from_chapter=lo, to_chapter=hi,
         ))
     return StoryCircle(
@@ -174,6 +183,20 @@ def _step_names_of(ws: Workspace, scope: str) -> list[str]:
         return methodic_for(ws, scope).step_names()
     except ValueError:
         return []
+
+
+def broken_drafts(ws: Workspace) -> list[str]:
+    """Файлы черновиков, которые не разбираются (для доктора и панели)."""
+    bad: list[str] = []
+    for p in sorted(_dir(ws).glob("*.json")) if _dir(ws).exists() else []:
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("не объект")
+            to_model(data)
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            bad.append(f"{p.name}: {e}")
+    return bad
 
 
 def drafts(ws: Workspace) -> list[StoryCircle]:
@@ -437,6 +460,7 @@ def run(ws: Workspace, cfg: Config, scope: str, chapter: int | None = None, only
     """Генерация каркасов сверху вниз (том → акты → главы). Возвращает {готово, промпты, ручной_режим}."""
     done: list[str] = []
     prompts: list[str] = []
+    failed: list[str] = []
     manual_reason = None
     todo = [(sc, key) for sc, key in targets(ws, scope, chapter)
             if not (only_missing and (_dir(ws) / f"{_file_stem(sc, key)}.json").exists())]
@@ -451,17 +475,26 @@ def run(ws: Workspace, cfg: Config, scope: str, chapter: int | None = None, only
         if manual_reason:
             prompts.append(str(prompt_path))
             continue
-        if done:
+        if done or failed:
             cancel.check(f"каркасы: перед «{title}»")
         try:
             raw = adapters.call_role(cfg, "аналитик", system, user, ws.logs, role="аналитик драматургии")
-            circle = llmjson.extract_json(raw, dict)
-            circle.setdefault("title", title)
-            done.append(str(save_circle(ws, sc, key, circle)))
         except adapters.ManualModeNeeded as e:
             manual_reason = e.reason
             prompts.append(str(prompt_path))
-    return {"готово": done, "промпты": prompts, "ручной_режим": manual_reason}
+            continue
+        try:
+            circle = llmjson.extract_json(raw, dict)
+            circle.setdefault("title", title)
+            to_model(circle)  # проверка формы ответа до записи черновика
+            done.append(str(save_circle(ws, sc, key, circle)))
+        except (ValueError, TypeError) as e:
+            # битый ответ по одной цели: сырой ответ сохраняется, промпт остаётся для повтора, прогон продолжается (П-5)
+            raw_path = _dir(ws) / "промпты" / f"{stem}.ответ_сырой.md"
+            guard.write_text(raw_path, raw)
+            failed.append(f"{title}: {e} (ответ сохранён: {raw_path.name})")
+            prompts.append(str(prompt_path))
+    return {"готово": done, "промпты": prompts, "ручной_режим": manual_reason, "сбои": failed}
 
 
 def accept_manual(ws: Workspace, scope: str, key: int | None, raw: str) -> Path:
@@ -471,12 +504,18 @@ def accept_manual(ws: Workspace, scope: str, key: int | None, raw: str) -> Path:
 
 
 def list_circles(ws: Workspace) -> list[dict]:
+    """Черновики драматургия/*.json; битый файл (не JSON, не объект, шаги не список) пропускается с пометкой в журнале
+    (`broken_drafts`), а не роняет окно/канон."""
     out = []
     for p in sorted(_dir(ws).glob("*.json")) if _dir(ws).exists() else []:
         try:
-            out.append(json.loads(p.read_text(encoding="utf-8")))
-        except json.JSONDecodeError:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("не объект")
+            to_model(data)
+        except (json.JSONDecodeError, ValueError, TypeError):
             continue
+        out.append(data)
     order = {"книга": 0, "акт": 1, "глава": 2}
     return sorted(out, key=lambda c: (order.get(c.get("scope"), 9), c.get("key") or 0))
 
