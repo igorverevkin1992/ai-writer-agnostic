@@ -56,7 +56,8 @@ def test_диапазоны_глав():
 def test_окно_и_э2_без_каркаса(ws, library):
     path, breakdown = compiler.compile_window(ws, library, 1)
     w = path.read_text(encoding="utf-8")
-    assert "драматургия" in breakdown and "в канон ещё не внесён" in w
+    # каркаса в каноне нет → секции «драматургия» нет, заглушки нет (FR-WN-7, FR-MD-2)
+    assert "драматургия" not in breakdown and "в канон ещё не внесён" not in w and "## Драматургия главы" not in w
     assert exporter.load_circles(ws.exports) == []
 
 

@@ -136,13 +136,13 @@ class Plant(BaseModel):
 
 
 class Norm(BaseModel):
-    """Числовой порог Э1 — из 02 §5. Единственный источник порогов (FR критерий 6)."""
+    """Числовой порог Э1 — из таблицы норм документа стиля. Единственный источник порогов (FR-V1-2)."""
 
     min: float | None = None
     max: float | None = None
     brak: float | None = None
     unit: str = ""
-    source: str = "02 §5"
+    source: str = ""   # документ и секция, откуда норма (ставит извлечение типа «стиль»)
 
 
 class ContinuityEvent(BaseModel):

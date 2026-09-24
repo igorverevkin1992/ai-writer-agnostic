@@ -191,7 +191,7 @@ def frame_lines(frame: dict, with_weak_spot: bool = False, required: set[int] | 
         for st in present:
             where = f" ({st.chapters})" if st.chapters else ""
             lines.append(f"  {st.n}. {st.name}{where} — {st.text}")
-        opt = optional if optional is not None else {8}
+        opt = optional if optional is not None else set()
         for n in sorted(opt):
             if not any(st.n == n for st in present):
                 name = next((st.name for st in ch.steps if st.n == n), f"шаг {n}")

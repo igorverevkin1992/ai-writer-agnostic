@@ -309,7 +309,7 @@ def test_методика_черновик_не_читается_окном(ws, 
     ch = StoryCircle(scope="глава", key=1, summary="ЧЕРНОВИК-СУТЬ", steps=[CircleStep(n=1, name="Ты", text="ЧЕРНОВИК-ШАГ", chapters="сц. 1.1")])
     circles.save_circle(ws, "глава", 1, json.loads(ch.model_dump_json()))
     w = compiler.compile_window(ws, library, 1)[0].read_text(encoding="utf-8")
-    assert "ЧЕРНОВИК" not in w and "в канон ещё не внесён" in w
+    assert "ЧЕРНОВИК" not in w and "<!-- СЕКЦИЯ: драматургия -->" not in w  # без каркаса в каноне секции нет (FR-WN-7)
     system, user = verifier2.build_prompt(ws, 1, 1) if ws.draft_path(1, 1).exists() else ("", "")
     assert "ЧЕРНОВИК" not in user
 

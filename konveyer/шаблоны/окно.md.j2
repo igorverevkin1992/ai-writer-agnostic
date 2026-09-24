@@ -1,41 +1,55 @@
 <!-- СЕКЦИЯ: роль и запреты -->
 # ОКНО КОНТЕКСТА · Том {{ brief.volume }}, Глава {{ brief.chapter }}
 
-## Роль и запреты
+## Роль
 
-Ты — Писатель серии «{{ series }}». Пиши прозу главы строго по этому окну: оно самодостаточно, никакого другого контекста у тебя нет и не будет.
+Ты — Писатель серии «{{ series }}». Пиши прозу главы строго по этому окну: оно самодостаточно, никакого другого контекста у тебя нет и не будет. Блок «СТРОГО ЗАПРЕЩЕНО» в конце окна главнее любой другой секции.
 
-### СТРОГО ЗАПРЕЩЕНО
-- Переносить в прозу формулировки этого промпта (любые дословные последовательности из окна).
-- Досочинять мотивировки, факты, детали, которых нет в брифе и разделах окна.
-{% if intensifiers -%}
-- Использовать наречия-усилители ({{ intensifiers | join(", ") }}).
-{% endif -%}
-- Нарушать запреты из брифа.
-
+{% if style_sections or norms -%}
 <!-- СЕКЦИЯ: регистр и стиль -->
 ## Регистр и стиль
 
+{% if style_sections -%}
 {{ style_sections }}
-{% if norms %}
+
+{% endif -%}
+{% if norms -%}
 ### Числовые нормы прозы
 {% for norm_id, n in norms | dictsort -%}
 - {{ norm_id }}: {% if n.min is not none %}мин {{ n.min }}{% endif %}{% if n.max is not none %} макс {{ n.max }}{% endif %}{% if n.brak is not none %} (брак: {{ n.brak }}){% endif %} {{ n.unit }}
 {% endfor %}
-{% endif %}
-{% if modules.get("фокализация") and (focalization_laws or line_rules) -%}
+{% endif -%}
+{% endif -%}
+{% if modules.get("фокализация") and (focalization_laws or line_rules or prose_rules) -%}
 <!-- СЕКЦИЯ: фокализация -->
 ## Фокализация
 
+{% if focalization_laws -%}
 {{ focalization_laws }}
-{% if line_rules %}
+
+{% endif -%}
+{% if line_rules -%}
 ### Правила линии фокала и участников сцены
 {% for rule in line_rules -%}
 - [{{ rule.rule_id }}] {{ rule.scope_note }}: не употреблять — {{ rule["items"] | join("; ") }} ({{ rule.action }})
 {% endfor %}
-{% endif %}
 {% endif -%}
-{% if dossiers -%}
+{% if prose_rules -%}
+### Прозаические запреты линий
+{% for r in prose_rules -%}
+- [{{ r.rule_id }}] {{ r.scope_note }}: {{ r.text }}
+{% endfor %}
+{% endif -%}
+{% endif -%}
+{% if modules.get("хроника_эпохи") and epoch_rules -%}
+<!-- СЕКЦИЯ: лексика эпохи -->
+## Лексика эпохи (год главы{% if brief.year %}: {{ brief.year }}{% endif %})
+
+{% for rule in epoch_rules -%}
+- [{{ rule.rule_id }}] {{ rule.scope_note }}: не употреблять — {{ rule["items"] | join("; ") }} ({{ rule.action }})
+{% endfor %}
+{% endif -%}
+{% if modules.get("фокализация") and dossiers -%}
 <!-- СЕКЦИЯ: персонажи сцены -->
 ## Персонажи сцены
 
@@ -65,39 +79,29 @@
 - {{ a }}
 {% endfor %}
 {% endif -%}
-{% if modules.get("эпистемика") and (known_facts or not_knows) -%}
+{% if modules.get("эпистемика") and (known_facts or learns_now) -%}
 <!-- СЕКЦИЯ: что знает фокал -->
 ## Что знает фокал ({{ brief.focal }}) к главе {{ brief.chapter }}
 
 {% for f in known_facts -%}
 - [{{ f.fact_id }}] {{ f.fact }} ({% if f.from_chapter == 0 %}знает всегда{% else %}узнал: гл. {{ f.from_chapter }}{% endif %})
 {% endfor %}
-{% if not_knows %}
-### Фокал НЕ знает и не может даже косвенно касаться
-{% for nk in not_knows -%}
-- {{ nk }}
+{% if learns_now %}
+### Узнаёт в ЭТОЙ главе — только после соответствующего бита, не раньше
+{% for f in learns_now -%}
+- [{{ f.fact_id }}] {{ f.fact }}
 {% endfor %}
-Читатель может знать больше фокала — текст из его головы не имеет права на намёки в сторону этих тайн: никакой многозначительности.
 {% endif %}
 {% endif -%}
+{% if prior_events or prior_tail -%}
 <!-- СЕКЦИЯ: что было раньше -->
 ## Что было раньше (глазами {{ brief.focal }})
 
-{% if not (prior_events or prior_continuity or prior_tail) -%}
-Это первая глава фокала в томе: памяти предыдущих глав у него нет — ничего «вспоминать» не нужно.
-{% else -%}
 Это память фокала, не пересказ для читателя: в прозе всплывает только то, что может всплыть в его голове естественно, без экспозиции и без «как мы помним».
-{% endif -%}
 {% if prior_events %}
 ### События предыдущих глав с участием фокала
 {% for e in prior_events -%}
 - {{ e }}
-{% endfor %}
-{% endif -%}
-{% if modules.get("континуити") and prior_continuity %}
-### Закреплённые детали (континуити) — держать без изменений
-{% for c in prior_continuity -%}
-- {{ c }}
 {% endfor %}
 {% endif -%}
 {% if prior_tail %}
@@ -106,20 +110,58 @@
 {{ prior_tail }}
 {{ tail_end }}
 {% endif %}
-{% if modules.get("драматургия") -%}
-<!-- СЕКЦИЯ: драматургия -->
-## Драматургия главы
+{% endif -%}
+{% if modules.get("континуити") and prior_continuity -%}
+<!-- СЕКЦИЯ: континуити -->
+## Закреплённые детали (континуити) — держать без изменений
 
-{% if drama_lines -%}
-{{ drama_intro }}
-{% for line in drama_lines -%}
-{{ line }}
+{% for c in prior_continuity -%}
+- {{ c }}
 {% endfor %}
-{% else -%}
-Каркас драматургии этой главы в канон ещё не внесён — держи темп по битам поглавника.
 {% endif -%}
+<!-- СЕКЦИЯ: бриф -->
+## Бриф главы {{ brief.chapter }}
+
+- Дата действия: {{ brief.date }}
+- Фокал: {{ brief.focal }}
+- Объём: {% if brief.volume_words %}{{ brief.volume_words }} слов{% elif volume_norm and volume_norm.min is not none and volume_norm.max is not none %}{{ volume_norm.min | int }}–{{ volume_norm.max | int }} слов{% elif volume_norm and volume_norm.max is not none %}до {{ volume_norm.max | int }} слов{% elif volume_norm and volume_norm.min is not none %}не меньше {{ volume_norm.min | int }} слов{% else %}по сценам{% endif %}
+{% if scene_lines %}
+### Сцены
+{% for s in scene_lines -%}
+- {{ s }}
+{% endfor %}
 {% endif -%}
-{% if modules.get("закладки") and (plants or scene_plants) -%}
+{% if beats %}
+### Биты (обязательные события, строго в этом порядке)
+{% for b in beats -%}
+- {{ b }}
+{% endfor %}
+{% endif -%}
+{% if hidden_beats %}
+(ещё {{ hidden_beats }} бит(ов) не показаны: их содержание недоступно фокалу — не касаться)
+{% endif -%}
+{% if not_knows %}
+### Фокал НЕ знает и не может даже косвенно касаться
+{% for nk in not_knows -%}
+- {{ nk }}
+{% endfor %}
+Читатель может знать больше фокала — текст из его головы не имеет права на намёки в сторону этих тайн: никакой многозначительности.
+{% endif -%}
+{% if bans %}
+### Запреты (НЕ упоминать, НЕ показывать)
+{% for z in bans -%}
+- {{ z }}
+{% endfor %}
+{% endif %}
+{% if modules.get("информрежим") and infoban_lines -%}
+<!-- СЕКЦИЯ: запреты информрежима -->
+## Запреты информрежима
+
+{% for z in infoban_lines -%}
+- {{ z }}
+{% endfor %}
+{% endif -%}
+{% if modules.get("закладки") and (plants or scene_plants or hidden_plants) -%}
 <!-- СЕКЦИЯ: техзадание — закладки -->
 ## Техзадание главы: закладки
 
@@ -129,19 +171,29 @@
 {% endfor -%}
 {% for sp in scene_plants -%}
 - {{ sp }}
-{% endfor %}
+{% endfor -%}
+{% if hidden_plants -%}
+- (ещё {{ hidden_plants }} закладк(и) не показаны: их содержание недоступно фокалу)
+{% endif %}
 {% endif -%}
 {% if modules.get("дозы_прошлого") and doses -%}
 <!-- СЕКЦИЯ: доза прошлого -->
 ## Доза прошлого (канал воспоминаний)
 
-Это инструкция автора, НЕ знание фокала. {{ doses[0].form }}
+Это инструкция автора, НЕ знание фокала.{% if doses[0].form %} {{ doses[0].form }}{% endif %}
 {% for d in doses %}
 ### Доза {{ d.dose_id }}
+{% if d.trigger -%}
 - Триггер: {{ d.trigger }}
+{% endif -%}
+{% if d.reader_gets -%}
 - Что получает читатель: {{ d.reader_gets }}
+{% endif -%}
+{% if d.reader_not_gets -%}
 - Чего НЕ получает: {{ d.reader_not_gets }}
-{% if d.rule %}- Правило доз: {{ d.rule }}
+{% endif -%}
+{% if d.rule -%}
+- Правило доз: {{ d.rule }}
 {% endif %}
 {% endfor %}
 {% endif -%}
@@ -159,35 +211,24 @@
 - Стиль: {{ d.style }}
 {% endif -%}
 {% if d.divergence -%}
-- Расхождение с правдой, которую видел читатель: {{ d.divergence }}
+- Что в документе расходится с действительностью: {{ d.divergence }}
 {% endif -%}
 {% if d.scale -%}
 - Языковая шкала: {{ d.scale }}
 {% endif -%}
 {% endfor %}
 {% endif -%}
-<!-- СЕКЦИЯ: бриф -->
-## Бриф главы {{ brief.chapter }}
+{% if modules.get("драматургия") and drama_lines -%}
+<!-- СЕКЦИЯ: драматургия -->
+## Драматургия главы
 
-- Дата действия: {{ brief.date }}
-- Фокал: {{ brief.focal }}
-- Объём: {% if brief.volume_words %}{{ brief.volume_words }} слов{% elif volume_norm %}{{ volume_norm.min | int }}–{{ volume_norm.max | int }} слов{% else %}по сценам{% endif %}
-{% if scene_lines %}
-### Сцены
-{% for s in scene_lines -%}
-- {{ s }}
+{% if drama_intro -%}
+{{ drama_intro }}
+{% endif -%}
+{% for line in drama_lines -%}
+{{ line }}
 {% endfor %}
-{% endif %}
-### Биты (обязательные события, строго в этом порядке)
-{% for b in brief.beats -%}
-- {{ b }}
-{% endfor %}
-{% if bans %}
-### Запреты (НЕ упоминать, НЕ показывать)
-{% for z in bans -%}
-- {{ z }}
-{% endfor %}
-{% endif %}
+{% endif -%}
 <!-- СЕКЦИЯ: формат выдачи -->
 ## Формат выдачи
 
@@ -196,3 +237,13 @@
 - Документы-вставки (если требуются брифом) оформляй строками-маркерами: `→ ДОКУМЕНТ` перед и `← КОНЕЦ ДОКУМЕНТА` после.
 {% endif -%}
 - Никаких вопросов и вариантов: один законченный текст главы.
+
+<!-- СЕКЦИЯ: строгие запреты -->
+## СТРОГО ЗАПРЕЩЕНО
+
+- Переносить в прозу формулировки этого промпта (любые дословные последовательности из окна).
+- Досочинять мотивировки, факты, детали, которых нет в брифе и разделах окна.
+{% if intensifiers -%}
+- Использовать наречия-усилители ({{ intensifiers | join(", ") }}).
+{% endif -%}
+- Нарушать запреты из брифа{% if infoban_lines %} и запреты информрежима{% endif %}; касаться того, чего фокал не знает.

@@ -287,7 +287,7 @@ def _compile_window_to(ws: Workspace, cfg: Config, lib: Path, chapter: int, targ
     if ws.templates.exists():
         shutil.copytree(ws.templates, tmp_root / "шаблоны")
     try:
-        path, _ = compiler.compile_window(Workspace(tmp_root), lib, chapter, cfg.window_soft_limit_chars)
+        path, _ = compiler.compile_window(Workspace(tmp_root), lib, chapter, limits=compiler.WindowLimits.from_config(cfg))
         shutil.copyfile(path, target)
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)
