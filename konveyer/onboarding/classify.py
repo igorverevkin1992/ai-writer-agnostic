@@ -123,7 +123,7 @@ def score(prof: DocProfile, spec: catalog.TypeSpec) -> Hypothesis | None:
     if "широкая_таблица" in sig:
         need = int(sig["широкая_таблица"])
         add("широкая_таблица", ["широкая таблица"] if prof.max_width >= need else [], ["широкая"])
-    if sig.get("без_таблиц"):
+    if catalog.flag(sig.get("без_таблиц")):
         add("без_таблиц", ["без таблиц"] if prof.tables == 0 else [], ["без таблиц"])
     for w in sig.get("не_слова") or []:
         if str(w).lower() in low_text:

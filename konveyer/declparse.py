@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import mdparse, names
+from .catalog import flag
 from .mdparse import MarkupError, parse_number
 
 EMPTY = {"", "—", "-", "–", "нет"}
@@ -248,7 +249,7 @@ def match_columns(headers: list[str], columns: dict, overrides: dict) -> dict[st
     «неоднозначная колонка» (уточняется в проект.yaml)."""
     hits: dict[str, list[str]] = {}
     for field, spec in columns.items():
-        required = bool(spec.get("обязательна", False)) if isinstance(spec, dict) else False
+        required = flag(spec.get("обязательна")) if isinstance(spec, dict) else False
         hits[field] = _header_hits(headers, _override_list(overrides.get(field))) or \
             _header_hits(headers, _spec_synonyms(field, spec))
         if not hits[field] and required:
@@ -276,20 +277,22 @@ def match_columns(headers: list[str], columns: dict, overrides: dict) -> dict[st
 
 def _record(row: dict[str, str], mapping: dict[str, str], columns: dict, fmt: dict, ctx: ParseContext,
             path: Path, line: int) -> dict | None:
-    """Запись из строки таблицы. None — строка-заглушка стартового комплекта: все обязательные колонки, кроме ключа,
-    пусты или «⚠ заполнить»."""
+    """Запись из строки таблицы. None — строка-заглушка стартового комплекта: обязательная колонка (кроме ключа)
+    ещё «⚠ заполнить» или все обязательные колонки пусты."""
     rec: dict[str, Any] = {}
     blank_required = True
     has_required = False
+    placeholder_required = False
     for field, spec in columns.items():
         kind = spec.get("тип") if isinstance(spec, dict) else None
         default = spec.get("по_умолчанию") if isinstance(spec, dict) else None
-        required = bool(spec.get("обязательна", False)) if isinstance(spec, dict) else False
+        required = flag(spec.get("обязательна")) if isinstance(spec, dict) else False
         is_key = isinstance(spec, dict) and spec.get("роль") == "ключ"
         header = mapping.get(field)
         raw = row.get(header, "") if header else ""
         if required and not is_key:
             has_required = True
+            placeholder_required = placeholder_required or is_placeholder(raw)
             if not is_blank(raw):
                 blank_required = False
         if is_placeholder(raw):
@@ -300,7 +303,7 @@ def _record(row: dict[str, str], mapping: dict[str, str], columns: dict, fmt: di
             rec[field] = default if default is not None else ""
         else:
             rec[field] = _convert_at(raw, kind, path, line, field)
-    if has_required and blank_required:
+    if has_required and (blank_required or placeholder_required):
         return None
     for k, v in (fmt.get("постоянные") or {}).items():
         rec[k] = _template(v, ctx, path, rec)
@@ -325,12 +328,31 @@ def _apply_mapping(rec: dict, fmt: dict, ctx: ParseContext, path: Path) -> dict:
         return rec
     out: dict = {k: v for k, v in rec.items() if k.startswith("_")}  # «_строка», «_секции» — адрес записи в документе
     for target, source in mapping.items():
-        if isinstance(source, str) and source in rec:
+        if isinstance(source, dict):
+            out[target] = _nested(source, rec, ctx, path)
+        elif isinstance(source, str) and source in rec:
             out[target] = rec[source]
         elif isinstance(source, str) and source.startswith("_"):
             continue  # служебный ключ не заполнен (например, ни одной секции) — умолчание схемы
         else:
             out[target] = _template(source, ctx, path, rec)
+    return out
+
+
+def _nested(source: dict, rec: dict, ctx: ParseContext, path: Path) -> dict:
+    """Поле схемы-словарь из нескольких колонок: `{"*": [поля-словари для слияния], ключ: поле}`; пустые значения
+    (None, «», []) в словарь не попадают."""
+    out: dict = {}
+    for f in source.get("*") or []:
+        v = rec.get(f)
+        if isinstance(v, dict):
+            out.update(v)
+    for k, src in source.items():
+        if k == "*":
+            continue
+        v = rec[src] if isinstance(src, str) and src in rec else _template(src, ctx, path, rec)
+        if v not in (None, "", []):
+            out[k] = v
     return out
 
 
@@ -576,10 +598,13 @@ def fmt_keyed_sections(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] |
     return records if matched else None
 
 
+WHOLE_DOCUMENT = "*"  # значение `секция:` поля — весь текст документа (чек-листы, сплошной текст)
+
+
 def fmt_sections(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] | None:
-    """Один документ — одна запись: поля из тел секций по образцу заголовка (вместе с подсекциями); имя —
-    заголовок 1-го уровня (тогда поля ищутся только среди секций уровня ≥ 2). Документ-каркас, где все поля
-    пусты или «⚠ заполнить», записи не даёт."""
+    """Один документ — одна запись: поля из тел секций по образцу заголовка (вместе с подсекциями; `"*"` — весь
+    документ); имя — заголовок 1-го уровня (тогда поля ищутся только среди секций уровня ≥ 2). Документ-каркас,
+    где все поля пусты или «⚠ заполнить», записи не даёт."""
     sections = mdparse.parse_sections(path)
     if not sections or all(s.level == 0 for s in sections):
         return None
@@ -598,9 +623,16 @@ def fmt_sections(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] | None:
     filled = False
     for field, spec in (fmt.get("поля") or {}).items():
         spec = spec if isinstance(spec, dict) else {"секция": spec}
-        pats = _section_patterns(spec.get("секция", field), ctx, field, path)
-        sec = next((s for p in pats for s in [mdparse.find_section(sections, p, min_level)] if s), None)
+        pat = spec.get("секция", field)
         kind = spec.get("тип")
+        if pat == WHOLE_DOCUMENT:
+            rec[field] = strip_placeholders(mdparse.read_text(path))
+            rec["_секции"][field] = 1
+            if rec[field]:
+                filled = True
+            continue
+        pats = _section_patterns(pat, ctx, field, path)
+        sec = next((s for p in pats for s in [mdparse.find_section(sections, p, min_level)] if s), None)
         body = mdparse.nested_body(sections, sec) if sec is not None else ""
         if kind == "таблица_пар" and sec is not None:
             pairs: dict[str, str] = {}
@@ -729,14 +761,15 @@ def describe_expected(formats: list[dict]) -> str:
         kind = fmt.get("вид")
         if kind == "таблица":
             cols = [f"«{'/'.join(v.get('синонимы', [k]) if isinstance(v, dict) else [k])}»" for k, v in (fmt.get("колонки") or {}).items()
-                    if isinstance(v, dict) and v.get("обязательна")]
+                    if isinstance(v, dict) and flag(v.get("обязательна"))]
             parts.append("таблица с колонками " + ", ".join(cols) + (f" в секции «{fmt['секция']}»" if fmt.get("секция") else ""))
         elif kind == "широкая_таблица":
             parts.append("широкая таблица: первая колонка — ключ, остальные — субъекты")
         elif kind == "секции_с_ключами":
             parts.append(f"секции «{fmt.get('заголовок')}» со списком «- Ключ: …»")
         elif kind == "секции":
-            parts.append("секции " + ", ".join(f"«{v if isinstance(v, str) else v.get('секция', k)}»" for k, v in (fmt.get("поля") or {}).items()))
+            names = [v if isinstance(v, str) else v.get("секция", k) for k, v in (fmt.get("поля") or {}).items()]
+            parts.append("секции " + ", ".join("«весь документ»" if n == WHOLE_DOCUMENT else f"«{n}»" for n in names))
         elif kind == "строки":
             parts.append(f"строки по образцу {fmt.get('регэксп')}")
         elif kind == "плагин":

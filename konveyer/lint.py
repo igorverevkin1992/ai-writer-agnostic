@@ -163,7 +163,8 @@ def load_context(library: Path, exports_dir: Path, volume: int, root: Path | Non
     types = catalog.load_types(root)
     modules = catalog.load_modules(root)
     man = manifest_mod.effective(root, library, types)
-    enabled = catalog.enabled_lint_codes(modules, man.enabled_modules(modules))
+    enabled = catalog.enabled_lint_codes(modules, man.enabled_modules(modules), types, man.present_types(),
+                                         man.disabled_modules())
     ctx = LintContext(library=library, exports=exports_dir, root=root, volume=volume, types=types, modules=modules,
                       manifest=man, enabled_codes=enabled)
     ctx.briefs = exporter.load_briefs(exports_dir)
@@ -234,7 +235,7 @@ def check_chronology(ctx: LintContext) -> list[LintFinding]:
     return out
 
 
-@check("АКТ-1", "ЧАСТЬ-1")
+@check("АКТ-1")
 def check_ranges(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
     if not ctx.briefs or not ctx.acts:
@@ -665,8 +666,11 @@ _SCENE_SKIP = {"те же", "один", "одна", "все", "никого"}
 @check("ПОГЛ-2")
 def check_scene_persons(ctx: LintContext) -> list[LintFinding]:
     """Участники сцен и событий без карточки персонажа: известные имена без карточки, роли безымянных
-    (список ролей — из типа «персонажи»), полные имена в событиях."""
-    roles = list((ctx.types.get("персонажи").raw.get("роли_безымянных") if ctx.types.get("персонажи") else None) or [])
+    (список ролей — из языкового слоя, тип «персонажи» проекта может его переопределить), полные имена в событиях."""
+    from . import lang as lang_mod
+
+    spec = ctx.types.get("персонажи")
+    roles = list((spec.raw.get("роли_безымянных") if spec else None) or lang_mod.for_project(ctx.root).unnamed_roles)
     role_re = re.compile(r"(?<![а-яё])(" + "|".join(re.escape(r[:-1] if r.endswith(("й", "ь")) else r) for r in roles) + r")([а-яё]*)(?![а-яё])",
                          re.IGNORECASE) if roles else None
     dossier_names = {d.name.lower() for d in ctx.dossiers}
@@ -992,7 +996,7 @@ def _project_checks(ctx: LintContext) -> list[LintFinding]:
             spec.loader.exec_module(module)  # type: ignore[union-attr]
             fn = getattr(module, "checks", None)
             if fn:
-                out.extend(f for f in fn(ctx) if f.code in ctx.enabled_codes or f.code not in catalog.all_lint_codes(ctx.modules))
+                out.extend(f for f in fn(ctx) if f.code in ctx.enabled_codes or f.code not in catalog.all_lint_codes(ctx.modules, ctx.types))
         except Exception as e:  # noqa: BLE001 — плагин не должен ронять линтер
             out.append(LintFinding(code="ЛИНТ-0", severity="заметка", file=f"линтер/{path.name}",
                                    message=f"плагин линтера не выполнен: {type(e).__name__}: {e}"))

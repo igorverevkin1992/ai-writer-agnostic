@@ -17,6 +17,25 @@ from typing import Any
 import yaml
 
 MULTIPLICITY = ("один", "папка", "по_тому", "несколько")
+FLAG_ON = ("да", "вкл", "true", "yes", "on", "1")
+FLAG_OFF = ("нет", "выкл", "false", "no", "off", "0", "")
+
+
+def flag(value: Any, default: bool = False) -> bool:
+    """Булев ключ спецификации по-русски: «да/вкл» — True, «нет/выкл» — False (YAML не превращает «нет» в bool,
+    а `bool("нет")` — истина). Незнакомое слово — ошибка, а не молчаливое «да»."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    v = str(value).strip().lower()
+    if v in FLAG_ON:
+        return True
+    if v in FLAG_OFF:
+        return False
+    raise ValueError(f"«{value}» — не флаг; допустимо да/нет (вкл/выкл)")
 
 
 @dataclass(frozen=True)
@@ -68,14 +87,29 @@ def _load_yaml_dir(folder: Path) -> dict[str, dict]:
     if not folder.is_dir():
         return out
     for path in sorted(folder.glob("*.yaml")):
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        data = load_yaml(path)
         if not isinstance(data, dict):
             raise ValueError(f"{path.name}: спецификация должна быть YAML-словарём")
         out[path.stem] = data
     return out
 
 
+def load_yaml(path: Path) -> Any:
+    """YAML-файл проекта; синтаксическая ошибка — ValueError по-русски с именем файла и строкой (FR-MF-3)."""
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        mark = getattr(e, "problem_mark", None)
+        where = f"{path.name}:{mark.line + 1}" if mark is not None else path.name
+        problem = getattr(e, "problem", None) or str(e).splitlines()[0]
+        raise ValueError(f"{where}: не читается как YAML — {problem}; поправьте разметку файла") from None
+
+
 def _type_from(name: str, data: dict, source: str) -> TypeSpec:
+    declared = str(data.get("тип", name))
+    if declared != name:
+        raise ValueError(f"{name}.yaml: поле «тип: {declared}» не совпадает с именем файла — тип регистрируется по имени "
+                         f"файла; переименуйте файл в {declared}.yaml или поправьте поле «тип»")
     mult = str(data.get("множественность", "один"))
     if mult not in MULTIPLICITY:
         raise ValueError(f"тип «{name}»: множественность «{mult}» — допустимо {', '.join(MULTIPLICITY)}")
@@ -83,12 +117,16 @@ def _type_from(name: str, data: dict, source: str) -> TypeSpec:
     for e in extractions:
         if "имя" not in e:
             raise ValueError(f"тип «{name}»: у каждого извлечения нужно поле «имя»")
+    try:
+        required = flag(data.get("обязателен_для_такта"))
+    except ValueError as e:
+        raise ValueError(f"тип «{name}»: обязателен_для_такта: {e}") from None
     return TypeSpec(
-        name=str(data.get("тип", name)),
+        name=name,
         purpose=str(data.get("назначение", "")),
         multiplicity=mult,
         default_name=str(data.get("имя_по_умолчанию", "")),
-        required_for_tact=bool(data.get("обязателен_для_такта", False)),
+        required_for_tact=required,
         feeds=tuple(data.get("питает_модули") or ()),
         extractions=extractions,
         signatures=dict(data.get("сигнатуры") or {}),
@@ -111,7 +149,7 @@ def _module_from(name: str, data: dict) -> ModuleSpec:
         e2_checks=tuple(data.get("э2") or ()),
         lint_codes=tuple(data.get("линтер") or ()),
         commands=tuple(data.get("команды") or ()),
-        base=bool(data.get("базовый", False)),
+        base=flag(data.get("базовый")),
         raw=data,
     )
 
@@ -123,7 +161,7 @@ def _cached_types(project_root: str | None, stamp: tuple) -> dict[str, TypeSpec]
     if project_root:
         for n, d in _load_yaml_dir(Path(project_root) / "типы").items():
             # переопределение проекта дополняет тип движка по верхним ключам; «заменить: да» — тип целиком свой
-            base = engine.get(n) if not d.get("заменить") else None
+            base = engine.get(n) if not flag(d.get("заменить")) else None
             merged = {**base, **{k: v for k, v in d.items() if k != "заменить"}} if base else d
             types[n] = _type_from(n, merged, "проект")
     return types
@@ -172,7 +210,12 @@ def documentation(types: dict[str, TypeSpec], modules: dict[str, ModuleSpec]) ->
              "Документ сгенерирован из каталога типов движка (`konveyer типы --документация`). "
              "Здесь описано, что именно машина читает из документа каждого типа, что попадает в окно Писателя "
              "и какие проверки линтера тип включает. Канон не переформатируется под парсер: имена колонок и "
-             "секций сопоставляются в манифесте проекта (`проект.yaml`, блок `библиотека`).", ""]
+             "секций сопоставляются в манифесте проекта (`проект.yaml`, блок `библиотека`).", "",
+             "Том документа (FR-EX-4): поле `том:` записи манифеста, иначе маркер в имени файла (`Том2`, `Том_2`, `_Т2`); "
+             "документ без того и другого — общесерийный и входит в каждый том, а для потомного типа (`по_тому`) читается "
+             "как том 1, и при плане в несколько томов доктор просит указать том. Флаги в спецификациях и манифесте пишутся по-русски: `да`/`нет` "
+             "(`вкл`/`выкл`); коды линтера типа действуют, когда документ типа есть в карте, если модуль-владелец "
+             "не выключен явно.", ""]
     for name in sorted(types):
         t = types[name]
         lines += [f"## {t.name}", "", f"- Назначение: {t.purpose or '—'}",
@@ -213,13 +256,26 @@ def documentation(types: dict[str, TypeSpec], modules: dict[str, ModuleSpec]) ->
     return "\n".join(lines) + "\n"
 
 
-def all_lint_codes(modules: dict[str, ModuleSpec]) -> set[str]:
-    return {c for m in modules.values() for c in m.lint_codes}
+def all_lint_codes(modules: dict[str, ModuleSpec], types: dict[str, TypeSpec] | None = None) -> set[str]:
+    """Все объявленные коды линтера: модулей и (если переданы) типов документов (FR-LT-1)."""
+    codes = {c for m in modules.values() for c in m.lint_codes}
+    if types:
+        codes |= {c for t in types.values() for c in t.lint_codes}
+    return codes
 
 
-def enabled_lint_codes(modules: dict[str, ModuleSpec], enabled: set[str]) -> set[str]:
-    """Коды линтера включённых модулей (базовые — всегда)."""
-    return {c for m in modules.values() if m.base or m.name in enabled for c in m.lint_codes}
+def enabled_lint_codes(modules: dict[str, ModuleSpec], enabled: set[str],
+                       types: dict[str, TypeSpec] | None = None, present_types: set[str] | None = None,
+                       disabled: set[str] | None = None) -> set[str]:
+    """Коды линтера, действующие в проекте (FR-LT-1): коды включённых модулей (базовые — всегда) плюс коды типов,
+    документы которых есть в карте библиотеки (`present_types`) — тип включает свои проверки сам, без модуля-владельца.
+    Явно выключенный автором модуль (`disabled`) свои коды глушит и через тип (NFR-4: выключенный модуль — не ложные
+    ошибки)."""
+    codes = {c for m in modules.values() if m.base or m.name in enabled for c in m.lint_codes}
+    if types and present_types:
+        muted = {c for m in modules.values() if m.name in (disabled or set()) for c in m.lint_codes}
+        codes |= {c for n, t in types.items() if n in present_types for c in t.lint_codes} - muted
+    return codes
 
 
 def any_value(d: dict, *keys: str, default: Any = None) -> Any:

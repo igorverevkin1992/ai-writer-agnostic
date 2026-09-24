@@ -81,3 +81,26 @@ def project_create(
         secho(f"  ~ {n}", fg=colors.YELLOW)
     echo("Дальше: заполните каркасы (строки «⚠ заполнить»), затем в папке проекта — `konveyer doctor` и `konveyer export`.")
     return created
+
+
+def project_index(yes: bool = False, confirm=None, commit: bool = True) -> Path | None:
+    """`konveyer проект индекс`: пересобрать индекс библиотеки из манифеста (FR-DM-3) — единственный способ его
+    править; запись идёт через `canon_change` (экспорт, линтер, коммит по подтверждению)."""
+    from .. import canonchange, guard, project as project_mod
+    from .common import _ctx, confirm_or_reject
+
+    ws, cfg, lib = _ctx()
+    path = project_mod.index_outdated(ws.root, lib)
+    if path is None:
+        echo("Индекс библиотеки актуален — пересобирать нечего.")
+        return None
+    confirm_or_reject(yes, confirm, f"Пересобрать индекс библиотеки {path.name} из манифеста?")
+
+    def writer() -> None:
+        _, text = project_mod.index_text(ws.root, lib)
+        guard.write_text(path, text)
+
+    canonchange.canon_change(ws, cfg, lib, writer, "[проект] индекс библиотеки из манифеста", commit=commit,
+                             author_confirmed=True, require_clean=False, action="индекс библиотеки", require_docs=False)
+    secho(f"Индекс библиотеки пересобран: {path.name}", fg=colors.GREEN)
+    return path

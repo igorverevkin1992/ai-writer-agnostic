@@ -7,22 +7,23 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ---------------------------------------------------------------- выгрузки (§6.4)
 
 
-SCOPE_NARRATOR = "повествователь"   # правило действует на речь повествователя (реплики других персонажей — не флаг)
-SCOPE_ALL = "весь_текст"            # правило действует на весь текст главы (лексика эпохи)
+SCOPE_NARRATOR = "линии"   # стоп-лист линии: действует на речь повествователя (реплики других персонажей — не флаг)
+SCOPE_ALL = "эпоха"        # лексика эпохи: действует на весь текст главы
 
 
 class StopRule(BaseModel):
-    """Строка stoplists.json: стоп-лист линии повествования, лексика эпохи или словарь усилителей."""
+    """Строка stoplists.json: стоп-лист линии повествования («линии» — внутренняя речь фокала), лексика эпохи
+    («эпоха» — весь текст) или словарь усилителей; область объявляется типом документа, а не кодом."""
 
-    # область действия: «повествователь» (по умолчанию) или «весь_текст»; объявляет тип документа
-    # (`постоянные: {scope: …}`), проектный тип может ввести свою (считается как «повествователь»)
+    # область действия: «линии» (по умолчанию: речь повествователя) или «эпоха» (весь текст главы); объявляет
+    # тип документа (`постоянные: {scope: …}`), проектный тип может ввести свою (считается как «линии»)
     scope: str = SCOPE_NARRATOR
     rule_id: str
     items: list[str]
@@ -205,6 +206,14 @@ class Brief(BaseModel):
     documents: list[str] = Field(default_factory=list)
     # колонка сетки «Что нового знает читатель» — для Э2/автора/линтера; Писателю не передаётся
     reader_learns: str = ""
+
+    @field_validator("beats", "scenes", "bans", "not_knows", "participants", "plants", "documents", mode="before")
+    @classmethod
+    def _text_to_list(cls, v: Any) -> Any:
+        """Табличный план глав даёт одну ячейку текста вместо списка — она и есть единственный бит."""
+        if isinstance(v, str):
+            return [v.strip()] if v.strip() else []
+        return v
 
 
 class Dose(BaseModel):

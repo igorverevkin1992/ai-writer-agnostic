@@ -27,6 +27,9 @@ ROLE_ALIASES = {"writer": "писатель", "verifier2": "верификато
 PROVIDERS = ("gemini", "anthropic", "ручной", "manual")
 
 
+PRICE_ALIASES = {"цена_вход_1м": "price_in_per_1m", "цена_выход_1м": "price_out_per_1m"}
+
+
 class ModelConfig(BaseModel):
     provider: str
     model: str
@@ -34,6 +37,17 @@ class ModelConfig(BaseModel):
     price_in_per_1m: float = 0.0
     price_out_per_1m: float = 0.0
     no_training: bool = True   # FR-SC-10: режим без обучения на данных пользователя (фиксируется в журнале решений)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _price_aliases(cls, data: Any) -> Any:
+        """Русские ключи цен (`цена_вход_1м`/`цена_выход_1м` за 1 млн токенов, FR-EC-1) — синонимы латинских."""
+        if isinstance(data, dict) and any(k in data for k in PRICE_ALIASES):
+            data = dict(data)
+            for ru, en in PRICE_ALIASES.items():
+                if ru in data:
+                    data.setdefault(en, data.pop(ru))
+        return data
 
     @property
     def manual(self) -> bool:

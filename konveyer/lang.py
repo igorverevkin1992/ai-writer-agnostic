@@ -51,6 +51,17 @@ class Language:
                 return num
         return None
 
+    @property
+    def not_names(self) -> list[str]:
+        """Слова с заглавной буквы, которые не являются именами (заголовки и служебные слова таблиц): не попадают
+        в известные имена при разборе таблицы фокалов."""
+        return [str(x) for x in (self.raw.get("не_имена") or [])]
+
+    @property
+    def unnamed_roles(self) -> list[str]:
+        """Роли безымянных участников сцен («сторож», «врач»): участник без карточки — не находка ПОГЛ-2."""
+        return [str(x) for x in (self.raw.get("роли_безымянных") or [])]
+
     # ---------------------------------------------------------------- слова
 
     def words(self, text: str) -> list[str]:

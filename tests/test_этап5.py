@@ -29,8 +29,12 @@ def test_линтер_чистый_канон_молчит(ws, library):
     assert report.errors == 0 and report.warnings == 0 and report.notes == 0, [f.message for f in report.findings]
     # каждая проверка объявлена модулем или типом ровно теми кодами, что реализованы (FR-LT-1)
     impl = {c for codes, _ in lint.CHECKS for c in codes}
-    declared = catalog.all_lint_codes(catalog.load_modules(None)) - {"РАЗМ-1", "ЛИНТ-0", "МОДЕЛЬ"}
-    assert declared <= impl and impl <= declared | {"АКТ-1", "ЧАСТЬ-1"}, (declared - impl, impl - declared)
+    modules, types = catalog.load_modules(None), catalog.load_types(None)
+    declared = catalog.all_lint_codes(modules, types) - {"РАЗМ-1", "ЛИНТ-0", "МОДЕЛЬ"}
+    assert declared == impl, (declared - impl, impl - declared)
+    # у каждого кода типа есть модуль-владелец (документация и включение согласованы)
+    by_types = catalog.all_lint_codes({}, types)
+    assert by_types <= catalog.all_lint_codes(modules), by_types - catalog.all_lint_codes(modules)
 
 
 # по одному внедрённому противоречию на класс проверок (FR-LT-2): ожидаемый код ловится, лишнего нет

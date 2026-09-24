@@ -27,7 +27,8 @@ def ugar(tmp_path_factory):
     created = project.create(project.ProjectSpec(root=root / "проект", name="УГАР", profile="угар", starter=False, git=False, volumes=11))
     shutil.copytree(ETALON, created.library, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".git"))
     types = catalog.load_types(created.root)
-    man = manifest_mod.infer(created.library, types)
+    service = manifest_mod.load(created.root).служебные  # маски служебных файлов — из профиля (манифест.yaml)
+    man = manifest_mod.infer(created.library, types, exclude=service)
     man.проект.имя, man.проект.томов_план = "УГАР", 11
     for m in ("фокализация", "информрежим", "эпистемика", "закладки", "континуити", "дозы_прошлого", "документы_вставки",
               "хроника_эпохи", "драматургия", "арки"):
