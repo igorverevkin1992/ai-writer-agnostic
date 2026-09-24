@@ -179,7 +179,7 @@ def _assemble_values(values: list[Any], spec: dict, path: Path) -> list[BaseMode
     if not items:
         return []
     if build.get("вид") == "стоп_правило":
-        return [StopRule(scope=str(build.get("scope", "0.3")), rule_id=str(build.get("rule_id", "правило")),
+        return [StopRule(scope=str(build.get("scope", "линии")), rule_id=str(build.get("rule_id", "правило")),
                          items=items, applies_to={"all": True}, action=str(build.get("action", "флаг")),
                          kind=str(build.get("kind", "лексика")))]
     raise ValueError(f"{path.name}: неизвестная сборка «{build.get('вид')}»")
@@ -254,7 +254,7 @@ def collect(library: Path, volume: int = 1, root: Path | None = None, *, require
                     col.errors.append(MarkupError(doc, 1, f"разбор «{ext['имя']}»: {e}"))
                     continue
                 if records is None:
-                    if not ext.get("необязательно"):
+                    if not catalog.flag(ext.get("необязательно")):
                         col.errors.append(declparse.markup_error(doc, formats))
                     continue
                 export = ext.get("выгрузка")

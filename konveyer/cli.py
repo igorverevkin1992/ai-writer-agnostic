@@ -649,6 +649,19 @@ def cmd_project_create(
         _fail(str(e))
 
 
+@project_app.command("индекс")
+@_friendly
+def cmd_project_index(
+    yes: bool = typer.Option(False, "--да", "-y", "--yes", help="Без вопроса."),
+    no_commit: bool = typer.Option(False, "--без-коммита", help="Записать индекс, но не коммитить."),
+) -> None:
+    """Пересобрать индекс библиотеки из манифеста (FR-DM-3): после правки проект.yaml руками."""
+    try:
+        setup.project_index(yes, confirm=lambda q: typer.confirm(q), commit=not no_commit)
+    except (FileNotFoundError, ValueError) as e:
+        _fail(str(e))
+
+
 # ------------------------------------------------------------------ русские имена команд, латинские синонимы (FR-CL-5)
 
 # основное имя — русское (видно в справке), латинское — скрытый синоним; команды, объявленные по-русски, получают

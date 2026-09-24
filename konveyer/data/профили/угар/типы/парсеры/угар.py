@@ -247,7 +247,7 @@ def parse_focal_stoplists(path: Path) -> list[StopRule]:
             if words:
                 rules.append(
                     StopRule(
-                        scope="0.3", rule_id=f"0.3-{focal}", items=words,
+                        scope="линии", rule_id=f"0.3-{focal}", items=words,
                         applies_to={"focal": focal}, action="запрет",
                     )
                 )
@@ -267,7 +267,7 @@ def parse_line_prose_bans(path: Path) -> list[StopRule]:
 
     def flush() -> None:
         if focal and items:
-            rules.append(StopRule(scope="0.3", rule_id=f"0.3-проза-{focal}", items=list(items),
+            rules.append(StopRule(scope="линии", rule_id=f"0.3-проза-{focal}", items=list(items),
                                   applies_to={"focal": focal}, action="запрет", kind="проза"))
     for line in sec.body.splitlines():
         header = re.match(r"\*\*([А-ЯЁ][а-яё]+)", line.strip())
@@ -435,7 +435,7 @@ def parse_anachronisms(path: Path) -> list[StopRule]:
                 applies = {"year": {"before": int(year_m.group(1))}}
             rules.append(
                 StopRule(
-                    scope="0.4",
+                    scope="эпоха",
                     rule_id=f"0.4-Е-{'нав' if forever else 'год'}-{i + 1}",
                     items=words, applies_to=applies, action="запрет",
                 )
@@ -447,7 +447,7 @@ def parse_anachronisms(path: Path) -> list[StopRule]:
         if w.lower() not in banned
     ]
     if flagged:
-        rules.append(StopRule(scope="0.4", rule_id="0.4-Е-⚠", items=flagged, applies_to={"all": True}, action="флаг"))
+        rules.append(StopRule(scope="эпоха", rule_id="0.4-Е-⚠", items=flagged, applies_to={"all": True}, action="флаг"))
     return rules
 
 
@@ -1360,7 +1360,7 @@ def parse_intensifiers_ugar(path: Path, library: Path) -> list[StopRule]:
         words = found[0] if found else []
     if not words:
         return []
-    return [StopRule(scope="0.3", rule_id="усилители", items=words, applies_to={"all": True}, action="флаг", kind="усилитель")]
+    return [StopRule(scope="линии", rule_id="усилители", items=words, applies_to={"all": True}, action="флаг", kind="усилитель")]
 
 
 def parse_stoplists_ugar(path: Path) -> list[StopRule]:

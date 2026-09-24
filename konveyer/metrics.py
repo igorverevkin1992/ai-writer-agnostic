@@ -106,7 +106,12 @@ def corridor(norm: Norm) -> str:
 
 
 def stoplist_applies(rule: StopRule, brief: Brief) -> bool:
+    """Действует ли правило в главе: линия (фокал), год, том (`volume`) и «до главы» (`until_chapter`)."""
     applies = rule.applies_to
+    if "volume" in applies and int(applies["volume"]) != brief.volume:
+        return False
+    if "until_chapter" in applies and brief.chapter > int(applies["until_chapter"]):
+        return False
     if "focal" in applies:
         return applies["focal"] == brief.focal
     if "year" in applies and brief.year is not None:
@@ -347,7 +352,7 @@ def m_stoplists(ctx: MetricContext) -> list[CheckResult]:
         if rule.kind != "лексика" or not stoplist_applies(rule, ctx.brief):
             continue
         # стоп-лист линии фокала касается ВНУТРЕННЕЙ речи: реплики других персонажей — не флаг; лексика эпохи — весь текст
-        scope_text = narration if rule.scope == "0.3" else ctx.text
+        scope_text = narration if rule.scope == "линии" else ctx.text
         found = find_items(scope_text, rule.items, L)
         if found:
             out.append(CheckResult(

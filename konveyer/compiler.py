@@ -150,14 +150,20 @@ def _focalization_laws(exports_dir: Path) -> str:
     return "\n\n".join(n.laws for n in exporter.load_narration(exports_dir) if n.laws)
 
 
-def _line_rules(stoplists: list[StopRule], participants: list[str], year: int | None) -> list[dict]:
-    """Правила линий только участников сцены + лексика года главы (FR-C1, FR-V1.5)."""
+def _line_rules(stoplists: list[StopRule], participants: list[str], year: int | None,
+                brief: Brief | None = None) -> list[dict]:
+    """Правила линий только участников сцены + лексика года главы (FR-C1, FR-V1.5); правило с ограничением
+    томом/«до главы» — только в своём томе и до своей главы."""
     result = []
     for rule in sorted(stoplists, key=lambda r: (r.scope, r.rule_id)):
         if rule.kind != "лексика":  # усилители и прозаические запреты линий выводятся отдельно
             continue
         applies = rule.applies_to
         if "focal" in applies and applies["focal"] not in participants:
+            continue
+        if brief is not None and "volume" in applies and int(applies["volume"]) != brief.volume:
+            continue
+        if brief is not None and "until_chapter" in applies and brief.chapter > int(applies["until_chapter"]):
             continue
         if "year" in applies and year is not None:
             y = applies["year"]
@@ -167,10 +173,10 @@ def _line_rules(stoplists: list[StopRule], participants: list[str], year: int | 
                 continue
         if "focal" in applies:
             scope_note = f"линия «{applies['focal']}»"
-        elif rule.scope == "0.3":
-            scope_note = "все линии (0.3)"
+        elif rule.scope == "линии":
+            scope_note = "все линии"
         else:
-            scope_note = f"лексика эпохи ({rule.scope})"
+            scope_note = "лексика эпохи"
         result.append(
             {"rule_id": rule.rule_id, "items": sorted(rule.items), "action": rule.action, "scope_note": scope_note}
         )
@@ -537,7 +543,7 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
         norms={k: v for k, v in norms.items() if k in WINDOW_NORM_IDS},
         style_sections=_style_sections(library, root),
         focalization_laws=_focalization_laws(exports_dir),
-        line_rules=_line_rules(stoplists, participants, brief.year),
+        line_rules=_line_rules(stoplists, participants, brief.year, brief),
         dossiers=scene_dossiers,
         known_facts=known,
         not_knows=not_knows,

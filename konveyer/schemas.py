@@ -6,17 +6,18 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ---------------------------------------------------------------- выгрузки 5.2
 
 
 class StopRule(BaseModel):
-    """Строка stoplists.json — из 03/04 и Р-016 (усилители)."""
+    """Строка stoplists.json: стоп-листы линий («линии» — внутренняя речь фокала), лексика эпохи («эпоха» — весь текст)
+    и усилители; область объявляется типом документа, а не кодом."""
 
-    scope: Literal["0.3", "0.4"]
+    scope: str = "линии"    # «линии» | «эпоха» (тип документа может объявить свою область)
     rule_id: str
     items: list[str]
     applies_to: dict = Field(default_factory=dict)  # {focal?|year?|all}
@@ -191,6 +192,14 @@ class Brief(BaseModel):
     documents: list[str] = Field(default_factory=list)
     # колонка сетки «Что нового знает читатель» — для Э2/автора/линтера; Писателю не передаётся
     reader_learns: str = ""
+
+    @field_validator("beats", "scenes", "bans", "not_knows", "participants", "plants", "documents", mode="before")
+    @classmethod
+    def _text_to_list(cls, v: Any) -> Any:
+        """Табличный план глав даёт одну ячейку текста вместо списка — она и есть единственный бит."""
+        if isinstance(v, str):
+            return [v.strip()] if v.strip() else []
+        return v
 
 
 class Dose(BaseModel):

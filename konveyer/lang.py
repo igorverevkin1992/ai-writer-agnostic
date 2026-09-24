@@ -41,6 +41,11 @@ class Language:
     fleeting_re: re.Pattern | None
     raw: dict = field(default_factory=dict)
 
+    @property
+    def unnamed_roles(self) -> list[str]:
+        """Роли безымянных участников сцен («сторож», «врач»): участник без карточки — не находка ПОГЛ-2."""
+        return [str(x) for x in (self.raw.get("роли_безымянных") or [])]
+
     # ---------------------------------------------------------------- слова
 
     def words(self, text: str) -> list[str]:

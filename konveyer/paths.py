@@ -95,9 +95,11 @@ class Workspace:
 
 
 def find_workspace(start: Path | None = None) -> Workspace:
-    """Ищет конфиг.yaml вверх от текущей папки; иначе корень = текущая папка."""
+    """Ищет конфиг.yaml или проект.yaml вверх от текущей папки. Нет ни того ни другого — FileNotFoundError
+    (команды не должны молча работать над пустой «областью» с несуществующей библиотекой)."""
     cur = (start or Path.cwd()).resolve()
     for p in [cur, *cur.parents]:
-        if (p / "конфиг.yaml").exists():
+        if (p / "конфиг.yaml").exists() or (p / "проект.yaml").exists():
             return Workspace(p)
-    return Workspace(cur)
+    raise FileNotFoundError(f"рабочая область не найдена: нет конфиг.yaml/проект.yaml в {cur} и выше — перейдите в папку "
+                            "проекта или создайте его: `konveyer проект создать` (либо `konveyer начать` здесь)")
