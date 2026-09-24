@@ -44,7 +44,19 @@ def log_call(
 
 
 def read_log(logs_dir: Path) -> list[dict]:
+    """Строки журнала; обрывок строки (прерванная запись) или не-словарь пропускаются — одна битая строка
+    не должна ронять учёт, сводку тома и дашборд (П-5)."""
     path = logs_dir / "api.jsonl"
     if not path.exists():
         return []
-    return [json.loads(ln) for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    rows: list[dict] = []
+    for ln in path.read_text(encoding="utf-8").splitlines():
+        if not ln.strip():
+            continue
+        try:
+            row = json.loads(ln)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows

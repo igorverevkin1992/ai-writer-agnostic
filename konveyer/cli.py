@@ -415,10 +415,11 @@ def cmd_lint(
     files: list[str] = typer.Option([], "--файл", "--file", help="Только эти документы для модельного слоя (путь внутри библиотеки)."),
     watch: bool = typer.Option(False, "--watch", "--следить", help="Следить за библиотекой и перепроверять при каждом изменении."),
     max_calls: int = typer.Option(40, "--лимит", "--max-calls", help="Предел оплачиваемых вызовов модели за прогон (--llm)."),
+    budget: float | None = typer.Option(None, "--бюджет", "--budget", help="Бюджет модельного слоя за прогон, $ (--llm; FR-LT-3): оценка выше бюджета — отказ до вызовов. По умолчанию — бюджет_линтера из конфиг.yaml."),
     strict: bool = typer.Option(True, "--strict/--no-strict", help="Код возврата 1 при ошибках канона (для скриптов); панель вызывает --no-strict."),
 ) -> None:
     """Проверка канона на противоречия и ошибки логики повествования (машинный слой; --llm — модель)."""
-    errors = canon.lint(llm=llm, files=files, watch=watch, max_calls=max_calls)
+    errors = canon.lint(llm=llm, files=files, watch=watch, max_calls=max_calls, budget=budget)
     if not watch and errors and strict:
         raise typer.Exit(code=1)
 

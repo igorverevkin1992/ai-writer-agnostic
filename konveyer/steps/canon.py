@@ -17,10 +17,12 @@ from ..paths import Workspace
 from .common import Confirm, _ctx, _ensure_dir, _is_git_url, colors, confirm_or_reject, echo, secho
 
 
-def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False, max_calls: int = 40) -> int:
+def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False, max_calls: int = 40,
+         budget: float | None = None) -> int:
     """Проверка канона на противоречия и ошибки логики повествования (машинный слой; `llm` — модель).
     Возвращает число ошибок канона последнего прогона (код возврата 1 при `--strict` ставит CLI);
-    `watch` — следить за библиотекой и перепроверять при каждом изменении (до Ctrl+C)."""
+    `watch` — следить за библиотекой и перепроверять при каждом изменении (до Ctrl+C);
+    `budget` — бюджет модельного слоя в долларах (FR-LT-3; без него — `бюджет_линтера` из конфиг.yaml, 0 — без лимита)."""
     from .. import lint as lint_mod
 
     ws, cfg, lib = _ctx()
@@ -28,6 +30,8 @@ def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False,
         files = []
     if not isinstance(max_calls, int):
         max_calls = 40
+    if not isinstance(budget, (int, float)):
+        budget = cfg.lint_budget_usd or None
     try:
         llm_docs = lint_mod.resolve_library_files(lib, files) if llm else []
     except ValueError as e:
@@ -48,9 +52,10 @@ def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False,
             else:
                 est = lint_mod.estimate_llm_cost(cfg, len(llm_docs))
                 echo(f"Модельный слой: документов {len(llm_docs)}, вызовов ≤ {len(llm_docs)}"
-                     + (f", ≈ ${est:.2f}" if est is not None else ""))
+                     + (f", ≈ ${est:.2f}" if est is not None else "")
+                     + (f", бюджет {budget:.2f} $" if budget else ""))
                 try:
-                    extra, prompts = lint_mod.run_lint_llm(ws, cfg, lib, llm_docs, max_calls=max_calls)
+                    extra, prompts = lint_mod.run_lint_llm(ws, cfg, lib, llm_docs, max_calls=max_calls, max_cost_usd=budget)
                 except ValueError as e:
                     raise StepError(str(e)) from e
                 report = lint_mod.merge_llm(report, extra, ws.logs)

@@ -76,18 +76,35 @@ def check_norm_change_message(message: str, pattern: str | None) -> bool:
         return True
 
 
+ACCEPT_TRAILER = "Конвейер-приёмка"
+
+
+def acceptance_trailer(chapter: int, draft_name: str) -> str:
+    """Трейлер сообщения коммита приёмки: по нему (а не по префиксу темы) приёмка узнаётся в истории (FR-CN-3).
+    Ручной `konveyer канон-коммит -m "[глава 3] …"` трейлера не несёт и приёмкой не считается."""
+    return f"\n\n{ACCEPT_TRAILER}: глава {int(chapter)}; черновик {draft_name}"
+
+
+_TRAILER_RE = re.compile(rf"^{ACCEPT_TRAILER}: глава (\d+)\b", re.M)
+
+
 def find_chapter_commit(repo: Path, chapter: int) -> str | None:
-    """Ищет ДЕЙСТВУЮЩИЙ коммит приёмки главы по шаблонному сообщению (FR-K2).
+    """Ищет ДЕЙСТВУЮЩИЙ коммит приёмки главы по трейлеру `Конвейер-приёмка: глава N` в теле сообщения (FR-CN-3);
+    коммиты с темой «[глава N] …», но без трейлера (правки автора через канон-коммит) приёмкой не считаются.
     Если самый свежий коммит по главе — её откат (`Revert "[глава N] …"`), приёмки нет (None):
     иначе повторное применение пакета «нашло бы» уже откачённую приёмку."""
-    out = _git(repo, "log", "--format=%H %s", check=False)
-    for line in out.splitlines():
-        sha, _, subject = line.partition(" ")
+    out = _git(repo, "log", "--format=%H%x1f%s%x1f%B%x1e", check=False)
+    for record in out.split("\x1e"):
+        parts = record.strip("\n").split("\x1f")
+        if len(parts) < 3:
+            continue
+        sha, subject, body = parts[0].strip(), parts[1], parts[2]
         if re.match(rf'Revert "\[глава {chapter}\]', subject):
             return None  # откат приёмки новее самой приёмки
         if subject.startswith("Revert "):
             continue
-        if re.match(rf"\[глава {chapter}\]", subject):
+        m = _TRAILER_RE.search(body)
+        if m and int(m.group(1)) == int(chapter):
             return sha
     return None
 

@@ -38,6 +38,7 @@ CONFIG_KEY_SYNONYMS = {
     "библиотека": "library_dir", "текущий_том": "volume", "лимит_окна": "window_soft_limit_chars",
     "пауза_автора_мин": "author_pause_min", "папка_архива": "backup_dir", "хранить_архивов": "backup_keep",
     "мест_хранения_мин": "backup_remotes_min", "автор_коммита": "commit_author", "ориентиры": "guidelines",
+    "бюджет_линтера": "lint_budget_usd",
 }
 
 
@@ -135,6 +136,7 @@ class Config(BaseModel):
     onboarding_max_docs: int = 60        # R-9: лимит документов за прогон архивариуса
     classification_threshold: float = 0.35  # Д-11
     author_pause_min: int = 120          # FR-CT-2: авторская пауза дольше порога — перерыв, не работа
+    lint_budget_usd: float = 0.0         # FR-LT-3: бюджет модельного слоя линтера за прогон, $; 0 — без лимита
 
     @model_validator(mode="before")
     @classmethod

@@ -43,7 +43,10 @@ def job(name: str) -> Iterator[str | None]:
 
 
 def _parse(ts: str) -> datetime:
-    return datetime.fromisoformat(ts)
+    """ISO-время записи истории; запись без зоны (правка руками, старый формат) считается UTC —
+    иначе вычитание «наивного» и «зонного» времени роняло бы весь учёт (`учёт`, `том статус`, дашборд)."""
+    dt = datetime.fromisoformat(str(ts))
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
 def _job_start(rec: dict) -> datetime | None:

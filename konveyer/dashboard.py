@@ -61,10 +61,16 @@ def _read_metrics(ws: Workspace) -> list[dict]:
     path = ws.logs / "метрики.jsonl"
     if not path.exists():
         return []
-    rows = [json.loads(ln) for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
     latest: dict[int, dict] = {}
-    for r in rows:
-        latest[r["chapter"]] = r  # последняя запись главы побеждает
+    for ln in path.read_text(encoding="utf-8").splitlines():
+        if not ln.strip():
+            continue
+        try:
+            r = json.loads(ln)
+        except ValueError:
+            continue  # обрывок строки — не повод ронять дашборд
+        if isinstance(r, dict) and isinstance(r.get("chapter"), int):
+            latest[r["chapter"]] = r  # последняя запись главы побеждает
     return [latest[k] for k in sorted(latest)]
 
 

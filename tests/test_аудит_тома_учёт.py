@@ -639,3 +639,169 @@ def test_перетест_фиксация_требует_пакет_и_пише
     assert r.exit_code == 0, r.output
     entry = next((ws.root / "пере-тест").rglob("журнал_запись.md")).read_text(encoding="utf-8")
     assert "без пакета сравнения" in entry
+
+
+# ------------------------------------------------------------- крайние случаи учёта и журналов
+
+
+def test_история_с_временем_без_зоны_не_роняет_учёт():
+    """Запись истории без зоны (правка руками, старый формат) считается UTC, а не роняет `intervals` TypeError."""
+    from konveyer import timing
+
+    hist = [{"время": "2026-05-01T10:00:00", "из": "а", "в": "б"},
+            {"время": "2026-05-01T10:05:00+00:00", "из": "б", "в": "в"}]
+    assert [(k, round(s)) for k, s, _ in timing.intervals(hist)] == [("авторское", 300)]
+    assert timing.chapter_times(hist) == (0.0, 300.0)
+
+
+def test_обрывок_строки_журнала_api_пропускается(ws):
+    """Прерванная запись в api.jsonl не роняет учёт, сводку тома и дашборд (П-5)."""
+    from konveyer import accounting, apilog, dashboard
+
+    _log(ws, role="писатель", cost=0.1, chapter=1)
+    with (ws.logs / "api.jsonl").open("a", encoding="utf-8") as f:
+        f.write('{"role": "пис')
+    assert len(apilog.read_log(ws.logs)) == 1
+    assert accounting.volume_account(ws, 1, chapters_total=0).cost == pytest.approx(0.1)
+    (ws.logs / "метрики.jsonl").write_text('{"chapter": 1, "V1.2a_средняя_длина": 10}\n{"chapter": 2, "V1.2a_ср', encoding="utf-8")
+    assert "Токены по ролям" in dashboard.render_dashboard(ws)
+
+
+def test_коммит_приёмки_узнаётся_по_трейлеру(ws, library):
+    """A5-27: ручной канон-коммит с темой «[глава N] …» приёмкой не считается; коммит приёмки несёт трейлер."""
+    _init_repo(library)
+    style = library / "02_Стиль_и_голос.md"
+    style.write_text(style.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    r = runner.invoke(app, ["canon-commit", "-m", "[глава 1] поправил опечатку", "-y"])
+    assert r.exit_code == 0, r.output
+    assert gitops.find_chapter_commit(library, 1) is None
+    _fixed_chapter(ws, library, 1)
+    sha = ChapterState(ws, 1).data["коммит_приёмки"]
+    assert gitops.find_chapter_commit(library, 1) == sha
+    assert "Конвейер-приёмка: глава 1" in _git(library, "log", "-1", "--format=%B", sha)
+    r = runner.invoke(app, ["rollback", "1", "-y"])
+    assert r.exit_code == 0, r.output
+    assert gitops.find_chapter_commit(library, 1) is None  # откат новее приёмки
+
+
+def test_бюджет_модельного_слоя_линтера(ws, library, monkeypatch):
+    """C3-28: `линтер --llm --бюджет` и `бюджет_линтера` конфига доходят до run_lint_llm как max_cost_usd."""
+    from konveyer import lint as lint_mod
+
+    seen = {}
+
+    def fake_llm(ws_, cfg, lib, files=None, max_calls=None, max_cost_usd=None):
+        seen["budget"] = max_cost_usd
+        return [], []
+
+    monkeypatch.setattr(lint_mod, "run_lint_llm", fake_llm)
+    monkeypatch.setattr(lint_mod, "resolve_library_files", lambda lib, files: [library / "02_Стиль_и_голос.md"])
+    r = runner.invoke(app, ["lint", "--llm", "--бюджет", "0.5", "--no-strict"])
+    assert r.exit_code == 0 and seen["budget"] == 0.5 and "бюджет 0.50 $" in r.output, r.output
+    (ws.root / "конфиг.yaml").write_text("library_dir: Библиотека\nбюджет_линтера: 1.25\n", encoding="utf-8")
+    r = runner.invoke(app, ["lint", "--llm", "--no-strict"])
+    assert r.exit_code == 0 and seen["budget"] == 1.25, r.output
+
+
+# ------------------------------------------------------------- адаптеры и роли (тесты)
+
+
+def test_роли_аналитик_линтер_архивариус_независимы(ws, monkeypatch):
+    """D1-33: русские ключи `модели: {аналитик…}` дают ролям свои модели; не заданные наследуют Канониста;
+    вызов роли уходит именно в её модель."""
+    from konveyer import adapters
+    from konveyer.config import Config, load_config
+
+    (ws.root / "конфиг.yaml").write_text(
+        "library_dir: Библиотека\nмодели:\n  канонист: {provider: anthropic, model: к}\n"
+        "  аналитик: {provider: anthropic, model: а, режим_без_обучения: нет}\n  линтер: {provider: anthropic, model: л}\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(ws)
+    assert cfg.role("аналитик").model == "а" and cfg.role("линтер").model == "л" and cfg.role("архивариус").model == "к"
+    assert cfg.role("analyst").model == "а" and cfg.analyst.no_training is False
+    assert Config().role("аналитик") is Config().canonist or Config().role("аналитик").model == Config().canonist.model
+    seen = []
+    monkeypatch.setattr(adapters, "call_model", lambda mc, api, s, u, logs, *, role, chapter=None: seen.append((role, mc.model)) or "ok")
+    for role in ("аналитик", "линтер", "архивариус"):
+        adapters.call_role(cfg, role, "s", "u", ws.logs)
+    assert seen == [("аналитик", "а"), ("линтер", "л"), ("архивариус", "к")]
+    r = runner.invoke(app, ["доктор"])
+    assert "роли с обучением — аналитик" in r.output
+
+
+def test_адаптер_таймаут_доходит_до_sdk_и_таймаут_повторяется(ws, monkeypatch):
+    """B4-18 / D1-32: timeout_s передаётся клиентам SDK; TimeoutError — «сеть» → повтор → ручной режим."""
+    import sys
+    import types
+
+    from konveyer import adapters
+    from konveyer.config import ApiConfig, ModelConfig
+
+    captured: dict = {}
+
+    class Anthropic:
+        def __init__(self, **kwargs):
+            captured["anthropic"] = kwargs
+            self.messages = types.SimpleNamespace(create=lambda **kw: (_ for _ in ()).throw(TimeoutError("timed out")))
+
+    mod = types.ModuleType("anthropic")
+    mod.Anthropic = Anthropic
+    monkeypatch.setitem(sys.modules, "anthropic", mod)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "ключ")
+    monkeypatch.setattr(adapters.time, "sleep", lambda s: None)
+    api = ApiConfig(retries=2, backoff_base_s=0.0, timeout_s=7)
+    assert adapters.classify_error(TimeoutError("timed out")) == "сеть" and adapters._retryable(TimeoutError("x"))
+    with pytest.raises(adapters.ManualModeNeeded):
+        adapters.call_anthropic("s", "u", ModelConfig(provider="anthropic", model="m"), api, ws.logs, role="писатель", chapter=1)
+    assert captured["anthropic"]["timeout"] == 7.0 and captured["anthropic"]["max_retries"] == 0
+    log = [r for r in __import__("konveyer.apilog", fromlist=["read_log"]).read_log(ws.logs) if r.get("error")]
+    assert len(log) == 2  # два повтора — оба с ошибкой таймаута
+
+    class HttpOptions:
+        def __init__(self, **kwargs):
+            captured["http"] = kwargs
+
+    class Client:
+        def __init__(self, **kwargs):
+            self.models = types.SimpleNamespace(generate_content=lambda **kw: types.SimpleNamespace(text="проза", usage_metadata=None))
+
+    fake_types = types.ModuleType("google.genai.types")
+    fake_types.HttpOptions = HttpOptions
+    fake_types.HttpRetryOptions = lambda **kw: kw
+    fake_types.GenerateContentConfig = lambda **kw: None
+    fake_genai = types.ModuleType("google.genai")
+    fake_genai.Client, fake_genai.types = Client, fake_types
+    fake_google = types.ModuleType("google")
+    fake_google.genai = fake_genai
+    for name, m in (("google", fake_google), ("google.genai", fake_genai), ("google.genai.types", fake_types)):
+        monkeypatch.setitem(sys.modules, name, m)
+    monkeypatch.setenv("GEMINI_API_KEY", "ключ")
+    assert adapters.call_gemini("окно", ModelConfig(provider="gemini", model="g"), api, ws.logs) == "проза"
+    assert captured["http"]["timeout"] == 7 * 1000
+
+
+def test_доктор_отличает_не_найдена_от_не_проверено_без_сети(ws, monkeypatch):
+    """D1-32 / FR-RT-3: ключ есть, сети нет → «не проверено», а не «не найдена»."""
+    import sys
+    import types
+
+    from tests.test_stage10_safety import _fake_genai, _with_spec
+    from konveyer import adapters
+    from konveyer.config import ModelConfig
+
+    class Anthropic:
+        def __init__(self, **kwargs):
+            self.models = types.SimpleNamespace(retrieve=lambda model_id: (_ for _ in ()).throw(ConnectionError("нет сети")))
+
+    mod = _with_spec(types.ModuleType("anthropic"))
+    mod.Anthropic = Anthropic
+    monkeypatch.setitem(sys.modules, "anthropic", mod)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+    _fake_genai(monkeypatch, set())
+    ok, note = adapters.probe_model(ModelConfig(provider="anthropic", model="claude-sonnet-4-5"))
+    assert ok is None and note.startswith("не проверено: ConnectionError")
+    r = runner.invoke(app, ["доктор"])
+    assert "~ модель claude-sonnet-4-5" in r.output and "не проверено: ConnectionError" in r.output
+    assert "✗ модель gemini-3.1-pro (Писатель): модель «gemini-3.1-pro» не найдена" in r.output
