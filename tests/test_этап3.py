@@ -275,6 +275,27 @@ def test_канонист_идемпотентность_и_коммит_шаб�
     assert (library / "31_Матрица_знаний.md").read_text(encoding="utf-8").count("табаком") == 1
 
 
+def test_канонист_сбой_коммита_откатывает_и_не_блокирует_повтор(ws, library, monkeypatch):
+    """FR-SC-2/FR-CN-3: если `git commit` приёмки сорвался, библиотека чиста, глава остаётся «принято»,
+    а повторное применение пакета проходит и создаёт ровно один коммит."""
+    from konveyer import canonchange
+
+    _accepted(ws, library)
+    tact.canonize(1)
+    head = gitops.head(library)
+    real = gitops.commit_all
+    monkeypatch.setattr(canonchange.gitops, "commit_all", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("hook")))
+    with pytest.raises(Exception, match="git commit не удался"):
+        tact.canonize(1, apply=True, yes=True)
+    assert not gitops.dirty(library) and gitops.head(library) == head
+    assert ChapterState(ws, 1).state == "принято"
+    assert "табаком" not in (library / "31_Матрица_знаний.md").read_text(encoding="utf-8")
+    monkeypatch.setattr(canonchange.gitops, "commit_all", real)
+    commit = tact.canonize(1, apply=True, yes=True)
+    assert commit != head and gitops.head(library) == commit and ChapterState(ws, 1).state == "зафиксировано"
+    assert (library / "31_Матрица_знаний.md").read_text(encoding="utf-8").count("табаком") == 1
+
+
 # ------------------------------------------------------------------ 7.10 методики
 
 

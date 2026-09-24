@@ -120,8 +120,8 @@ def canon_change(
     * `commit=True` — `git commit` всех изменений папки библиотеки с авторством `cfg.commit_author` (Д-8);
       `confirm(result)` — последняя возможность отказаться от коммита уже после линта (вопрос автору);
       `commit=False` — изменения остаются на диске, результат несёт `uncommitted=True`;
-    * исключение в `writer`/экспорте откатывает библиотеку к HEAD (2.6) — только если она под git
-      и была чистой на входе (иначе откат стёр бы правки автора, сделанные до вызова).
+    * исключение в `writer`/экспорте и сбой самого `git commit` откатывают библиотеку к HEAD (FR-SC-2) —
+      только если она под git и была чистой на входе (иначе откат стёр бы правки автора, сделанные до вызова).
     * `require_clean=False` — коммит поверх незакоммиченных правок автора допустим (сценарий Б).
     """
     if not author_confirmed:
@@ -147,7 +147,22 @@ def canon_change(
         result.message = "библиотека не под git — коммит пропущен, настройте git (git init в библиотеке)!"
         return result
     if commit and (confirm is None or confirm(result)):
-        result.commit = gitops.commit_all(library, message, author=cfg.commit_author)
+        try:
+            result.commit = gitops.commit_all(library, message, author=cfg.commit_author)
+        except BaseException as e:
+            # сбой самого коммита (хук, lock-файл, права): библиотека не должна остаться грязной
+            # с применённым, но незакоммиченным изменением — иначе повтор отказал бы «требует чистого git»
+            if clean_at_entry:
+                _rollback(library, ws, e)
+                raise RuntimeError(
+                    f"{action}: git commit не удался ({e}); библиотека откачена к предыдущему коммиту, "
+                    "выгрузки пересчитаны — устраните причину и повторите."
+                ) from e
+            raise RuntimeError(
+                f"{action}: git commit не удался ({e}); изменения остались на диске незакоммиченными "
+                "(библиотека была грязной на входе, откат не выполнялся) — устраните причину и выполните "
+                "`konveyer канон-коммит`."
+            ) from e
         if result.commit is None:
             result.message = "изменений в каноне нет — коммитить нечего."
         else:
