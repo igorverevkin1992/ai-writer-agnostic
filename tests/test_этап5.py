@@ -35,6 +35,10 @@ def test_линтер_чистый_канон_молчит(ws, library):
     # у каждого кода типа есть модуль-владелец (документация и включение согласованы)
     by_types = catalog.all_lint_codes({}, types)
     assert by_types <= catalog.all_lint_codes(modules), by_types - catalog.all_lint_codes(modules)
+    # каждый объявленный код действительно выдаётся телом проверки, а не только декоратором (нет «мёртвых» кодов)
+    src = (Path(lint.__file__)).read_text(encoding="utf-8")
+    dead = sorted(c for c in impl if f'_f("{c}"' not in src and f'code="{c}"' not in src)
+    assert not dead, dead
 
 
 # по одному внедрённому противоречию на класс проверок (FR-LT-2): ожидаемый код ловится, лишнего нет

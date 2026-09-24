@@ -48,7 +48,7 @@ def compile(chapter: int) -> Path:  # noqa: A001 — имя команды `konv
     ws, cfg, lib = _ctx()
     try:
         exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
-        path, breakdown = compiler.compile_window(ws, lib, chapter, cfg.window_soft_limit_chars)
+        path, breakdown = compiler.compile_window(ws, lib, chapter, limits=compiler.WindowLimits.from_config(cfg))
     except MarkupError as e:
         raise StepError(str(e)) from e
     except FileNotFoundError as e:
@@ -66,12 +66,6 @@ def compile(chapter: int) -> Path:  # noqa: A001 — имя команды `konv
             fg=colors.YELLOW,
         )
     secho(f"Окно собрано: {path} (~{size} символов)", fg=colors.GREEN)
-    if breakdown.get("драматургия", 0) and "в канон ещё не внесён" in path.read_text(encoding="utf-8"):
-        secho(
-            f"⚠ Каркас драматургии главы {chapter} в канон не внесён: `konveyer circles` → "
-            "`konveyer circles --в-канон`, затем пересоберите окно.",
-            fg=colors.YELLOW,
-        )
     if (ws.chapter_dir(chapter) / "window_size_флаг.md").exists() and size > cfg.window_soft_limit_chars:
         secho(
             f"⚠ Превышен мягкий лимит окна {cfg.window_soft_limit_chars} символов (Д-12) — "

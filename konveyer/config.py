@@ -78,6 +78,10 @@ class Config(BaseModel):
     api: ApiConfig = ApiConfig()
     thresholds: Thresholds = Thresholds()
     window_soft_limit_chars: int = 80_000
+    window_prior_events_max: int = 24        # FR-WN-5: событий предыдущих глав в окне
+    window_prior_continuity_max: int = 30    # FR-WN-5: деталей континуити в окне
+    window_tail_paragraphs: int = 3          # FR-WN-5: хвост прозы предыдущей главы фокала, абзацев
+    window_tail_chars: int = 1200            # FR-WN-5: … и знаков
     auto_retries_verify1: int = 2
     edit_cycle_max_iterations: int = 3
     commit_author: str | None = None
@@ -119,6 +123,10 @@ class Config(BaseModel):
             d.setdefault("volume", d.pop("текущий_том"))
         if "лимит_окна" in d:
             d.setdefault("window_soft_limit_chars", d.pop("лимит_окна"))
+        for ru, en in (("окно_событий_макс", "window_prior_events_max"), ("окно_континуити_макс", "window_prior_continuity_max"),
+                       ("окно_хвост_абзацев", "window_tail_paragraphs"), ("окно_хвост_знаков", "window_tail_chars")):
+            if ru in d:
+                d.setdefault(en, d.pop(ru))
         if "пауза_автора_мин" in d:
             d.setdefault("author_pause_min", d.pop("пауза_автора_мин"))
         return d

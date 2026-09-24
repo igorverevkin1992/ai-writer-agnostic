@@ -33,6 +33,16 @@ class BillingError(RuntimeError):
     """Биллинг, квота или доступ (FR-AD-5): частый случай на старте; повторы бесполезны."""
 
 
+class EmptyResponse(RuntimeError):
+    """Провайдер вернул пустой текст (отказ, блокировка фильтром, пустой кандидат): ответом не считается,
+    попытка повторяется как сетевая ошибка."""
+
+
+class TruncatedResponse(RuntimeError):
+    """Ответ оборван по лимиту выходных токенов: усечённый текст не сохраняется как черновик; повтор бесполезен —
+    нужен больший max_tokens в параметрах роли."""
+
+
 def mask_secrets(text: str) -> str:
     """Значения ключей из окружения никогда не попадают в текст (FR-AD-6)."""
     for name, value in os.environ.items():
@@ -64,7 +74,11 @@ def _http_status(e: Exception) -> int | None:
 
 
 def classify_error(e: Exception) -> str:
-    """«биллинг» | «доступ» | «квота» | «сеть» | «клиент»: по HTTP-статусу и тексту ошибки."""
+    """«биллинг» | «доступ» | «квота» | «сеть» | «клиент» | «пустой ответ» | «обрыв»: по типу, HTTP-статусу и тексту."""
+    if isinstance(e, EmptyResponse):
+        return "пустой ответ"
+    if isinstance(e, TruncatedResponse):
+        return "обрыв"
     status = _http_status(e)
     text = f"{type(e).__name__}: {e}".lower()
     if status in (401, 403) or "api key" in text or "unauthorized" in text or "permission" in text:
@@ -89,12 +103,17 @@ def explain_error(e: Exception, role: str) -> str:
         return f"{role}: исчерпана квота или лимит запросов ({msg}). Подождите или поднимите лимит в кабинете провайдера."
     if kind == "сеть":
         return f"{role}: сетевая или серверная ошибка ({msg})."
+    if kind == "пустой ответ":
+        return f"{role}: модель вернула пустой ответ — отказ или блокировка ({msg}); черновик не сохранён."
+    if kind == "обрыв":
+        return (f"{role}: ответ оборван по лимиту выходных токенов ({msg}) — поднимите max_tokens в параметрах роли "
+                "(конфиг.yaml); усечённый текст не сохранён.")
     return f"{role}: ошибка запроса ({msg})."
 
 
 def _retryable(e: Exception) -> bool:
     kind = classify_error(e)
-    if kind in ("доступ", "биллинг", "клиент"):
+    if kind in ("доступ", "биллинг", "клиент", "обрыв"):
         return False
     return True
 
@@ -105,6 +124,8 @@ def _retry_call(fn, api: ApiConfig, logs_dir: Path, *, role: str, mc: ModelConfi
         start = time.monotonic()
         try:
             text, tokens_in, tokens_out = fn()
+            if not (text or "").strip():
+                raise EmptyResponse("пустой текст ответа")
             log_call(logs_dir, role=role, model=mc.model, tokens_in=tokens_in, tokens_out=tokens_out,
                      cost_est=_estimate_cost(mc, tokens_in, tokens_out), chapter=chapter, duration=time.monotonic() - start)
             return text
@@ -119,7 +140,7 @@ def _retry_call(fn, api: ApiConfig, logs_dir: Path, *, role: str, mc: ModelConfi
     assert last_error is not None
     kind = classify_error(last_error)
     reason = explain_error(last_error, f"Вызов {role} ({mc.model})")
-    if kind in ("доступ", "биллинг", "квота"):
+    if kind in ("доступ", "биллинг", "квота", "обрыв"):
         reason = f"{reason} [{kind}]"
     else:
         reason = f"{reason} — после {api.retries} попыток"
@@ -128,6 +149,22 @@ def _retry_call(fn, api: ApiConfig, logs_dir: Path, *, role: str, mc: ModelConfi
         "скопируйте входной файл (окно/промпт) в чат модели вручную и сохраните ответ в ожидаемый файл артефакта — "
         "каждый шаг такта исполним отдельно.",
     )
+
+
+# причины завершения, означающие обрыв по лимиту токенов (anthropic `stop_reason`, gemini `finish_reason`)
+TRUNCATED_REASONS = {"max_tokens", "length"}
+
+
+def _gemini_finish_reason(resp) -> str | None:
+    cands = getattr(resp, "candidates", None) or []
+    reason = getattr(cands[0], "finish_reason", None) if cands else None
+    return getattr(reason, "name", reason) if reason is not None else None
+
+
+def _check_finish(reason) -> None:
+    """Обрыв по лимиту токенов — не ответ (FR-WR-1): усечённый текст черновиком не становится."""
+    if reason is not None and str(reason).lower() in TRUNCATED_REASONS:
+        raise TruncatedResponse(f"причина завершения: {reason}")
 
 
 def api_key_for(provider: str) -> str | None:
@@ -164,6 +201,7 @@ def call_gemini(prompt: str, mc: ModelConfig, api: ApiConfig, logs_dir: Path, ch
         client = genai.Client(api_key=key, http_options=types.HttpOptions(**http_kwargs))
         resp = client.models.generate_content(model=mc.model, contents=prompt, config=types.GenerateContentConfig(**mc.params))
         usage = getattr(resp, "usage_metadata", None)
+        _check_finish(_gemini_finish_reason(resp))
         return (resp.text or "", getattr(usage, "prompt_token_count", None), getattr(usage, "candidates_token_count", None))
 
     return _retry_call(do, api, logs_dir, role=role, mc=mc, chapter=chapter)
@@ -185,6 +223,7 @@ def call_anthropic(system: str, user: str, mc: ModelConfig, api: ApiConfig, logs
             messages=[{"role": "user", "content": user}], **{k: v for k, v in mc.params.items() if k != "max_tokens"},
         )
         text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        _check_finish(getattr(resp, "stop_reason", None))
         return text, resp.usage.input_tokens, resp.usage.output_tokens
 
     return _retry_call(do, api, logs_dir, role=role, mc=mc, chapter=chapter)

@@ -11,11 +11,23 @@ from importlib import resources
 from jinja2 import Environment, StrictUndefined
 
 from . import adapters, cancel, catalog, guard, manifest as manifest_mod
+from .verifier2 import FENCE_CLOSE, FENCE_OPEN
 from .config import Config
 from .paths import Workspace
 from .schemas import Edit
 
 MODE_LOCAL = "правки (код)"
+
+
+def require_text(text: str, role: str) -> str:
+    """Пустой или пробельный ответ модели — не черновик (FR-WR-1, П-5): артефакт не пишется, состояние главы
+    не меняется, автору — ручной режим с причиной."""
+    if not (text or "").strip():
+        raise adapters.ManualModeNeeded(
+            f"{role}: модель вернула пустой ответ (отказ, блокировка или обрыв) — черновик не сохранён.",
+            "повторите шаг позже или прогоните окно/промпт вручную и сохраните ответ в ожидаемый файл артефакта.",
+        )
+    return text
 
 
 def _save_draft(ws: Workspace, chapter: int, k: int, text: str, cfg: Config, mode: str, extra: dict | None = None,
@@ -40,7 +52,7 @@ def _save_draft(ws: Workspace, chapter: int, k: int, text: str, cfg: Config, mod
 def write_chapter(ws: Workspace, cfg: Config, chapter: int, k: int) -> None:
     """FR-W1: отправляет окно, сохраняет ответ как черновик_k.md. Контекст — только окно."""
     window = ws.window_path(chapter).read_text(encoding="utf-8")
-    text = adapters.call_model(cfg.writer, cfg.api, "", window, ws.logs, role="писатель", chapter=chapter)
+    text = require_text(adapters.call_model(cfg.writer, cfg.api, "", window, ws.logs, role="писатель", chapter=chapter), "Писатель")
     _save_draft(ws, chapter, k, text, cfg, mode="генерация")
 
 
@@ -66,7 +78,8 @@ def write_variants(ws: Workspace, cfg: Config, chapter: int, k: int, n: int) -> 
     for i, label in enumerate(labels):
         if i:
             cancel.check(f"вариант {label}")
-        text = adapters.call_model(cfg.writer, cfg.api, "", window, ws.logs, role="писатель", chapter=chapter)
+        text = require_text(adapters.call_model(cfg.writer, cfg.api, "", window, ws.logs, role="писатель", chapter=chapter),
+                            f"Писатель (вариант {label})")
         _save_draft(ws, chapter, k, text, cfg, mode=f"генерация (вариант {label})",
                     extra={"вариант": label, "вариантов": n}, suffix=variant_suffix(label))
         saved.append(label)
@@ -131,26 +144,33 @@ class LocalEdits:
 
 
 def _quote_pattern(quote: str) -> re.Pattern:
-    """Цитата «БЫЛО» с терпимостью к переносам/пробелам (автор копирует из review с разной вёрсткой)."""
-    return re.compile(r"\s+".join(re.escape(w) for w in quote.split()))
+    """Цитата «БЫЛО» с терпимостью к переносам/пробелам внутри (автор копирует из приёмки с разной вёрсткой),
+    но по границам слова: «Он » не находится внутри «Оно», намеренный крайний пробел цитаты обязателен."""
+    core = r"\s+".join(re.escape(w) for w in quote.split())
+    lead = r"\s" if quote[:1].isspace() else (r"(?<!\w)" if quote[:1].isalnum() else "")
+    trail = r"\s" if quote[-1:].isspace() else (r"(?!\w)" if quote[-1:].isalnum() else "")
+    return re.compile(lead + core + trail)
 
 
 def find_quote(text: str, quote: str) -> list[tuple[int, int]]:
-    """Все вхождения цитаты (дословно, с точностью до пробелов): список (start, end)."""
-    quote = quote.strip()
-    if not quote:
+    """Все вхождения цитаты (дословно, с точностью до внутренних пробелов, по границам слова): список (start, end)."""
+    quote = quote.strip("\n\r")
+    if not quote.strip():
         return []
     return [(m.start(), m.end()) for m in _quote_pattern(quote).finditer(text)]
 
 
 def apply_edits_text(text: str, edits: list[Edit]) -> LocalEdits:
-    """Р-023: пары БЫЛО/СТАЛО, чьё «БЫЛО» найдено в тексте ровно один раз, применяются кодом
-    (пустое «СТАЛО» — удаление). Свободные указания и не найденные / неоднозначные цитаты —
-    остаются Писателю. Правки применяются по порядку к уже изменённому тексту."""
+    """FR-ED-1: пары БЫЛО/СТАЛО, чьё «БЫЛО» найдено в тексте ровно один раз (по границам слова), применяются
+    кодом (пустое «СТАЛО» — удаление). Крайние пробелы цитаты — часть цитаты («Он » → «Она »), переносы строк
+    вокруг неё — нет. Свободные указания и не найденные / неоднозначные цитаты остаются Писателю.
+    Правки применяются по порядку к уже изменённому тексту."""
     result = LocalEdits(text=text)
     for e in edits:
-        before, after = e.before.strip(), e.after.strip()
-        if not before:
+        before, after = e.before.strip("\n\r"), e.after.strip("\n\r")
+        if not after.strip():
+            after = ""
+        if not before.strip():
             result.remaining.append(e)
             result.reasons[e.seq] = "свободное указание"
             continue
@@ -200,7 +220,7 @@ def edit_prompt(ws: Workspace, chapter: int, черновик_k: int, edits: lis
     lib = guard._library() or ws.root / "Библиотека"
     series = manifest_mod.effective(ws.root, lib, catalog.load_types(ws.root)).проект.имя
     env = Environment(undefined=StrictUndefined)
-    return env.from_string(tpl).render(edits=edits, draft=draft, series=series)
+    return env.from_string(tpl).render(edits=edits, draft=draft, series=series, fence_open=FENCE_OPEN, fence_close=FENCE_CLOSE)
 
 
 def apply_edits(ws: Workspace, cfg: Config, chapter: int, черновик_k: int, edits: list[Edit], new_k: int | None = None,
@@ -209,7 +229,8 @@ def apply_edits(ws: Workspace, cfg: Config, chapter: int, черновик_k: in
     `base_text` — текст с уже применёнными кодом правками (Писателю уходят только `edits`)."""
     prompt = edit_prompt(ws, chapter, черновик_k, edits, draft_text=base_text)
     guard.write_text(ws.chapter_dir(chapter) / "промпт_правок.md", prompt)
-    text = adapters.call_model(cfg.writer, cfg.api, "", prompt, ws.logs, role="писатель (правки)", chapter=chapter)
+    text = require_text(adapters.call_model(cfg.writer, cfg.api, "", prompt, ws.logs, role="писатель (правки)", chapter=chapter),
+                        "Писатель (правки)")
     new_k = new_k or черновик_k + 1
     extra = {"база": черновик_k}
     if applied_locally:

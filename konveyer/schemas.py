@@ -157,7 +157,7 @@ class Norm(BaseModel):
     max: float | None = None
     brak: float | None = None
     unit: str = ""
-    source: str = ""  # документ и таблица, откуда норма (`постоянные: {source: "{файл} (нормы)"}`)
+    source: str = ""  # документ и секция/таблица, откуда норма (ставит извлечение типа «стиль»: `постоянные: {source: "{файл} (нормы)"}`)
 
 
 class ContinuityEvent(BaseModel):

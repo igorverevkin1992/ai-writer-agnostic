@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import functools
+import re
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
@@ -254,6 +255,12 @@ def documentation(types: dict[str, TypeSpec], modules: dict[str, ModuleSpec]) ->
                   f"- Чек-листы Э2: {', '.join(m.e2_checks) or '—'}",
                   f"- Коды линтера: {', '.join(m.lint_codes) or '—'}", ""]
     return "\n".join(lines) + "\n"
+
+
+def section_key(name: str) -> str:
+    """Ключ секции окна: имя из реестра модулей (`окно: [техзадание_закладки]`) и маркер шаблона
+    («<!-- СЕКЦИЯ: техзадание — закладки -->») приводятся к одному виду."""
+    return re.sub(r"[\s—–-]+", "_", str(name).strip().lower())
 
 
 def all_lint_codes(modules: dict[str, ModuleSpec], types: dict[str, TypeSpec] | None = None) -> set[str]:

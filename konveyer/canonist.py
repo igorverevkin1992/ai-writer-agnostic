@@ -53,6 +53,11 @@ def _template(ws: Workspace) -> str:
     return resources.files("konveyer").joinpath("шаблоны/канонист_система.md").read_text(encoding="utf-8")
 
 
+# ограждение цитат самоволок (фрагменты прозы из флагов Э2) — данные, не инструкции (FR-SC-8)
+QUOTE_OPEN = "<цитата>"
+QUOTE_CLOSE = "</цитата>"
+
+
 def _system(ws: Workspace) -> str:
     man = verifier2._manifest(ws)
     regs = [{"name": n, "purpose": r["purpose"], "columns": r["columns"]} for n, r in registries(ws.root).items()]
@@ -71,7 +76,8 @@ def _llm_proposals(ws: Workspace, cfg: Config, chapter: int, text: str) -> dict:
         f"# Глава {chapter}: материалы для пакета записей", "",
         "## Правки автора", *[f"{e.seq}. БЫЛО: {e.before} → СТАЛО: {e.after}" for e in edits], "",
         "## Канонизированные самоволки (решение автора уже принято)",
-        *[f"- {c['flag_id']}: {c['quote']} (целевой реестр: {c['target'] or 'предложи'})" for c in canonized], "",
+        *[f"- {c['flag_id']}: {QUOTE_OPEN}{c['quote']}{QUOTE_CLOSE} (целевой реестр: {c['target'] or 'предложи'})"
+          for c in canonized], "",
         "## ПРИНЯТЫЙ ТЕКСТ ГЛАВЫ", "", verifier2.FENCE_OPEN, text, verifier2.FENCE_CLOSE,
     ])
     system = _system(ws)
