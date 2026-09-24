@@ -1,20 +1,33 @@
-"""CLI универсального конвейера книжной серии (интерфейсы из реестра модулей 4.2; язык — русский, NFR-2).
+"""CLI универсального конвейера книжной серии (раздел 8.1 ТЗ: FR-CL-1…FR-CL-5; язык — русский, NFR-7).
 
-Каждый шаг такта исполним отдельной командой (FR-O2): отказ любого компонента
-не блокирует такт — артефакты человекочитаемы, ручной режим всегда возможен (NFR-3).
+Каждый шаг такта исполним отдельной командой (FR-CL-1): отказ любого компонента
+не блокирует такт — артефакты человекочитаемы, ручной режим всегда возможен (NFR-4).
 
-Тонкая обёртка над ядром `konveyer/steps/*` (аудит 2, п. 30): здесь только регистрация команд typer
+Тонкая обёртка над ядром `konveyer/steps/*`: здесь только регистрация команд typer
 (имена, опции, панели справки), вызов функции ядра и перевод её исключений в сообщения и коды
 возврата (`_friendly`). Логика шагов, тексты сообщений и подтверждения — в ядре; typer в ядре нет.
+
+Русский интерфейс целиком (FR-CL-5, NFR-7): русские имена команд и опций с латинскими синонимами,
+русская справка (заголовки разделов, «--справка», без автодополнения оболочки) и русские сообщения
+об ошибках разбора командной строки в едином формате «ОШИБКА: … . …» с кодом возврата 1 (FR-CL-3):
+код 2 остаётся только за ручным режимом.
 """
 
 from __future__ import annotations
 
 import functools
 import os
+import re
+import sys
 from pathlib import Path
 
 import typer
+from typer import core as typer_core
+
+try:  # typer ≥ 0.27 несёт click внутри себя
+    from typer._click import exceptions as click_exc
+except ImportError:  # pragma: no cover — typer < 0.27 с отдельным click
+    from click import exceptions as click_exc  # type: ignore[no-redef]
 
 from . import cancel, steps
 from .steps import canon, edits as edits_mod, onboarding as onboarding_steps, overview, quality, setup, tact, volume as volume_steps
@@ -25,11 +38,152 @@ from .steps.common import _print_variants as _print_variants, _print_verdict as 
 from .steps.common import _sha256 as _sha256  # noqa: F401
 from .steps.canon import _compile_window_to as _compile_window_to  # noqa: F401
 
+# ------------------------------------------------------------------ русская справка и ошибки разбора (FR-CL-3, FR-CL-5, NFR-7)
+
+HELP_OPTION_NAMES = ["--справка", "--help", "-h"]
+OPTIONS_METAVAR = "[ОПЦИИ]"
+SUBCOMMAND_METAVAR = "КОМАНДА [АРГУМЕНТЫ]..."
+USAGE_PREFIX = "Использование: "
+HELP_OPTION_TEXT = "Показать справку и выйти."
+
+try:  # заголовки и пометки богатой справки typer — по-русски
+    from typer import rich_utils as _rich_utils
+
+    _rich_utils.ARGUMENTS_PANEL_TITLE = "Аргументы"
+    _rich_utils.OPTIONS_PANEL_TITLE = "Опции"
+    _rich_utils.COMMANDS_PANEL_TITLE = "Команды"
+    _rich_utils.ERRORS_PANEL_TITLE = "Ошибка"
+    _rich_utils.DEFAULT_STRING = "[по умолчанию: {}]"
+    _rich_utils.ENVVAR_STRING = "[переменная окружения: {}]"
+    _rich_utils.REQUIRED_LONG_STRING = "[обязательно]"
+    _rich_utils.DEPRECATED_STRING = "(устарело) "
+    _rich_utils.ABORTED_TEXT = "Прервано."
+    _rich_utils.RICH_HELP = "Справка: '{command_path} {help_option}'."
+except ImportError:  # pragma: no cover — typer без rich: простая справка click
+    pass
+
+_NoArgsIsHelpError = getattr(click_exc, "NoArgsIsHelpError", None)
+
+# английские сообщения разбора click → русские (FR-CL-3); значение в кавычках click даёт как repr
+_USAGE_TRANSLATIONS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"^No such command '(.+?)'\.(?: Did you mean (.+?)\?)?$"), "нет команды «{g1}»{maybe}"),
+    (re.compile(r"^Missing command\.?$"), "не указана команда"),
+    (re.compile(r"^Got unexpected extra arguments?(?:\(s\))? \((.+)\)$"), "лишние аргументы: {g1}"),
+    (re.compile(r"^Option '(.+?)' requires an argument\.?$"), "опции «{g1}» нужно значение"),
+    (re.compile(r"^Option '(.+?)' requires (\d+) arguments\.?$"), "опции «{g1}» нужно значений: {g2}"),
+    (re.compile(r"^Option '(.+?)' does not take a value\.?$"), "опция «{g1}» не принимает значения"),
+    (re.compile(r"^'?(.+?)'? is not a valid (?:int|integer|int range)\.?$"), "«{g1}» — не целое число"),
+    (re.compile(r"^'?(.+?)'? is not a valid (?:float|float range)\.?$"), "«{g1}» — не число"),
+    (re.compile(r"^'?(.+?)'? is not a valid boolean\b.*$"), "«{g1}» — не да/нет"),
+    (re.compile(r"^'?(.+?)'? is not in the range (.+?)\.?$"), "{g1} вне диапазона {g2}"),
+    (re.compile(r"^'?(.+?)'? is not one of (.+?)\.?$"), "«{g1}» не из списка: {g2}"),
+    (re.compile(r"^(?:Path|File|Directory) '(.+?)' does not exist\.?$"), "путь «{g1}» не существует"),
+]
+
+
+def _translate_usage(message: str) -> str:
+    """Русский текст ошибки разбора; незнакомую формулировку оставляем как есть."""
+    text = (message or "").strip()
+    for rx, template in _USAGE_TRANSLATIONS:
+        m = rx.match(text)
+        if not m:
+            continue
+        groups = {f"g{i}": (g or "") for i, g in enumerate(m.groups(), start=1)}
+        groups["maybe"] = f" (может быть, {m.group(2)}?)" if rx.groups >= 2 and m.group(2) else ""
+        return template.format(**groups)
+    return text
+
+
+def _param_name(param) -> str:
+    """Имя параметра для сообщения: русская длинная опция, иначе первая; аргумент — его имя."""
+    opts = list(getattr(param, "opts", []) or [])
+    longs = [o for o in opts if o.startswith("--")]
+    cyr = [o for o in longs if not o.isascii()]
+    if cyr or longs or opts:
+        return (cyr or longs or opts)[0]
+    return str(getattr(param, "name", "") or "")
+
+
+def _usage_error_text(e: click_exc.UsageError) -> str:
+    """«ОШИБКА: <что случилось>. <что сделать>» для ошибок разбора командной строки (FR-CL-3)."""
+    ctx = getattr(e, "ctx", None)
+    param = getattr(e, "param", None)
+    if isinstance(e, click_exc.NoSuchOption):
+        what = f"нет опции «{e.option_name}»"
+        if getattr(e, "possibilities", None):
+            what += f" (может быть, {', '.join(e.possibilities)}?)"
+    elif isinstance(e, click_exc.MissingParameter):
+        kind = "аргумент" if getattr(param, "param_type_name", "") == "argument" else "опция"
+        what = f"не указан{'' if kind == 'аргумент' else 'а'} обязательн{'ый' if kind == 'аргумент' else 'ая'} {kind} {_param_name(param)}"
+    elif isinstance(e, click_exc.BadParameter):
+        kind = "аргумента" if getattr(param, "param_type_name", "") == "argument" else "опции"
+        where = f" {kind} «{_param_name(param)}»" if param is not None else ""
+        what = f"недопустимое значение{where}: {_translate_usage(e.message)}"
+    else:
+        what = _translate_usage(getattr(e, "message", str(e)))
+    help_hint = f"См. `{ctx.command_path} {HELP_OPTION_NAMES[0]}`." if ctx is not None else f"См. `konveyer {HELP_OPTION_NAMES[0]}`."
+    return f"{what}. {help_hint}"
+
+
+class _RussianHelpMixin:
+    """Русские элементы справки, общие для группы и команд: строка использования и опция справки."""
+
+    def format_usage(self, ctx, formatter) -> None:
+        pieces = self.collect_usage_pieces(ctx)  # type: ignore[attr-defined]
+        formatter.write_usage(ctx.command_path, " ".join(pieces), prefix=USAGE_PREFIX)
+
+    def get_help_option_names(self, ctx) -> list[str]:
+        names = set(super().get_help_option_names(ctx))  # type: ignore[misc]
+        return [n for n in HELP_OPTION_NAMES if n in names] + sorted(names.difference(HELP_OPTION_NAMES))
+
+    def get_help_option(self, ctx):
+        opt = super().get_help_option(ctx)  # type: ignore[misc]
+        if opt is not None:
+            opt.help = HELP_OPTION_TEXT
+        return opt
+
+
+class Команда(_RussianHelpMixin, typer_core.TyperCommand):
+    """Команда с русской справкой."""
+
+
+class Группа(_RussianHelpMixin, typer_core.TyperGroup):
+    """Группа команд с русской справкой и русскими ошибками разбора (FR-CL-3): опечатка в аргументах —
+    «ОШИБКА: …», код 1; вызов без аргументов — справка, код 0; отказ/прерывание — «Прервано.», код 1."""
+
+    def main(self, args=None, prog_name=None, complete_var=None, standalone_mode=True, **extra):
+        try:
+            rv = super().main(args=args, prog_name=prog_name, complete_var=complete_var, standalone_mode=False, **extra)
+        except click_exc.UsageError as e:
+            if _NoArgsIsHelpError is not None and isinstance(e, _NoArgsIsHelpError):
+                typer.echo(e.ctx.get_help())
+                code = 0
+            else:
+                typer.secho(f"ОШИБКА: {_usage_error_text(e)}", fg=typer.colors.RED, err=True)
+                code = 1
+        except click_exc.ClickException as e:
+            e.show()
+            code = e.exit_code
+        except (click_exc.Abort, typer.Abort):
+            typer.secho("Прервано.", fg=typer.colors.YELLOW, err=True)
+            code = 1
+        else:
+            code = rv if isinstance(rv, int) else 0
+        if standalone_mode:
+            sys.exit(code)
+        return code
+
+
 app = typer.Typer(
     name="konveyer",
+    cls=Группа,
     help="КОНВЕЙЕР — производственный такт главы (ТЗ v1.0).",
     no_args_is_help=True,
+    add_completion=False,
     pretty_exceptions_enable=False,
+    context_settings={"help_option_names": HELP_OPTION_NAMES},
+    options_metavar=OPTIONS_METAVAR,
+    subcommand_metavar=SUBCOMMAND_METAVAR,
 )
 
 
@@ -53,7 +207,7 @@ def _version_callback(value: bool) -> None:
 
 @app.callback()
 def _root(
-    version: bool = typer.Option(False, "--version", "-V", help="Версия конвейера.", callback=_version_callback, is_eager=True),
+    version: bool = typer.Option(False, "--версия", "--version", "-V", help="Версия конвейера.", callback=_version_callback, is_eager=True),
 ) -> None:
     """КОНВЕЙЕР — производственный такт главы (ТЗ v1.0)."""
 
@@ -97,8 +251,10 @@ def _friendly(fn):
                 return fn(*args, **kwargs)
             except (typer.Exit, typer.Abort):
                 raise  # собственные коды выхода — не ошибка
-            except steps.Rejected as e:  # автор не подтвердил (Д-8)
-                raise typer.Abort() if e.abort else typer.Exit()
+            except steps.Rejected as e:  # автор не подтвердил (Д-17): сознательный отказ — код 0
+                if e.abort:
+                    typer.secho("Отменено автором.", fg=typer.colors.YELLOW, err=True)
+                raise typer.Exit(code=e.code)
             except steps.StepExit as e:  # шаг сам всё напечатал и просит код возврата
                 raise typer.Exit(code=e.code)
             except steps.ManualMode as e:
@@ -703,6 +859,34 @@ def _register_group_synonyms(typer_app: typer.Typer, table: dict[str, str]) -> N
 
 _register_group_synonyms(volume_app, _VOLUME_SYNONYMS)
 app.add_typer(volume_app, name="том", rich_help_panel="Канон и бэкап", hidden=False)
+
+
+def _russify(typer_app: typer.Typer) -> None:
+    """Русская справка у всех команд и групп (в том числе у синонимов): класс команды с русской строкой
+    использования и опцией справки, русский заполнитель опций."""
+    def _plain(value):  # значение без обёртки Default(...) typer
+        return value.value if isinstance(value, typer.models.DefaultPlaceholder) else value
+
+    for info in typer_app.registered_commands:
+        if _plain(info.cls) in (None, typer_core.TyperCommand):
+            info.cls = Команда
+        if _plain(info.options_metavar) == "[OPTIONS]":
+            info.options_metavar = OPTIONS_METAVAR
+    for group in typer_app.registered_groups:
+        sub = group.typer_instance
+        if sub is None:
+            continue
+        for holder in (group, sub.info):
+            if _plain(holder.cls) in (None, typer_core.TyperGroup):
+                holder.cls = Группа
+            if _plain(holder.options_metavar) == "[OPTIONS]":
+                holder.options_metavar = OPTIONS_METAVAR
+            if _plain(holder.subcommand_metavar) is None:
+                holder.subcommand_metavar = SUBCOMMAND_METAVAR
+        _russify(sub)
+
+
+_russify(app)
 
 
 def main() -> None:  # точка входа для python -m konveyer.cli
