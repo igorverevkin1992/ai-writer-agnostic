@@ -4,7 +4,14 @@
 какого типа, что из него читает машина. Ни одного имени документа серии в коде нет (П-1). Все документы
 разбираются ДО первой записи (атомарность, FR-SC-5); ошибки разбора собираются разом (FR-EX-3); файл выгрузки
 перезаписывается только при изменении содержимого (FR-EX-2); корпус прозы пересчитывается только для изменившихся
-текстов. Заголовок выгрузок (версия схемы, том, отпечаток канона) — `выгрузки/индекс.json` (FR-EX-5).
+текстов. Набор файлов выгрузок задаёт каталог типов (`даёт_выгрузку` / `выгрузка` извлечений) — новый тип
+проекта с новой выгрузкой не требует правки кода (FR-DT-4).
+
+Заголовок выгрузок (FR-EX-5) — один на все файлы, в `выгрузки/индекс.json`: `{версия_схемы, дата,
+отпечаток_канона, том, files}`. Сами `*.json` — голые списки/словари (так их читают все потребители). Поле `дата`
+детерминировано (П-6): это дата коммита HEAD библиотеки, а не время экспорта; библиотека без git — пустая строка.
+Отпечаток канона учитывает документы библиотеки и конфигурацию проекта (манифест, типы, модули, язык), потому что
+она меняет выгрузки и набор проверок.
 """
 
 from __future__ import annotations
@@ -18,18 +25,18 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from . import catalog, declparse, guard, manifest as manifest_mod, names, textutils
+from . import catalog, declparse, gitops, guard, lang as lang_mod, manifest as manifest_mod, mdparse, names, textutils
 from .mdparse import MarkupError
 from .schemas import (
     Act, Arc, Brief, Checklist, ChronicleEvent, ChronologyEvent, ContinuityEvent, Decision, DocumentSpec, Dose,
-    Dossier, InfoBan, MatrixFact, MethodNote, NarrationRules, Norm, Plant, StopRule, StoryCircle, VolumePlan,
-    WorldEntry,
+    SCOPE_NARRATOR, Dossier, InfoBan, MatrixFact, MethodNote, NarrationRules, Norm, Plant, StopRule, StoryCircle,
+    VolumePlan, WorldEntry,
 )
 
 SCHEMA_VERSION = 1
 INDEX = "индекс.json"
 CORPUS_DIR = "корпус"
-CORPUS_INDEX = ".index.json"  # кэш корпуса: имя главы → mtime_ns/size источника и хэш результата
+CORPUS_INDEX = ".index.json"  # кэш корпуса: имя главы → хэш источника и хэш результата (без времени: П-6)
 
 SCHEMAS: dict[str, type[BaseModel]] = {
     "Norm": Norm, "StopRule": StopRule, "MatrixFact": MatrixFact, "Plant": Plant, "ContinuityEvent": ContinuityEvent,
@@ -39,7 +46,17 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "Decision": Decision, "Checklist": Checklist,
 }
 
-# все файлы выгрузок, которые пишутся всегда (пустые списки/словари — деградация, а не отсутствие файла)
+
+class FreeRecord(BaseModel):
+    """Схема «словарь»: запись типа проекта без своей модели — любые поля как есть (`схема: словарь`)."""
+
+    model_config = {"extra": "allow"}
+
+
+FREE_SCHEMAS = {"словарь", "запись", ""}
+
+# файлы выгрузок, которые пишутся всегда (пустые списки/словари — деградация, а не отсутствие файла);
+# к ним добавляются выгрузки всех типов каталога (движка и проекта)
 EXPORT_FILES = [
     "norms.json", "stoplists.json", "matrix.json", "plants.json", "continuity.json", "briefs.json", "dossiers.json",
     "infobans.json", "parts.json", "circles.json", "acts.json", "arcs.json", "doses.json", "documents.json",
@@ -49,19 +66,20 @@ EXPORT_FILES = [
 DICT_EXPORTS = {"norms.json"}
 # порядок типов при разборе: сначала источники известных имён (участники сцен, знающие тайну)
 TYPE_ORDER = ["повествование", "эпистемика", "персонажи", "стиль", "язык", "план_глав"]
-
-MONTHS = {"январ": 1, "феврал": 2, "март": 3, "апрел": 4, "мая": 5, "май": 5, "июн": 6, "июл": 7,
-          "август": 8, "сентябр": 9, "октябр": 10, "ноябр": 11, "декабр": 12}
+# папки конфигурации проекта, входящие в отпечаток канона (меняют выгрузки и набор проверок)
+CONFIG_DIRS = ("типы", "модули", "языки", "методики")
 
 
 class ExportErrors(MarkupError):
-    """Несколько ошибок разбора разом (FR-EX-3): каждая — файл, строка, что ожидалось."""
+    """Несколько ошибок разбора разом (FR-EX-3): каждая — файл, строка, что ожидалось; в тексте перечислены все."""
 
     def __init__(self, errors: list[MarkupError]):
         self.errors = errors
         first = errors[0]
-        super().__init__(first.path, first.line, "; ".join(str(e).split(": ", 1)[-1] for e in errors[:1])
-                         + (f" (и ещё {len(errors) - 1})" if len(errors) > 1 else ""))
+        lines = [str(e) for e in errors]
+        message = lines[0].split(": ", 1)[-1] if len(errors) == 1 else \
+            f"ошибок разбора: {len(errors)}\n  " + "\n  ".join(lines)
+        super().__init__(first.path, first.line, message)
         self.path = first.path
         self.line = first.line
 
@@ -84,12 +102,18 @@ def doc_volume(path: Path) -> int | None:
     return manifest_mod.doc_volume(path)
 
 
+def _prose_exclusions(spec: catalog.TypeSpec | None) -> tuple[str, ...]:
+    """Маркеры имён файлов, которые не считаются принятыми главами («МАКЕТ»); сравнение без регистра."""
+    raw = spec.raw.get("исключить", ["МАКЕТ"]) if spec else ["МАКЕТ"]
+    return tuple(str(x).upper() for x in raw)
+
+
 def prose_files(library: Path, volume: int | None = None, root: Path | None = None) -> list[tuple[int, Path]]:
     """Принятые главы тома по документам типа «проза»: [(номер главы, путь)] по возрастанию; макеты не берутся."""
     root = project_root_of(library, root)
     spec = catalog.load_types(root).get("проза")
     rx = re.compile(spec.raw.get("регэксп_главы", r"Том0*(\d+)_Глава0*(\d+)") if spec else r"Том0*(\d+)_Глава0*(\d+)")
-    exclude = tuple(spec.raw.get("исключить", ["МАКЕТ"])) if spec else ("МАКЕТ",)
+    exclude = _prose_exclusions(spec)
     out: list[tuple[int, Path]] = []
     for p in docs_of_type(library, "проза", None, root):
         m = rx.search(p.stem)
@@ -147,22 +171,63 @@ def missing_volume_docs(library: Path, volume: int, root: Path | None = None, *,
 # ------------------------------------------------------------------ сбор (разбор всего до записи)
 
 
-def _validate(records: list[dict], schema_name: str, path: Path, errors: list[MarkupError]) -> list[tuple[dict, BaseModel]]:
-    """Записи → (исходная запись, модель схемы); запись, не прошедшая схему, — ошибка с файлом и строкой."""
+def _schema_model(schema_name: str, ctx: declparse.ParseContext | None) -> type[BaseModel]:
+    """Модель схемы по имени: движковая (`Norm`, `Brief`…), свободная (`словарь`) или модель плагина проекта
+    (`модуль:Класс` из `типы/парсеры/`)."""
     model = SCHEMAS.get(schema_name)
-    if model is None:
-        raise ValueError(f"неизвестная схема выгрузки «{schema_name}» в каталоге типов")
+    if model is not None:
+        return model
+    if schema_name.strip() in FREE_SCHEMAS:
+        return FreeRecord
+    if ":" in schema_name and ctx is not None:
+        cand = declparse.resolve_plugin(schema_name, ctx)
+        if isinstance(cand, type) and issubclass(cand, BaseModel):
+            return cand
+    raise ValueError(f"неизвестная схема выгрузки «{schema_name}» в каталоге типов; доступные: "
+                     f"{', '.join(sorted(SCHEMAS))}, словарь, модуль:Класс (типы/парсеры/ проекта)")
+
+
+def _acts_of(data: dict, path: Path, line: int, errors: list[MarkupError]) -> list[Act]:
+    """Строка таблицы актов → Act; акт без разобранного диапазона глав — ошибка с файлом и строкой
+    (кроме строк-каркасов, где главы не заполнены)."""
+    from .dramaturgy_doc import acts_from_rows
+
+    chapters = str(data.get("chapters_text") or "").strip()
+    if not chapters:
+        return []  # каркас: акт объявлен, главы не заполнены («⚠ заполнить» → пусто)
+    try:
+        acts = acts_from_rows([data])
+    except (ValueError, ValidationError) as e:
+        errors.append(MarkupError(path, line, f"акт: {e}"))
+        return []
+    if not acts:
+        errors.append(MarkupError(path, line, f"акт «{data.get('act')}»: не разобран диапазон глав «{chapters}» "
+                                              f"(ожидается «1–4» или «5»)"))
+    return acts
+
+
+def _validate(records: list[dict], schema_name: str, path: Path, errors: list[MarkupError],
+              ctx: declparse.ParseContext | None = None, key_field: str = "") -> list[tuple[dict, BaseModel]]:
+    """Записи → (исходная запись, модель схемы); запись, не прошедшая схему, — ошибка с файлом и строкой;
+    поле, которого в схеме нет (опечатка в `запись:` типа проекта), — тоже ошибка, а не молчаливая потеря.
+    `key_field` — поле-ключ словарной выгрузки (`результат: словарь:id`): оно в схему не входит."""
+    model = _schema_model(schema_name, ctx)
     out: list[tuple[dict, BaseModel]] = []
+    known_fields = set(model.model_fields) | {getattr(f, "alias", None) for f in model.model_fields.values()}
+    if key_field:
+        known_fields.add(key_field)
+    strict = model.model_config.get("extra") != "allow"
     for rec in records:
         line = int(rec.get("_строка") or 0) or 1
         data = {k: v for k, v in rec.items() if not k.startswith("_")}
+        if strict:
+            unknown = sorted(set(data) - known_fields)
+            if unknown:
+                errors.append(MarkupError(path, line, f"неизвестные поля схемы {schema_name}: {', '.join(unknown)}; "
+                                                      f"допустимые: {', '.join(sorted(model.model_fields))}"))
+                continue
         if model is Act:
-            try:
-                from .dramaturgy_doc import acts_from_rows
-                acts = acts_from_rows([data])
-            except (ValueError, ValidationError):
-                acts = []
-            out.extend((rec, a) for a in acts)
+            out.extend((rec, a) for a in _acts_of(data, path, line, errors))
             continue
         try:
             out.append((rec, model.model_validate(data)))
@@ -179,7 +244,7 @@ def _assemble_values(values: list[Any], spec: dict, path: Path) -> list[BaseMode
     if not items:
         return []
     if build.get("вид") == "стоп_правило":
-        return [StopRule(scope=str(build.get("scope", "0.3")), rule_id=str(build.get("rule_id", "правило")),
+        return [StopRule(scope=str(build.get("scope", SCOPE_NARRATOR)), rule_id=str(build.get("rule_id", "правило")),
                          items=items, applies_to={"all": True}, action=str(build.get("action", "флаг")),
                          kind=str(build.get("kind", "лексика")))]
     raise ValueError(f"{path.name}: неизвестная сборка «{build.get('вид')}»")
@@ -195,17 +260,37 @@ def _overrides(entry: manifest_mod.LibraryEntry | None) -> dict:
     return out
 
 
-class Collected:
-    """Все разобранные данные тома до записи: {файл выгрузки: список моделей | словарь}."""
+def export_names(types: dict[str, catalog.TypeSpec]) -> tuple[list[str], set[str]]:
+    """(все файлы выгрузок, какие из них — словари) по каталогу типов плюс базовый список EXPORT_FILES."""
+    files = list(EXPORT_FILES)
+    dicts = set(DICT_EXPORTS)
+    for t in types.values():
+        for e in t.extractions:
+            export = e.get("выгрузка")
+            if not export:
+                continue
+            if export not in files:
+                files.append(export)
+            if str(e.get("результат", "")).startswith("словарь:"):
+                dicts.add(export)
+    return files, dicts
 
-    def __init__(self) -> None:
-        self.data: dict[str, Any] = {name: ({} if name in DICT_EXPORTS else []) for name in EXPORT_FILES}
+
+class Collected:
+    """Все разобранные данные тома до записи: {файл выгрузки: список моделей | словарь}. `errors` — ошибки разбора
+    (экспорт невозможен); `warnings` — ошибки в документах, которые питают только выключенные модули (П-5: данные
+    никому не нужны, экспорт идёт, о проблеме говорит «доктор»)."""
+
+    def __init__(self, types: dict[str, catalog.TypeSpec] | None = None) -> None:
+        files, self.dict_exports = export_names(types or {})
+        self.data: dict[str, Any] = {name: ({} if name in self.dict_exports else []) for name in files}
         self.errors: list[MarkupError] = []
+        self.warnings: list[MarkupError] = []
         self.known_names: set[str] = set()
         self.pseudo: set[str] = set()
 
     def add(self, export: str, items: list[BaseModel] | dict) -> None:
-        if export in DICT_EXPORTS:
+        if export in self.dict_exports:
             self.data.setdefault(export, {}).update(items)  # type: ignore[arg-type]
         else:
             self.data.setdefault(export, []).extend(items)  # type: ignore[arg-type]
@@ -217,50 +302,68 @@ def _type_sequence(types: dict[str, catalog.TypeSpec]) -> list[catalog.TypeSpec]
     return first + rest
 
 
+def _feeds_only_disabled(spec: catalog.TypeSpec, modules: dict[str, catalog.ModuleSpec], enabled: set[str]) -> bool:
+    """Тип питает только выключенные (небазовые) модули — его данные никому не нужны; обязательные для такта
+    типы под это правило не подпадают."""
+    if spec.required_for_tact:
+        return False
+    owners = [m for m in spec.feeds if m in modules and not modules[m].base]
+    return bool(owners) and not any(m in enabled for m in owners)
+
+
 def collect(library: Path, volume: int = 1, root: Path | None = None, *, require_docs: bool = True) -> Collected:
     """Разбор всех документов тома по манифесту и каталогу типов. Ошибки собираются, ничего не пишется.
     `require_docs=False` — отсутствие обязательных для такта документов не ошибка (онбординг, FR-LC-1)."""
     root = project_root_of(library, root)
     types = catalog.load_types(root)
+    modules = catalog.load_modules(root)
     man = manifest_mod.effective(root, library, types)
-    col = Collected()
+    enabled = man.enabled_modules(modules)
+    col = Collected(types)
     for spec in _type_sequence(types):
         col.pseudo |= set(spec.raw.get("псевдосубъекты") or [])
         if not spec.extractions:
             continue
+        soft = _feeds_only_disabled(spec, modules, enabled)
+        sink = col.warnings if soft else col.errors
         docs = man.docs(library, spec.name, volume, types)
         if not docs and spec.required_for_tact and require_docs:
             expected = spec.default_name.format(том=volume) if spec.default_name else f"документ типа «{spec.name}»"
             col.errors.append(MarkupError(library / expected, 0,
                                           f"для тома {volume} нет документа типа «{spec.name}» (ожидается {expected}); "
-                                          f"такт без него невозможен (FR-EX-4)"))
+                                          f"такт без него невозможен (FR-LC-2)"))
             continue
         for doc in docs:
             entry = man.entry_for(doc.relative_to(library).as_posix())
             doc_vol = entry.том if entry and entry.том else (doc_volume(doc) or volume)
             ctx = declparse.ParseContext(volume=doc_vol, overrides=_overrides(entry), project_root=root, library=library,
-                                         params={"known_names": col.known_names, "exports": col.data, "pseudo": col.pseudo})
+                                         sections=dict(entry.секции or {}) if entry else {},
+                                         params={"known_names": col.known_names, "exports": col.data, "pseudo": col.pseudo,
+                                                 "тип": spec.raw})
             for ext in spec.extractions:
+                ctx.extraction = str(ext.get("имя", ""))
                 formats = list(ext.get("форматы") or [])
+                doc_errors: list[MarkupError] = []
                 try:
                     records, fmt = declparse.parse_document(doc, formats, ctx)
                 except MarkupError as e:
-                    col.errors.append(e)
+                    sink.append(e)
                     continue
                 except UnicodeDecodeError:
-                    col.errors.append(MarkupError(doc, 1, "файл не в UTF-8 (NFR-2) — пересохраните его в UTF-8"))
+                    sink.append(MarkupError(doc, 1, "файл не в UTF-8 (NFR-2) — пересохраните его в UTF-8"))
                     continue
-                except (ValueError, KeyError) as e:
-                    col.errors.append(MarkupError(doc, 1, f"разбор «{ext['имя']}»: {e}"))
+                except (ValueError, KeyError, TypeError, AttributeError, re.error) as e:
+                    sink.append(MarkupError(doc, 1, f"разбор «{ext['имя']}»: {type(e).__name__}: {e}"))
                     continue
                 if records is None:
                     if not ext.get("необязательно"):
-                        col.errors.append(declparse.markup_error(doc, formats))
+                        sink.append(declparse.markup_error(doc, formats))
                     continue
                 export = ext.get("выгрузка")
                 if not export:
                     continue
                 result = str(ext.get("результат", "список"))
+                key_field = result.split(":", 1)[1] if result.startswith("словарь:") else ""
                 if result.startswith("значения:"):
                     field = result.split(":", 1)[1]
                     values = [r.get(field) for r in records] if isinstance(records, list) else []
@@ -271,16 +374,30 @@ def collect(library: Path, volume: int = 1, root: Path | None = None, *, require
                 elif isinstance(records, dict):
                     pairs = [({"_ключ": k, **(v.model_dump() if isinstance(v, BaseModel) else {})}, v) for k, v in records.items()]
                 else:
-                    pairs = _validate(list(records) if isinstance(records, list) else [], ext.get("схема", ""), doc, col.errors)
+                    try:
+                        pairs = _validate(list(records) if isinstance(records, list) else [], str(ext.get("схема", "")),
+                                          doc, doc_errors, ctx, key_field)
+                    except ValueError as e:
+                        sink.append(MarkupError(doc, 1, str(e)))
+                        continue
+                sink.extend(doc_errors)
                 for _, m in pairs:
                     _stamp_file(m, doc.relative_to(library).as_posix())
-                if result.startswith("словарь:"):
-                    key = result.split(":", 1)[1]
-                    col.add(export, {str(rec.get(key, rec.get("_ключ", getattr(m, key, "")))): m for rec, m in pairs})
+                if key_field:
+                    key = key_field
+                    keyed: dict[str, Any] = {}
+                    for rec, m in pairs:
+                        k = str(rec.get(key, rec.get("_ключ", getattr(m, key, ""))))
+                        if k in keyed or k in col.data.get(export, {}):
+                            sink.append(MarkupError(doc, int(rec.get("_строка") or 0) or 1,
+                                                    f"«{k}» встречается повторно (ключ «{key}» должен быть уникален)"))
+                            continue
+                        keyed[k] = m
+                    col.add(export, keyed)
                 else:
                     col.add(export, [m for _, m in pairs])
         _after_type(spec.name, col, volume)
-    _postprocess(col, volume, library, root)
+    _postprocess(col, volume, library, root, types)
     return col
 
 
@@ -304,42 +421,66 @@ def _after_type(name: str, col: Collected, volume: int) -> None:
             col.known_names |= set(n.focal_names)
 
 
+_TABLE_SEP_RE = re.compile(r"^\|[\s:|-]+\|?$")
+
+
 def _focal_names(text: str) -> list[str]:
-    """Имена из таблицы/списка фокалов документа повествования: заглавные слова ячеек, кроме ячеек-предложений
-    («Имя — никогда не фокален» — оговорка, не список)."""
+    """Имена из таблицы/списка фокалов документа повествования: заглавные слова ячеек данных. Строка заголовка
+    таблицы и разделитель не читаются (слова заголовка — не имена), ячейки-предложения («Имя — никогда не
+    фокален») — оговорка, не список."""
     out: set[str] = set()
-    for line in text.splitlines():
-        if not line.strip().startswith("|"):
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip().startswith("|")]
+    for i, line in enumerate(lines):
+        if _TABLE_SEP_RE.match(line) or (i + 1 < len(lines) and _TABLE_SEP_RE.match(lines[i + 1])):
             continue
-        for cell_text in line.strip().strip("|").split("|"):
+        for cell_text in mdparse._split_row(line):
             if re.match(r"^\s*[А-ЯЁ][а-яё]+\s+[—–-]\s", cell_text):
                 continue
             if set(cell_text.strip()) <= set(":- "):
                 continue
             out.update(re.findall(r"\b([А-ЯЁ][а-яё]{2,})\b", cell_text))
-    return sorted(out - {"Тома", "Без", "Открывается", "Фокальные", "Линии", "Фокал"})
+    return sorted(out)
 
 
 # ------------------------------------------------------------------ постобработка (общая, без серии)
 
 
-def _postprocess(col: Collected, volume: int, library: Path, root: Path) -> None:
+def _post_rules(types: dict[str, catalog.TypeSpec], type_name: str) -> dict:
+    """Блок `постобработка:` спецификации типа: образцы разметки канона (год рождения, возраст, «глазами»,
+    маркеры видимости) живут в типах, а не в коде (FR-DT-4, П-1)."""
+    spec = types.get(type_name)
+    rules = spec.raw.get("постобработка") if spec else None
+    return dict(rules) if isinstance(rules, dict) else {}
+
+
+def _patterns(value: Any) -> list[re.Pattern]:
+    items = [value] if isinstance(value, str) else list(value or [])
+    return [re.compile(str(p)) for p in items if str(p).strip()]
+
+
+def _postprocess(col: Collected, volume: int, library: Path, root: Path, types: dict[str, catalog.TypeSpec]) -> None:
     d = col.data
     known = col.known_names
+    language = lang_mod.for_project(root)
     # хроника: месяц события
     for e in d["chronicle.json"]:
-        e.month = _month(e.date)
-    # хронология: тома и главы видимости, годы разделов
+        e.month = _month(e.date, language)
+    # хронология: тома и главы видимости, годы разделов, маркеры видимости из спецификации типа
+    vis_rules = _post_rules(types, "хронология").get("видимость") or {}
+    hidden_words = [str(w).lower() for w in (vis_rules.get("скрыт") or [])]
+    background_words = [str(w).lower() for w in (vis_rules.get("фон") or [])]
     for e in d["chronology.json"]:
         vis = e.visibility or ""
-        e.volumes = sorted({int(x) for m in re.finditer(r"т\.?\s*(\d+)", vis, re.IGNORECASE) for x in [m.group(1)]})
-        e.chapters = sorted({int(x) for m in re.finditer(r"гл\.?\s*(\d+)", vis, re.IGNORECASE) for x in [m.group(1)]})
+        e.volumes = sorted(set(names.volumes_listed(vis)))
+        e.chapters = sorted(set(names.chapters_listed(vis)))
         if e.year is None:
             ym = re.search(r"(1[6-9]\d\d|20\d\d)", e.event_id + " " + e.date)
             e.year = int(ym.group(1)) if ym else None
-        e.hidden = e.hidden or "скрыт" in vis.lower()
-        e.background = e.background or "фон" in vis.lower()
-    # брифы: год из даты, участники из сцен/битов, дубли глав (секции + таблица одного документа)
+        low = vis.lower()
+        e.hidden = e.hidden or any(w in low for w in hidden_words)
+        e.background = e.background or any(w in low for w in background_words)
+    # брифы: год из даты, фокал («глазами Имя» → Имя), участники из сцен/битов, дубли глав
+    eyes_rules = _patterns(_post_rules(types, "план_глав").get("фокал_образец"))
     briefs: dict[tuple[int, int], Brief] = {}
     for b in sorted(d["briefs.json"], key=lambda b: (b.volume, b.chapter, -len(b.beats))):
         if isinstance(b.beats, str):
@@ -347,10 +488,12 @@ def _postprocess(col: Collected, volume: int, library: Path, root: Path) -> None
         if b.year is None and b.date:
             ym = re.search(r"(1[6-9]\d\d|20\d\d)", b.date)
             b.year = int(ym.group(1)) if ym else None
+        for rx in eyes_rules:
+            m = rx.search(b.focal or "")
+            if m:
+                b.focal = (m.groupdict().get("имя") or m.group(m.lastindex or 0)).strip()
+                break
         b.focal = names.normalize_name(b.focal, known) if known and b.focal else b.focal
-        eyes = re.search(r"глазами\s+([А-ЯЁ][а-яё]+)", b.focal or "")
-        if eyes:
-            b.focal = names.normalize_name(eyes.group(1), known)
         if not b.participants and known:
             text = " · ".join([*b.scenes, *b.beats])
             b.participants = [n for n in names.find_acting_names(text, known, col.pseudo) if n != b.focal]
@@ -369,17 +512,24 @@ def _postprocess(col: Collected, volume: int, library: Path, root: Path) -> None
             reader = next((f.from_chapter for f in matrix if f.fact_id == ban.ban_id and f.subject in col.pseudo), None)
             if reader is not None:
                 ban.until_chapter = reader
-    # досье: год рождения, возраст по томам, ссылки [[Имя]]
+    # досье: год рождения и возраст по томам — по образцам типа «персонажи»; ссылки [[Имя]] — разметка Markdown
+    doss_rules = _post_rules(types, "персонажи")
+    born_rules = _patterns(doss_rules.get("год_рождения"))
+    age_rules = _patterns(doss_rules.get("возраст_по_томам"))
     for doss in d["dossiers.json"]:
         body = "\n".join([doss.profile, doss.physique, doss.status, doss.arc])
-        bm = re.search(r"Рожд\.\s*≈?\s*(\d{4})", body)
-        doss.born_year = int(bm.group(1)) if bm else doss.born_year
-        for am in re.finditer(r"(\d{2,3})\s*\(\s*т\.\s*(\d+)\s*\)|(\d{2,3})\s*(?:лет|года)\s+в\s+томе\s+(\d+)", body):
-            doss.ages[f"т.{am.group(2) or am.group(4)}"] = int(am.group(1) or am.group(3))
+        for rx in born_rules:
+            bm = rx.search(body)
+            if bm:
+                doss.born_year = int(bm.groupdict().get("год") or bm.group(1))
+                break
+        for rx in age_rules:
+            for am in rx.finditer(body):
+                g = am.groupdict()
+                age, vol = g.get("возраст"), g.get("том")
+                if age and vol:
+                    doss.ages[f"т.{vol}"] = int(age)
         doss.refs = sorted({m.group(1).strip() for m in re.finditer(r"\[\[([^\]]+)\]\]", body + "\n".join(doss.relations.values()))})
-        rel_prose = doss.relations
-        if not rel_prose and "[[" in body:
-            pass
     # акты → части (совместимость: parts.json — список словарей актов)
     acts = sorted({a.act: a for a in d["acts.json"]}.values(), key=lambda a: a.act)
     d["acts.json"] = acts
@@ -392,6 +542,13 @@ def _postprocess(col: Collected, volume: int, library: Path, root: Path) -> None
             del d["norms.json"][norm_id]
     from . import metrics as metrics_mod
 
+    # лексемные нормы проверяются до регистрации в реестре: реестр общий для процесса, и норма, зарегистрированная
+    # другим проектом, не должна делать «известной» норму этого (П-6)
+    for norm_id, n in d["norms.json"].items():
+        if metrics_mod.is_lexeme_norm_id(norm_id) and metrics_mod.lexeme_norm_spec(n) is None:
+            src = n.source.split(" (")[0]
+            col.errors.append(MarkupError(library / src, 1, f"норма «{norm_id}»: единица должна перечислять слова и базу "
+                                                            "(«слово1, слово2 на 1000»)"))
     metrics_mod.register_lexeme_norms(d["norms.json"])
     for norm_id in metrics_mod.unknown_norms(d["norms.json"]):
         src = d["norms.json"][norm_id].source.split(" (")[0]
@@ -399,15 +556,16 @@ def _postprocess(col: Collected, volume: int, library: Path, root: Path) -> None
                                       f"доступные: {', '.join(metrics_mod.available())}"))
 
 
-def _month(date: str) -> int | None:
+def _month(date: str, language: lang_mod.Language | None = None) -> int | None:
+    """Месяц даты: «12.06.1995» / «12.06» → 6; «1995.06.12» / «1995-06-12» → 6; «май 1996» → 5 (названия месяцев —
+    из языкового слоя)."""
+    m = re.search(r"\b\d{4}[.\-/](\d{2})(?:[.\-/]\d{1,2})?\b", date)
+    if m:
+        return int(m.group(1))
     m = re.search(r"\b\d{1,2}\.(\d{2})\b", date)
     if m:
         return int(m.group(1))
-    low = date.lower()
-    for stem, num in MONTHS.items():
-        if stem in low:
-            return num
-    return None
+    return (language or lang_mod.get()).month_of(date)
 
 
 def _parse_known_by(text: str, known: set[str]) -> dict[str, int]:
@@ -427,13 +585,14 @@ def _parse_known_by(text: str, known: set[str]) -> dict[str, int]:
     return out
 
 
-def known_names_of(col_or_exports: Collected | Path) -> set[str]:
-    """Известные имена проекта: субъекты эпистемики (без псевдосубъектов), карточки персонажей, фокалы."""
+def known_names_of(col_or_exports: Collected | Path, root: Path | None = None) -> set[str]:
+    """Известные имена проекта: субъекты эпистемики (без псевдосубъектов), карточки персонажей, фокалы.
+    `root` — корень проекта: псевдосубъекты берутся с учётом типов проекта."""
     if isinstance(col_or_exports, Collected):
         return set(col_or_exports.known_names)
     exports_dir = col_or_exports
     out: set[str] = set()
-    pseudo = pseudo_subjects(exports_dir)
+    pseudo = pseudo_subjects(root)
     try:
         out |= {f.subject for f in load_matrix(exports_dir) if f.subject not in pseudo}
     except FileNotFoundError:
@@ -447,8 +606,9 @@ def known_names_of(col_or_exports: Collected | Path) -> set[str]:
     return {n for n in out if n}
 
 
-def pseudo_subjects(exports_dir: Path | None = None, root: Path | None = None) -> set[str]:
-    """Субъекты эпистемики, не являющиеся персонажами (например «Читатель») — объявлены типом."""
+def pseudo_subjects(root: Path | None = None) -> set[str]:
+    """Субъекты эпистемики, не являющиеся персонажами (например «Читатель») — объявлены типом (верхний ключ
+    `псевдосубъекты`) движка или проекта; `root` — корень проекта (без него типы проекта не видны)."""
     types = catalog.load_types(root)
     out: set[str] = set()
     for t in types.values():
@@ -499,19 +659,48 @@ def load_manifest(exports_dir: Path) -> dict[str, str]:
         return {}
 
 
-def canon_fingerprint(library: Path) -> str:
-    """Отпечаток канона: sha256 по именам и содержимому всех документов библиотеки (FR-EX-5, FR-LT-5)."""
+def _hash_tree(h: Any, base: Path, files: list[Path]) -> None:
+    for p in sorted(files):
+        h.update(p.relative_to(base).as_posix().encode("utf-8"))
+        h.update(b"\0")
+        try:
+            h.update(p.read_bytes())
+        except OSError:
+            pass
+        h.update(b"\0")
+
+
+def canon_fingerprint(library: Path, root: Path | None = None) -> str:
+    """Отпечаток канона: sha256 по именам и содержимому всех документов библиотеки и конфигурации проекта —
+    манифеста, типов, модулей, языков и методик проекта (FR-EX-5, FR-LT-5): они меняют выгрузки и набор проверок,
+    поэтому кэш линтера и регрессия по одному отпечатку документов устаревали бы."""
     h = hashlib.sha256()
     if library.is_dir():
-        for p in sorted(library.rglob("*.md")):
-            h.update(p.relative_to(library).as_posix().encode("utf-8"))
-            h.update(b"\0")
-            try:
-                h.update(p.read_bytes())
-            except OSError:
-                pass
-            h.update(b"\0")
+        _hash_tree(h, library, list(library.rglob("*.md")))
+    root = root if root is not None else (library.parent if library.is_dir() else None)
+    if root is not None and root.is_dir():
+        files: list[Path] = []
+        mpath = manifest_mod.path_of(root)
+        if mpath.is_file():
+            files.append(mpath)
+        for name in CONFIG_DIRS:
+            folder = root / name
+            if folder.is_dir():
+                files += [p for p in folder.rglob("*") if p.is_file() and p.suffix in (".yaml", ".yml", ".py")
+                          and "__pycache__" not in p.parts]
+        h.update("\0конфигурация\0".encode("utf-8"))
+        _hash_tree(h, root, files)
     return h.hexdigest()
+
+
+def canon_date(library: Path) -> str:
+    """Дата выгрузок (FR-EX-5), детерминированная (П-6): дата коммита HEAD библиотеки; без git — пустая строка."""
+    try:
+        if not gitops.is_repo(library) or not gitops.has_commits(library):
+            return ""
+        return gitops.head_date(library)
+    except (RuntimeError, OSError):
+        return ""
 
 
 # ------------------------------------------------------------------ корпус прозы
@@ -525,22 +714,31 @@ def _load_corpus_index(corpus_dir: Path) -> dict[str, dict]:
         return {}
 
 
-def _corpus_plan(library: Path, exports_dir: Path, root: Path | None) -> tuple[list[tuple[Path, str | None, dict]], dict[str, dict]]:
+def _corpus_plan(library: Path, exports_dir: Path, root: Path | None) -> tuple[list[tuple[Path, str | None, dict]], dict[str, dict], list[MarkupError]]:
+    """План корпуса: (файл корпуса, текст или None если не изменился, запись индекса) по принятым главам
+    (макеты и прочие исключения типа «проза» в корпус не входят: они не эталон стиля). Файл не в UTF-8 —
+    ошибка с именем файла (третий элемент), а не трейсбек."""
     corpus_dir = exports_dir / CORPUS_DIR
     index = _load_corpus_index(corpus_dir)
     plan: list[tuple[Path, str | None, dict]] = []
-    for path in docs_of_type(library, "проза", None, root):
+    errors: list[MarkupError] = []
+    for _, path in prose_files(library, None, root):
         out = corpus_dir / (path.stem + ".txt")
-        st = path.stat()
+        src_hash = hashlib.sha256(path.read_bytes()).hexdigest()
         entry = index.get(out.name)
-        if (isinstance(entry, dict) and entry.get("mtime_ns") == st.st_mtime_ns and entry.get("size") == st.st_size
-                and isinstance(entry.get("hash"), str) and out.exists()):
+        if (isinstance(entry, dict) and entry.get("источник") == src_hash and isinstance(entry.get("hash"), str)
+                and out.exists()):
             plan.append((out, None, entry))
             continue
-        tokens = textutils.normalize(textutils.narrator_text(path.read_text(encoding="utf-8")))
+        try:
+            raw = mdparse.read_text(path)
+        except UnicodeDecodeError:
+            errors.append(MarkupError(path, 1, "файл не в UTF-8 (NFR-2) — пересохраните его в UTF-8"))
+            continue
+        tokens = textutils.normalize(textutils.narrator_text(raw))
         text = " ".join(tokens) + "\n"
-        plan.append((out, text, {"mtime_ns": st.st_mtime_ns, "size": st.st_size, "hash": _sha(text)}))
-    return plan, index
+        plan.append((out, text, {"источник": src_hash, "hash": _sha(text)}))
+    return plan, index, errors
 
 
 def _write_corpus(plan, exports_dir: Path, old_index: dict[str, dict]) -> dict[str, str]:
@@ -562,7 +760,9 @@ def _write_corpus(plan, exports_dir: Path, old_index: dict[str, dict]) -> dict[s
 
 
 def export_corpus(library: Path, exports_dir: Path, root: Path | None = None) -> dict[str, str]:
-    plan, old_index = _corpus_plan(library, exports_dir, root)
+    plan, old_index, errors = _corpus_plan(library, exports_dir, root)
+    if errors:
+        raise ExportErrors(errors)
     return _write_corpus(plan, exports_dir, old_index)
 
 
@@ -585,22 +785,46 @@ def run_export(library: Path, exports_dir: Path, logs_dir: Path, volume: int = 1
                *, require_docs: bool = True) -> dict[str, str]:
     """Перегенерирует все выгрузки тома `volume` (FR-EX-1): сначала разбирается ВЕСЬ канон (включая план корпуса),
     и только затем пишутся файлы (FR-SC-5). Возвращает {файл: sha256}."""
+    root = project_root_of(library, root)
     col = collect(library, volume, root, require_docs=require_docs)
-    if col.errors:
-        raise ExportErrors(col.errors)
-    corpus_plan, old_index = _corpus_plan(library, exports_dir, root)
+    corpus_plan, old_index, corpus_errors = _corpus_plan(library, exports_dir, root)
+    if col.errors or corpus_errors:
+        raise ExportErrors(col.errors + corpus_errors)
     known = load_manifest(exports_dir)
     hashes: dict[str, str] = {}
-    for name in EXPORT_FILES:
+    for name in sorted(col.data):
         hashes[name] = _write_if_changed(exports_dir / name, _render(col.data[name]), known.get(name))
     hashes.update(_write_corpus(corpus_plan, exports_dir, old_index))
-    index = {"версия_схемы": SCHEMA_VERSION, "том": volume, "отпечаток_канона": canon_fingerprint(library),
-             "files": hashes, "volume": volume}
+    index = {"версия_схемы": SCHEMA_VERSION, "дата": canon_date(library), "том": volume,
+             "отпечаток_канона": canon_fingerprint(library, root), "files": hashes,
+             "предупреждения": sorted(relative_message(w, library) for w in col.warnings)}
     _write_if_changed(exports_dir / INDEX, json.dumps(index, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-    guard.append_text(logs_dir / "экспорт.jsonl", json.dumps(
-        {"ts": datetime.now(timezone.utc).isoformat(), "том": volume, "отпечаток": index["отпечаток_канона"], "hashes": hashes},
-        ensure_ascii=False, sort_keys=True) + "\n")
+    if hashes != known:  # повторный экспорт без изменений — ноль записей, в том числе в журнале (NFR-6)
+        guard.append_text(logs_dir / "экспорт.jsonl", json.dumps(
+            {"ts": datetime.now(timezone.utc).isoformat(), "том": volume, "отпечаток": index["отпечаток_канона"],
+             "hashes": hashes, "предупреждений": len(col.warnings)},
+            ensure_ascii=False, sort_keys=True) + "\n")
     return hashes
+
+
+def relative_message(err: MarkupError, library: Path) -> str:
+    """«файл:строка: текст» относительно библиотеки (в индексе и отчётах нет абсолютных путей, FR-SC-9)."""
+    try:
+        rel = Path(err.path).relative_to(library).as_posix()
+    except (ValueError, TypeError):
+        rel = Path(err.path).name
+    text = str(err).split(": ", 1)[-1] if str(err).startswith(str(err.path)) else str(err)
+    return f"{rel}:{err.line}: {text}"
+
+
+def export_warnings(exports_dir: Path) -> list[str]:
+    """Предупреждения последнего экспорта (документы выключенных модулей с ошибками разметки) — для «доктора»."""
+    try:
+        data = json.loads((exports_dir / INDEX).read_text(encoding="utf-8"))
+        items = data.get("предупреждения") if isinstance(data, dict) else None
+        return [str(x) for x in items] if isinstance(items, list) else []
+    except (OSError, ValueError):
+        return []
 
 
 # ------------------------------------------------------------------ чтение

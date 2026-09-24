@@ -280,7 +280,7 @@ def readiness(root: Path, library: Path) -> list[Check]:
     if not plans:
         out.append(Check(False, f"план глав тома {man.проект.текущий_том} (FR-LC-2б)", "создайте документ типа «план_глав»"))
     else:
-        filled = any("⚠ заполнить" not in p.read_text(encoding="utf-8") for p in plans)
+        filled = any("⚠ заполнить" not in p.read_text(encoding="utf-8", errors="replace") for p in plans)
         out.append(Check(True if filled else None, f"план глав: {', '.join(p.name for p in plans)}"
                          + ("" if filled else " — каркас не заполнен"),
                          "" if filled else "заполните хотя бы одну главу: номер, дата, фокал, что происходит"))
@@ -297,6 +297,11 @@ def readiness(root: Path, library: Path) -> list[Check]:
     if unmapped:
         out.append(Check(None, f"документов вне карты манифеста: {len(unmapped)} ({', '.join(unmapped[:3])}{'…' if len(unmapped) > 3 else ''})",
                          "`konveyer онбординг` — сопоставить типы, или добавить в проект.yaml"))
+    # документы выключенных модулей с ошибками разметки (экспорт их пропустил, П-5)
+    col = _collect(library, root)
+    for w in (col.warnings if col else []):
+        out.append(Check(None, f"документ выключенного модуля не разобран: {_export_warning(w, library)}",
+                         "поправьте документ или удалите его из карты манифеста"))
     # незаполненные каркасы
     todo = [p.relative_to(library).as_posix() for p in sorted(library.rglob("*.md"))
             if "⚠ заполнить" in p.read_text(encoding="utf-8", errors="replace")]
@@ -304,6 +309,12 @@ def readiness(root: Path, library: Path) -> list[Check]:
         out.append(Check(None, f"каркасы с «⚠ заполнить»: {len(todo)} ({', '.join(todo[:3])}{'…' if len(todo) > 3 else ''})",
                          "заполните или удалите строки-заглушки"))
     return out
+
+
+def _export_warning(w: object, library: Path) -> str:
+    from . import exporter
+
+    return exporter.relative_message(w, library)  # type: ignore[arg-type]
 
 
 def ready_for_tact(checks: list[Check]) -> bool:

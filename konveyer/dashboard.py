@@ -185,7 +185,7 @@ def render_dashboard(ws: Workspace) -> str:
 <title>КОНВЕЙЕР · Дашборд</title><style>{CSS}</style></head>
 <body><div class="viz-root">
 <h1>КОНВЕЙЕР · метрики по главам</h1>
-<p class="meta">Сгенерировано `konveyer dashboard`. Пороги — из norms.json (02 §5). Файл самодостаточен, сеть не нужна.</p>
+<p class="meta">Сгенерировано `konveyer dashboard`. Пороги — из norms.json (таблица норм документа стиля). Файл самодостаточен, сеть не нужна.</p>
 {''.join(figures)}
 </div></body></html>
 """

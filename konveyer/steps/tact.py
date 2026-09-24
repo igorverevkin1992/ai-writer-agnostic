@@ -38,7 +38,7 @@ def export() -> dict[str, str]:
     try:
         hashes = exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
     except MarkupError as e:
-        raise StepError(f"структура MD расходится с соглашениями Д-1 → {e}") from e
+        raise StepError(f"документ канона не разобран (формат типа — `konveyer типы <тип>`) → {e}") from e
     secho(f"Выгрузки обновлены (том {ws.volume}): {len(hashes)} файлов в {ws.exports}/", fg=colors.GREEN)
     return hashes
 
@@ -68,7 +68,7 @@ def compile(chapter: int) -> Path:  # noqa: A001 — имя команды `konv
     secho(f"Окно собрано: {path} (~{size} символов)", fg=colors.GREEN)
     if breakdown.get("драматургия", 0) and "в канон ещё не внесён" in path.read_text(encoding="utf-8"):
         secho(
-            f"⚠ Каркас драматургии главы {chapter} в канон не внесён (Р-020): `konveyer circles` → "
+            f"⚠ Каркас драматургии главы {chapter} в канон не внесён: `konveyer circles` → "
             "`konveyer circles --в-канон`, затем пересоберите окно.",
             fg=colors.YELLOW,
         )
@@ -199,7 +199,7 @@ def verify2(chapter: int, manual: bool = False, taste: bool = False, again: bool
     if taste:
         try:
             advice = verifier2.run_taste(ws, cfg, chapter, st.draft)
-            echo(f"Вкус (совещательно, 02 §6.1): замечаний {len(advice)} → {ws.chapter_rel(chapter)}/вкус.json")
+            echo(f"Вкус (совещательно, правила вкуса документа стиля): замечаний {len(advice)} → {ws.chapter_rel(chapter)}/вкус.json")
         except adapters.ManualModeNeeded:
             echo(f"Промпт вкуса сохранён: {ws.chapter_rel(chapter)}/промпт_вкуса.md (ответ — в вкус.json).")
         except ValueError as e:

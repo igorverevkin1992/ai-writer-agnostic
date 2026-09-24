@@ -167,10 +167,10 @@ def _line_rules(stoplists: list[StopRule], participants: list[str], year: int | 
                 continue
         if "focal" in applies:
             scope_note = f"линия «{applies['focal']}»"
-        elif rule.scope == "0.3":
-            scope_note = "все линии (0.3)"
+        elif rule.narrator_only:
+            scope_note = "все линии (речь повествователя)"
         else:
-            scope_note = f"лексика эпохи ({rule.scope})"
+            scope_note = "лексика эпохи (весь текст)"
         result.append(
             {"rule_id": rule.rule_id, "items": sorted(rule.items), "action": rule.action, "scope_note": scope_note}
         )

@@ -313,8 +313,8 @@ def canon_commit(message: str, yes: bool = False, confirm: Confirm | None = None
             and not gitops.check_norm_change_message(message)
         ):
             secho(
-                "⚠ Изменены нормы (02 §5), но в сообщении коммита нет ссылки Р-№ на запись "
-                "в 36_Журнал — предупреждение, не блокировка (сценарий Б).",
+                "⚠ Изменены нормы стиля, но в сообщении коммита нет ссылки Р-№ на запись "
+                "в журнале решений — предупреждение, не блокировка (сценарий Б).",
                 fg=colors.YELLOW,
             )
         if not gitops.dirty(lib):
@@ -336,7 +336,7 @@ def canon_commit(message: str, yes: bool = False, confirm: Confirm | None = None
             require_clean=False, action="коммит канона", confirm=ask,
         )
     except MarkupError as e:
-        raise StepError(f"структура MD расходится с соглашениями Д-1 → {e}") from e
+        raise StepError(f"документ канона не разобран (формат типа — `konveyer типы <тип>`) → {e}") from e
     if result.commit is None:
         echo("В библиотеке нет изменений — коммитить нечего.")
         return None

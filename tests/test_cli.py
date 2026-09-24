@@ -23,7 +23,9 @@ def test_ошибка_структуры_читаемая(ws, library, monkeypat
     path.write_text(path.read_text(encoding="utf-8") + "| x |\n", encoding="utf-8")
     r = runner.invoke(app, ["export"])
     assert r.exit_code == 1
-    assert "Д-1" in r.output or "Д-1" in (r.stderr or "")
+    out = r.output + (r.stderr or "")
+    assert "31_Матрица_знаний.md:14:" in out  # файл и строка (FR-EX-3)
+    assert "не разобран" in out
 
 
 def test_verify1_требует_состояния(ws, monkeypatch):

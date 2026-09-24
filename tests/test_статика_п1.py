@@ -45,3 +45,42 @@ def test_серийные_маркеры_окна_живут_в_профиле()
         assert tok not in base, tok
     profile = KONVEYER / "data" / "профили" / "угар" / "типы" / "маркеры_угар.yaml"
     assert "цикл" in profile.read_text(encoding="utf-8")
+
+
+# зона данных (разбор, экспорт, схемы): ссылки на документы и решения эталонной серии («Р-016», «02 §5», «реестр 3.5»,
+# «ИНСТРУМЕНТ_…») в коде недопустимы — откуда взята запись, говорят поля `file`/`source` из спецификации типа
+DATA_ZONE = ["exporter.py", "declparse.py", "mdparse.py", "names.py", "schemas.py", "textutils.py", "catalog.py"]
+ETALON_REF_PATTERNS = [r"Р-0\d\d", r"\b0[2-9] §", r"реестр \d\.\d", r"снапшот 3\.5", r"ИНСТРУМЕНТ_", r"36_Журнал",
+                       r"FR-X\d", r"FR-K\d", r"FR-C\d"]
+
+
+def test_зона_данных_без_ссылок_на_эталон():
+    import re
+
+    offenders = []
+    for name in DATA_ZONE:
+        text = (KONVEYER / name).read_text(encoding="utf-8")
+        for i, line in enumerate(text.splitlines(), start=1):
+            for pat in ETALON_REF_PATTERNS:
+                if re.search(pat, line):
+                    offenders.append(f"{name}:{i}: /{pat}/: {line.strip()[:90]}")
+    assert not offenders, "ссылки на эталон в зоне данных:\n" + "\n".join(offenders)
+
+
+def test_номера_документов_эталона_не_в_движке():
+    """«02 §5», «03 §…» — нумерация библиотеки эталона; в движке (в том числе в сообщениях автору) её нет."""
+    import re
+
+    offenders = [f"{p.relative_to(KONVEYER)}:{i}" for p in _engine_files()
+                 for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), start=1)
+                 if re.search(r"\b0[2-9] §", line)]
+    assert not offenders, offenders
+
+
+def test_умолчания_схем_без_констант_серии():
+    from konveyer.schemas import SCOPE_ALL, SCOPE_NARRATOR, Norm, StopRule
+
+    assert Norm().source == ""
+    assert StopRule(rule_id="x", items=[]).scope == SCOPE_NARRATOR and SCOPE_NARRATOR != SCOPE_ALL
+    assert not any(ch.isdigit() for ch in SCOPE_NARRATOR + SCOPE_ALL)
+

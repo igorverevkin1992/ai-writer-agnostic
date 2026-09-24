@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from . import mdparse
 from .names import chapter_range
 from .schemas import Act, CircleStep, StoryCircle
 
@@ -28,7 +29,7 @@ def step_unset(step: CircleStep) -> bool:
 
 def parse_frames(path: Path) -> list[StoryCircle]:
     """Каркасы документа: том / акты / главы с шагами."""
-    text = path.read_text(encoding="utf-8")
+    text = mdparse.read_text(path)
     heads = list(HEAD_RE.finditer(text))
     circles: list[StoryCircle] = []
     for i, h in enumerate(heads):

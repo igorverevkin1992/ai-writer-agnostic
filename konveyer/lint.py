@@ -183,8 +183,8 @@ def load_context(library: Path, exports_dir: Path, volume: int, root: Path | Non
     ctx.decisions = exporter.load_decisions(exports_dir)
     ctx.narration = exporter.load_narration(exports_dir)
     ctx.norms = exporter.load_norms(exports_dir)
-    ctx.pseudo = exporter.pseudo_subjects(exports_dir, root)
-    ctx.known = exporter.known_names_of(exports_dir)
+    ctx.pseudo = exporter.pseudo_subjects(root)
+    ctx.known = exporter.known_names_of(exports_dir, root)
     if ctx.briefs:
         ctx.volume = ctx.briefs[0].volume
     return ctx
@@ -1019,7 +1019,7 @@ def run_lint(library: Path, exports_dir: Path, logs_dir: Path, export: bool = Tr
     """Машинный слой: экспорт + все проверки тома. Кэш по отпечатку канона (FR-LT-5): при том же отпечатке и той же
     конфигурации модулей возвращается прежний отчёт."""
     root = exporter.project_root_of(library, root)
-    fingerprint = exporter.canon_fingerprint(library)
+    fingerprint = exporter.canon_fingerprint(library, root)
     key = f"{fingerprint}:{volume}"
     if use_cache:
         cached = load_report(logs_dir)
