@@ -34,7 +34,7 @@ def test_линтер_чистый_канон_молчит(ws, library, volume):
     # каждая проверка объявлена модулем или типом ровно теми кодами, что реализованы (FR-LT-1)
     impl = {c for codes, _ in lint.CHECKS for c in codes}
     declared = catalog.all_lint_codes(catalog.load_modules(None)) - {"РАЗМ-1", "ЛИНТ-0", "МОДЕЛЬ"}
-    assert declared <= impl and impl <= declared | {"АКТ-1", "ЧАСТЬ-1"}, (declared - impl, impl - declared)
+    assert declared == impl, (declared - impl, impl - declared)
 
 
 # по одному внедрённому противоречию на класс проверок (FR-LT-2): ожидаемый код ловится, лишнего нет

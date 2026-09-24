@@ -27,27 +27,53 @@ from .mdparse import MarkupError
 from .paths import Workspace
 from .schemas import Brief, InfoBan, LintFinding, LintFix, LintReport, MatrixFact
 
-MONTHS = {"янв": 1, "фев": 2, "мар": 3, "апр": 4, "мая": 5, "май": 5, "июн": 6, "июл": 7,
-          "авг": 8, "сен": 9, "окт": 10, "ноя": 11, "дек": 12}
+# основы месяцев — из языкового слоя (`языки/ru.yaml: месяцы`); запасной набор на случай урезанного файла языка
+_MONTHS_FALLBACK = {"январ": 1, "феврал": 2, "март": 3, "апрел": 4, "ма[йя]": 5, "июн": 6, "июл": 7,
+                    "август": 8, "сентябр": 9, "октябр": 10, "ноябр": 11, "декабр": 12}
+_MONTH_ENDINGS = r"(?:[аеуяюь]|ем|ом|ах|ям|ями)?"
 DATE_NUM_RE = re.compile(r"\b(\d{1,2})\.(\d{1,2})\b")
 DATE_WORD_RE = re.compile(r"\b(\d{1,2})\s+([а-яё]+)", re.IGNORECASE)
+YEAR_RE = re.compile(r"(?<!\d)(1\d{3}|20\d{2})(?!\d)")
+
+
+def _month_table() -> list[tuple[re.Pattern, int]]:
+    try:
+        raw = textutils._lang().raw.get("месяцы") or {}
+    except (ValueError, OSError, AttributeError):
+        raw = {}
+    stems = {str(k): int(v) for k, v in raw.items()} if raw else _MONTHS_FALLBACK
+    return [(re.compile(rf"(?<![а-яё])(?:{stem}){_MONTH_ENDINGS}(?![а-яё])", re.IGNORECASE), num) for stem, num in stems.items()]
+
+
+def parse_month(word: str) -> int | None:
+    """Слово — месяц? «июня» → 6, «мая» → 5; «Майор», «Маркиз», «Сенька» → None (только полная основа месяца)."""
+    for rx, num in _month_table():
+        if rx.fullmatch(word.strip()):
+            return num
+    return None
 
 
 def parse_date(text: str) -> tuple[int, int] | None:
-    """«12.04», «ночь 18.04», «12 июня 1995» → (месяц, день); «та же ночь» → None."""
+    """«12.04», «ночь 18.04», «12 июня 1995», «ночь с 12 на 13 июня» → (месяц, день); «та же ночь» → None."""
     m = DATE_NUM_RE.search(text or "")
     if m:
         return int(m.group(2)), int(m.group(1))
-    m = DATE_WORD_RE.search(text or "")
-    if m:
-        mon = MONTHS.get(m.group(2).lower()[:3])
+    for m in DATE_WORD_RE.finditer(text or ""):
+        mon = parse_month(m.group(2))
         if mon:
             return mon, int(m.group(1))
     return None
 
 
+def parse_year(text: str) -> int | None:
+    """Год, явно названный в дате («3 января 1996», «12.06.1995»); нет — None."""
+    m = YEAR_RE.search(text or "")
+    return int(m.group(1)) if m else None
+
+
 def _months(text: str) -> set[int]:
-    found = [MONTHS[w.lower()[:3]] for w in re.findall(r"[А-Яа-яЁё]{3,}", text) if w.lower()[:3] in MONTHS]
+    """Месяцы периода («май–июнь» → {5, 6}); имена собственные с похожим началом («Майор») месяцами не считаются."""
+    found = [num for _, num in sorted((m.start(), num) for rx, num in _month_table() for m in rx.finditer(text or ""))]
     if len(found) >= 2 and found[0] <= found[-1]:
         return set(range(found[0], found[-1] + 1))
     return set(found)
@@ -213,44 +239,65 @@ def _f(code: str, severity: str, file: str, line: int | None, message: str, hint
 
 @check("ХРОН-1", "ХРОН-2")
 def check_chronology(ctx: LintContext) -> list[LintFinding]:
+    """ХРОН-1 — дата вне календаря (день сверяется с месяцем и годом); ХРОН-2 — порядок глав против дат: при годах,
+    названных в датах, сравнение полное; без года — по месяцу и дню, а «декабрь → январь» считается сменой года."""
     out: list[LintFinding] = []
-    last: tuple[int, int] | None = None
+    last: tuple[int | None, int, int] | None = None
     last_ch = None
     for b in sorted((x for x in ctx.briefs if x.volume == ctx.volume), key=lambda b: b.chapter):
         d = parse_date(b.date)
         if d is None:
             continue
         mon, day = d
+        year = parse_year(b.date)
         file, line = ctx.brief_loc(b)
-        if not (1 <= mon <= 12 and 1 <= day <= 31):
+        try:
+            _date(year or b.year or 2000, mon, day)  # 2000 — високосный: без года 29 февраля допустимо
+        except ValueError:
             out.append(_f("ХРОН-1", "ошибка", file, line, f"гл. {b.chapter}: дата «{b.date}» вне календаря",
                           "исправьте дату главы в плане глав"))
             continue
-        if last is not None and d < last and not (last[0] == 12 and mon == 1):
-            out.append(_f("ХРОН-2", "ошибка", file, line,
-                          f"гл. {b.chapter} датирована «{b.date}» — раньше гл. {last_ch} ({last[1]:02d}.{last[0]:02d}); "
-                          "порядок глав нарушает хронологию тома", "переставьте главы или поправьте даты"))
-        last, last_ch = d, b.chapter
+        if last is not None:
+            ly, lm, ld = last
+            if year is not None and ly is not None:
+                earlier = (year, mon, day) < (ly, lm, ld)
+            else:
+                earlier = (mon, day) < (lm, ld) and not (lm == 12 and mon == 1)
+            if earlier:
+                when = f"{ld:02d}.{lm:02d}" + (f".{ly}" if ly else "")
+                out.append(_f("ХРОН-2", "ошибка", file, line,
+                              f"гл. {b.chapter} датирована «{b.date}» — раньше гл. {last_ch} ({when}); "
+                              "порядок глав нарушает хронологию тома", "переставьте главы или поправьте даты"))
+        last, last_ch = (year, mon, day), b.chapter
     return out
 
 
-@check("АКТ-1", "ЧАСТЬ-1")
+@check("АКТ-1")
 def check_ranges(ctx: LintContext) -> list[LintFinding]:
+    """Акты идут подряд без разрывов и наложений и вместе покрывают ровно главы тома."""
     out: list[LintFinding] = []
     if not ctx.briefs or not ctx.acts:
         return out
     lo, hi = min(b.chapter for b in ctx.briefs), ctx.hi
     path = ctx.doc("каркасы") or ctx.doc("акты")
     expect = lo
+    last = None
     for a in sorted(ctx.acts, key=lambda a: a.from_chapter):
+        line = a.line or ctx.line_of(path, f"| {a.act} |") or (ctx.line_of(path, a.title[:20]) if a.title else None)
         if a.from_chapter != expect:
-            out.append(_f("АКТ-1", "ошибка", ctx.rel(path), ctx.line_of(path, a.title[:20]) if a.title else None,
+            out.append(_f("АКТ-1", "ошибка", ctx.rel(path), line,
                           f"акт «{a.title}» начинается с гл. {a.from_chapter}, ожидалась гл. {expect} (разрыв или наложение)",
                           "поправьте границы актов так, чтобы они шли подряд"))
         expect = a.to_chapter + 1
-    if expect - 1 != hi:
-        out.append(_f("АКТ-1", "предупреждение", ctx.rel(path), None, f"акты покрывают главы до {expect - 1}, а в томе {hi}",
-                      "добавьте главы в последний акт или заведите ещё акт"))
+        last = (a, line)
+    covered = expect - 1
+    if covered < hi:
+        out.append(_f("АКТ-1", "предупреждение", ctx.rel(path), last[1] if last else None,
+                      f"акты покрывают главы до {covered}, а в томе {hi}", "добавьте главы в последний акт или заведите ещё акт"))
+    elif covered > hi:
+        out.append(_f("АКТ-1", "предупреждение", ctx.rel(path), last[1] if last else None,
+                      f"акты покрывают главы до {covered}, а в томе {hi}",
+                      "сократите последний акт до глав плана или добавьте главы в план глав"))
     return out
 
 

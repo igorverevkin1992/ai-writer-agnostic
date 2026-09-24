@@ -164,6 +164,8 @@ def _validate(records: list[dict], schema_name: str, path: Path, errors: list[Ma
                 acts = acts_from_rows([data])
             except (ValueError, ValidationError):
                 acts = []
+            for a in acts:
+                a.line = a.line or line
             out.extend((rec, a) for a in acts)
             continue
         try:

@@ -288,6 +288,7 @@ class Act(BaseModel):
     chapters_text: str = ""
     parts: str = ""   # какие части реестра 2.2 покрывает («III–IV»)
     steps: str = ""   # шаги круга тома, за которые отвечает акт («5–6 «Обретение», «Расплата»»)
+    line: int = 0     # строка строки таблицы актов (для находок линтера)
 
 
 class StoryCircle(BaseModel):

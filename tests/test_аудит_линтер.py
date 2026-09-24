@@ -222,3 +222,51 @@ def test_методика_не_для_уровня_не_подменяется_�
     man.методики = manifest_mod.Methodics()
     manifest_mod.save(ws.root, man)
     assert circles.methodic_for(ws, "книга").name == "круг_хармона" and not methodics.problems(man, ws.root)
+
+
+# ------------------------------------------------------------------ хронология: год, дни месяца, месяцы
+
+
+@pytest.mark.parametrize("new_date, expect", [
+    ("3 января 1996", False),      # смена года с явными годами — не ошибка
+    ("1 мая 1996", False),
+    ("15 июня 1994", True),        # возврат на год назад ловится
+    ("3 июля 1995", False),        # тот же день, что у гл. 5 — не раньше
+    ("2 июля 1995", True),
+])
+def test_хрон2_учитывает_год(ws, library, new_date, expect):
+    _edit(library / PLAN, "- Дата: 18 июля 1995", f"- Дата: {new_date}")
+    codes = _codes(_lint(ws, library))
+    assert ("ХРОН-2" in codes) is expect, codes
+
+
+def test_хрон1_день_сверяется_с_месяцем_и_годом(ws, library):
+    _edit(library / PLAN, "- Дата: 15 июня 1995", "- Дата: 31 июня 1995")
+    report = _lint(ws, library)
+    found = [f for f in report.findings if f.code.startswith("ХРОН")]
+    assert [f.code for f in found] == ["ХРОН-1"] and "гл. 2" in found[0].message  # виновата гл. 2, а не соседняя
+    _edit(library / PLAN, "- Дата: 31 июня 1995", "- Дата: 29 февраля 1995")
+    assert "ХРОН-1" in _codes(_lint(ws, library))
+    _edit(library / PLAN, "- Дата: 29 февраля 1995", "- Дата: 29 февраля 1996")
+    assert "ХРОН-1" not in _codes(_lint(ws, library)) and "ХРОН-2" in _codes(_lint(ws, library))
+
+
+def test_разбор_дат_и_месяцев():
+    assert lint.parse_date("ночь с 12 на 13 июня 1995") == (6, 13)
+    assert lint.parse_date("та же ночь") is None and lint.parse_year("12.06.1995") == 1995 and lint.parse_year("12 июня") is None
+    assert lint._months("Маркиз и Сенька, Майор") == set()
+    assert lint._months("май–июнь") == {5, 6} and lint._months("в марте") == {3} and lint._months("декабрь") == {12}
+    assert lint.parse_month("Майор") is None and lint.parse_month("мая") == 5
+
+
+def test_акт1_подсказка_по_направлению_и_строка(ws, library):
+    doc = library / FRAMES2
+    _edit(doc, "| 2 | «Архив» | 3–4 | II | 5–8 |", "| 2 | «Архив» | 3–9 | II | 5–8 |")
+    f = next(f for f in _lint(ws, library, 2).findings if f.code == "АКТ-1")
+    assert "до 9, а в томе 4" in f.message and "сократите последний акт" in f.message and f.line == 9
+    _edit(doc, "| 2 | «Архив» | 3–9 | II | 5–8 |", "| 2 | «Архив» | 3–3 | II | 5–8 |")
+    f = next(f for f in _lint(ws, library, 2).findings if f.code == "АКТ-1")
+    assert "до 3, а в томе 4" in f.message and "добавьте главы в последний акт" in f.message
+    _edit(doc, "| 2 | «Архив» | 3–3 | II | 5–8 |", "| 2 | «Архив» | 4–4 | II | 5–8 |")
+    f = next(f for f in _lint(ws, library, 2).findings if f.code == "АКТ-1" and f.severity == "ошибка")
+    assert "начинается с гл. 4, ожидалась гл. 3" in f.message and f.line == 9

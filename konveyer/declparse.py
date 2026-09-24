@@ -197,7 +197,8 @@ def _tables(path: Path, fmt: dict) -> list[mdparse.Table]:
         sec = mdparse.find_section(mdparse.parse_sections(path), section)
         if sec is None:
             return []
-        return mdparse.parse_tables(path, sec.body, start_line=sec.line + 1)
+        # строки секции как есть (без обрезки пустых): номера строк таблицы совпадают с документом
+        return mdparse.parse_tables(path, "\n".join(sec.body_lines), start_line=sec.line + 1)
     return mdparse.parse_tables(path)
 
 
@@ -351,7 +352,7 @@ def fmt_sections(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] | None:
         sec = next((s for p in pats for s in [mdparse.find_section(sections, p)] if s), None)
         if spec.get("тип") == "таблица_пар" and sec is not None:
             pairs: dict[str, str] = {}
-            for t in mdparse.parse_tables(path, sec.body, start_line=sec.line + 1):
+            for t in mdparse.parse_tables(path, "\n".join(sec.body_lines), start_line=sec.line + 1):
                 if len(t.headers) >= 2:
                     for row in t.rows:
                         k, v = row[t.headers[0]], row[t.headers[1]]
