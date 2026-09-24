@@ -182,6 +182,9 @@ def _apply_mapping(rec: dict, fmt: dict, ctx: ParseContext, path: Path) -> dict:
             out[target] = rec[source]
         else:
             out[target] = _template(source, ctx, path, rec)
+    for key, value in rec.items():  # служебные поля разбора (строка записи) — для находок линтера
+        if key.startswith("_") and key not in out:
+            out[key] = value
     return out
 
 

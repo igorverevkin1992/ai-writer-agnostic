@@ -444,7 +444,7 @@ def check_matrix(ctx: LintContext) -> list[LintFinding]:
     for f in ctx.matrix:
         by_fact.setdefault(f.fact_id, []).append(f)
     for f in ctx.matrix:
-        line = ctx.line_of(path, f.fact_id) or ctx.line_of(path, f.fact[:30])
+        line = f.line or ctx.line_of(path, f.fact_id) or ctx.line_of(path, f.fact[:30])
         if f.from_chapter is not None and f.from_chapter > hi:
             out.append(_f("МАТР-1", "ошибка", ctx.rel(path), line, f"{f.fact_id} ({f.subject}): узнаёт в гл. {f.from_chapter}, "
                           f"а в томе {hi} глав", "поправьте главу или добавьте главу в план"))
@@ -467,7 +467,7 @@ def check_matrix(ctx: LintContext) -> list[LintFinding]:
             focal = next((x for x in rows if b and x.subject == b.focal), None)
             if b and focal is not None and not b.documents and (focal.from_chapter is None or focal.from_chapter > reader.from_chapter):
                 knows = "не знает его до конца тома" if focal.from_chapter is None else f"узнаёт только в гл. {focal.from_chapter}"
-                out.append(_f("МАТР-3", "предупреждение", ctx.rel(path), ctx.line_of(path, fid),
+                out.append(_f("МАТР-3", "предупреждение", ctx.rel(path), reader.line or ctx.line_of(path, fid),
                               f"{fid}: читатель узнаёт в гл. {reader.from_chapter}, а фокал этой главы ({b.focal}) {knows} — "
                               "читатель получает факт через голову фокала", "смените главу или фокал раскрытия"))
     return out
@@ -488,7 +488,7 @@ def check_plants(ctx: LintContext) -> list[LintFinding]:
     by_ch = {b.chapter: b for b in ctx.briefs}
     in_volume = {b.focal for b in ctx.briefs if b.focal} | {n for b in ctx.briefs for n in b.participants}
     for p in ctx.plants:
-        line = ctx.line_of(path, p.plant_id) or ctx.line_of(path, p.what[:30])
+        line = p.line or ctx.line_of(path, p.plant_id) or ctx.line_of(path, p.what[:30])
         chapters = list(p.chapters) or ([p.placed["ch"]] if p.placed.get("ch") else [])
         for ch in chapters:
             if ch > hi:
@@ -517,16 +517,26 @@ def check_plants(ctx: LintContext) -> list[LintFinding]:
     return out
 
 
+def _continuity_volumes(c) -> list[int]:
+    """Тома записи континуити — из поля даты/источника («т.1 гл.5»); пусто — запись без тома (общесерийная)."""
+    return names.volumes_listed(c.date or "")
+
+
 @check("КОНТ-1")
 def check_continuity(ctx: LintContext) -> list[LintFinding]:
+    """Ссылка континуити на главу, которой нет в томе: континуити — общесерийный реестр, поэтому проверяются
+    только записи текущего тома (или без тома)."""
     out: list[LintFinding] = []
     if not ctx.briefs:
         return out
     path = ctx.doc("континуити")
     for c in ctx.continuity:
+        vols = _continuity_volumes(c)
+        if vols and ctx.volume not in vols:
+            continue
         for ch in re.findall(r"\d+", c.chapters or ""):
             if int(ch) > ctx.hi:
-                out.append(_f("КОНТ-1", "предупреждение", ctx.rel(path), ctx.line_of(path, c.event[:30]),
+                out.append(_f("КОНТ-1", "предупреждение", ctx.rel(path), c.line or ctx.line_of(path, c.event[:30]),
                               f"континуити «{c.event[:50]}»: ссылка на гл. {ch}, а в томе {ctx.hi} глав", "поправьте главу"))
     return out
 
@@ -732,13 +742,14 @@ def check_frames(ctx: LintContext) -> list[LintFinding]:
         except Exception:  # noqa: BLE001 — без методики каркас не проверяется по составу
             required, total = set(), set()
         present = {st.n for st in c.steps if not circles_mod.step_unset(st)}
+        head_line = c.line or ctx.line_of(path, c.title[:20])
         if required and not required <= present:
             missing = sorted(required - present)
-            out.append(_f("КРУГ-1", "предупреждение", ctx.rel(path), ctx.line_of(path, c.title[:20]),
+            out.append(_f("КРУГ-1", "предупреждение", ctx.rel(path), head_line,
                           f"{c.title}: не заданы обязательные шаги {missing} (методика «{m.title}»)",
                           "заполните шаги или снимите их обязательность в манифесте"))
         if total and any(st.n not in total for st in c.steps):
-            out.append(_f("КРУГ-1", "предупреждение", ctx.rel(path), ctx.line_of(path, c.title[:20]),
+            out.append(_f("КРУГ-1", "предупреждение", ctx.rel(path), head_line,
                           f"{c.title}: есть шаги вне методики «{m.title}» ({sorted(st.n for st in c.steps if st.n not in total)})",
                           "уберите лишние шаги"))
         if c.scope in ("книга", "акт"):
@@ -749,15 +760,22 @@ def check_frames(ctx: LintContext) -> list[LintFinding]:
                 if not act:
                     continue
                 a, z = act.from_chapter, act.to_chapter
-            expect = a
+            # шаги идут по порядку и лежат внутри границ; несколько шагов на одну главу — норма короткого тома
+            prev_from = a
             for st in c.steps:
                 if st.from_chapter is None:
                     continue
-                if st.from_chapter < expect or (st.to_chapter or st.from_chapter) > z:
-                    out.append(_f("КРУГ-2", "предупреждение", ctx.rel(path), ctx.line_of(path, st.text[:25]),
-                                  f"{c.title}, шаг {st.n} «{st.name}» ({st.chapters}) выходит за границы {a}–{z} или наезжает на "
-                                  "предыдущий шаг", "поправьте диапазоны глав шагов"))
-                expect = (st.to_chapter or st.from_chapter) + 1
+                st_lo, st_hi = st.from_chapter, st.to_chapter or st.from_chapter
+                if st_lo < a or st_hi > z:
+                    out.append(_f("КРУГ-2", "предупреждение", ctx.rel(path), ctx.line_of(path, st.text[:25], max(head_line or 1, 1) - 1),
+                                  f"{c.title}, шаг {st.n} «{st.name}» ({st.chapters}) выходит за границы {a}–{z}",
+                                  "поправьте диапазон глав шага"))
+                    continue  # шаг вне границ не сдвигает «предыдущий» — иначе каскад находок по следующим шагам
+                if st_lo < prev_from:
+                    out.append(_f("КРУГ-2", "предупреждение", ctx.rel(path), ctx.line_of(path, st.text[:25], max(head_line or 1, 1) - 1),
+                                  f"{c.title}, шаг {st.n} «{st.name}» ({st.chapters}) начинается раньше предыдущего шага (гл. {prev_from})",
+                                  "переставьте шаги или поправьте диапазоны глав"))
+                prev_from = max(prev_from, st_lo)
     return out
 
 
@@ -773,11 +791,11 @@ def check_arcs(ctx: LintContext) -> list[LintFinding]:
     for arc in ctx.arcs:
         if dossier_names and arc.character not in dossier_names and ("АРКА-1", arc.character) not in seen:
             seen.add(("АРКА-1", arc.character))
-            out.append(_f("АРКА-1", "заметка", ctx.rel(path), ctx.line_of(path, f"| {arc.character} |"),
+            out.append(_f("АРКА-1", "заметка", ctx.rel(path), arc.line or ctx.line_of(path, f"| {arc.character} |"),
                           f"арки: персонаж «{arc.character}» без карточки", "опечатка в имени или нужна карточка"))
         if act_numbers and arc.act not in act_numbers and ("АРКА-2", str(arc.act)) not in seen:
             seen.add(("АРКА-2", str(arc.act)))
-            out.append(_f("АРКА-2", "заметка", ctx.rel(path), ctx.line_of(path, f"| {arc.character} | {arc.act} |"),
+            out.append(_f("АРКА-2", "заметка", ctx.rel(path), arc.line or ctx.line_of(path, f"| {arc.character} | {arc.act} |"),
                           f"арки: акт {arc.act} («{arc.character}») вне таблицы актов ({', '.join(str(n) for n in sorted(act_numbers))})",
                           "поправьте номер акта"))
     return out

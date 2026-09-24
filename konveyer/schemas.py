@@ -122,6 +122,7 @@ class MatrixFact(BaseModel):
     from_chapter: int | None = None
     source: str = ""
     note: str = ""
+    line: int = 0                 # строка записи в документе (для находок линтера)
 
 
 class Plant(BaseModel):
@@ -133,6 +134,7 @@ class Plant(BaseModel):
     chapters: list[int] = Field(default_factory=list)  # все главы, где лежит (реестр §7)
     fires: list[dict] = Field(default_factory=list)  # [{vol, ch?}]
     status: str = ""
+    line: int = 0                 # строка записи в документе (для находок линтера)
 
 
 class Norm(BaseModel):
@@ -152,6 +154,7 @@ class ContinuityEvent(BaseModel):
     event: str
     chapters: str = ""
     note: str = ""
+    line: int = 0                 # строка записи в документе (для находок линтера)
 
 
 class Scene(BaseModel):
@@ -296,6 +299,7 @@ class StoryCircle(BaseModel):
     summary: str = ""
     weak_spot: str = ""
     steps: list[CircleStep] = Field(default_factory=list)
+    line: int = 0                    # строка заголовка в документе каркасов (для находок линтера)
 
     def steps_for_chapter(self, chapter: int) -> list[CircleStep]:
         """Шаги тома/акта, на которые приходится глава."""
@@ -317,6 +321,7 @@ class Arc(BaseModel):
     need: str = ""       # «Потребность» — что ему на самом деле нужно
     position: str = ""   # «Где на арке» в этом акте
     visible: str = ""    # «Что видно снаружи» — единственная колонка для окна Писателя
+    line: int = 0                 # строка записи в документе (для находок линтера)
 
     @property
     def filled(self) -> bool:

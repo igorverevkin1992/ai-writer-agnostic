@@ -7,11 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from konveyer import catalog, lint, manifest as manifest_mod
+from konveyer import catalog, exporter, lint, manifest as manifest_mod
 from konveyer.config import Config, ModelConfig
 
 PLAN = "23_Поглавник_Том1.md"
 MATRIX = "31_Матрица_знаний.md"
+DEMO_VOLUMES = (1, 2)
 
 
 def _edit(path: Path, old: str, new: str) -> None:
@@ -24,8 +25,11 @@ def _codes(report) -> set[str]:
     return {f.code for f in report.findings}
 
 
-def test_линтер_чистый_канон_молчит(ws, library):
-    report = lint.run_lint(library, ws.exports, ws.logs)
+@pytest.mark.parametrize("volume", DEMO_VOLUMES)
+def test_линтер_чистый_канон_молчит(ws, library, volume):
+    """FR-LT-6: на каждом томе демо — ноль находок (том 2 несёт каркасы, арки, матрицу и информрежим своего тома)."""
+    exporter.run_export(library, ws.exports, ws.logs, volume)
+    report = lint.run_lint(library, ws.exports, ws.logs, volume=volume)
     assert report.errors == 0 and report.warnings == 0 and report.notes == 0, [f.message for f in report.findings]
     # каждая проверка объявлена модулем или типом ровно теми кодами, что реализованы (FR-LT-1)
     impl = {c for codes, _ in lint.CHECKS for c in codes}

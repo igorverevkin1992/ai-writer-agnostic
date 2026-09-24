@@ -156,6 +156,8 @@ def _validate(records: list[dict], schema_name: str, path: Path, errors: list[Ma
     for rec in records:
         line = int(rec.get("_строка") or 0) or 1
         data = {k: v for k, v in rec.items() if not k.startswith("_")}
+        if "line" in model.model_fields and not data.get("line") and rec.get("_строка"):
+            data["line"] = int(rec["_строка"])  # строка записи — для находок линтера (FR-LT-1)
         if model is Act:
             try:
                 from .dramaturgy_doc import acts_from_rows
