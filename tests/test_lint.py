@@ -1,7 +1,6 @@
 """Линтер канона: проверки противоречий (демо и реальная библиотека), исправления, наблюдатель, API панели, CLI."""
 
 import json
-import re
 import threading
 import time
 import urllib.error
@@ -15,12 +14,7 @@ from typer.testing import CliRunner
 from konveyer import canonwatch, guard, lint, server
 from konveyer.cli import app
 from konveyer.config import Config
-from konveyer.paths import Workspace
 from konveyer.schemas import LintFix
-
-REPO = Path(__file__).resolve().parent.parent
-LIBRARY = REPO / "Библиотека"
-real_only = pytest.mark.skipif(not LIBRARY.exists(), reason="реальная библиотека не подключена")
 
 
 @pytest.fixture(autouse=True)
@@ -101,33 +95,6 @@ def test_модельный_слой_разбирает_ответ(ws, library):
 def test_модельный_слой_без_api_сохраняет_промпты(ws, library):
     findings, prompts = lint.run_lint_llm(ws, Config(), library, [library / "23_Поглавник_Том1.md"])
     assert not findings and len(prompts) == 1 and Path(prompts[0]).exists()
-
-
-@real_only
-def test_реальная_библиотека_без_ошибок():
-    """Реальный канон: ошибок уровня «ошибка» нет; предупреждения — подсветка для автора, а не шум."""
-    import tempfile
-
-    tmp = Path(tempfile.mkdtemp())
-    ws = Workspace(tmp)
-    guard.set_library_dir(LIBRARY)
-    report = lint.run_lint(LIBRARY, ws.exports, ws.logs)
-    assert report.errors == 0, [f.message for f in report.findings if f.severity == "ошибка"]
-    codes = {f.code for f in report.findings}
-    # расхождение реестра и матрицы по Т-07 снято автором (Р-033): на чистом каноне ТАЙНА-1 нет
-    assert "ТАЙНА-1" not in codes
-    # возраст «гл. 41 т.1» больше не принимается за возраст (ложных ДОСЬЕ-1 нет)
-    assert not any(f.code == "ДОСЬЕ-1" and "41" in f.message for f in report.findings)
-    # участники сцен без карточки досье и карточки без «Физики» — заметки для автора (аудит 7.6, 3.10)
-    notes = {f.code: [x.message for x in report.findings if x.code == f.code] for f in report.findings}
-    assert all(f.severity == "заметка" for f in report.findings if f.code in ("ПОГЛ-2", "ДОСЬЕ-6"))
-    who = {re.search(r"«([^»]+)»", m).group(1) for m in notes["ПОГЛ-2"]}
-    assert {"Куратор ОГПУ", "тело Клюева у сейфа", "Веры Холодовой", "поляк", "посредник", "оперативник"} <= who
-    assert not any(w.lower().startswith(("чекист", "резидент")) for w in who)  # «чекистской мистификации», резидент = Штерн
-    assert next(m for m in notes["ПОГЛ-2"] if "«поляк»" in m).endswith("(гл. 29, 31, 37, 40)")
-    no_physique = {m.split(":")[0] for m in notes["ДОСЬЕ-6"]}
-    assert {"РОМАН ЗАВАРЗИН", "АСЯ ГРИНБЕРГ", "ФРОЛ БУГАЕВ", "ОЛЬГА ЛЕММ"} <= no_physique and len(no_physique) == 7
-    assert not any(n.startswith(("АРИСТАРХ", "СТЕПАН", "АНДРЕЙ")) for n in no_physique)  # у Лемма, Степана, Штерна «Физика» есть
 
 
 # ------------------------------------------------------------- наблюдатель

@@ -1,26 +1,10 @@
 """Этап 3 второго аудита, п. 16: Э1 без мёртвых и ложных проверок (TTR по тому, речь персонажей,
 сплиттер, доля диалога, однострочные абзацы, блок документа-вставки)."""
 
-from pathlib import Path
 
-import pytest
 
-from konveyer import exporter, guard, lint, textutils, verifier1
-from konveyer.paths import Workspace
+from konveyer import exporter, lint, textutils, verifier1
 from konveyer.schemas import Brief, Norm, StopRule
-
-REPO = Path(__file__).resolve().parent.parent
-LIBRARY = REPO / "Библиотека"
-real_only = pytest.mark.skipif(not LIBRARY.exists(), reason="реальная библиотека не подключена")
-
-
-@pytest.fixture
-def real(tmp_path):
-    (tmp_path / "конфиг.yaml").write_text(f'library_dir: "{LIBRARY.as_posix()}"\n', encoding="utf-8")
-    ws = Workspace(tmp_path)
-    guard.set_library_dir(LIBRARY)
-    exporter.run_export(LIBRARY, ws.exports, ws.logs)
-    return ws
 
 
 # ------------------------------------------------------------- сплиттер (2.6)
@@ -29,16 +13,6 @@ def real(tmp_path):
 def test_сокращения_с_пробелом_и_инициалы_не_режут_фразу():
     s = textutils.split_sentences("Дело, т. е. папка, лежало на столе. Лемм А. Х. подписал и вышел. И т. д.")
     assert s == ["Дело, т. е. папка, лежало на столе.", "Лемм А. Х. подписал и вышел.", "И т. д."]
-
-
-@real_only
-def test_средняя_длина_принятых_глав_не_сдвинулась():
-    """Правка сплиттера не должна ломать калибровку Р-015: сдвиг средней — в пределах 0,3 слова."""
-    for name, was in (("Том1_Глава05.md", 6.2), ("Том1_Глава04_МАКЕТ.md", 7.29)):
-        text = (LIBRARY / "Проза" / name).read_text(encoding="utf-8")
-        sents = [s for s in textutils.split_sentences(text) if textutils.words(s)]
-        avg = sum(len(textutils.words(s)) for s in sents) / len(sents)
-        assert abs(avg - was) <= 0.3, (name, avg)
 
 
 # ------------------------------------------------------------- стоп-лексика (2.3)
@@ -76,24 +50,6 @@ def test_стоп_лексика_линии_по_повествованию_в_�
     assert checks["V1.5_стоп_лексика"].status == "FLAG" and "отец" in checks["V1.5_стоп_лексика"].actual
 
 
-# ------------------------------------------------------------- TTR по тому (2.2)
-
-
-@real_only
-def test_ttr_окно_считается_по_тому_а_не_по_части(real):
-    import shutil
-
-    real.chapter_dir(5).mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(LIBRARY / "Проза" / "Том1_Глава05.md", real.draft_path(5, 1))
-    from konveyer import compiler
-
-    compiler.compile_window(real, LIBRARY, 5)
-    ttr = next(c for c in verifier1.run_verify1(real, 5, 1).checks if c.check_id == "V1.8b_ttr_окно")
-    # раньше здесь всегда было «часть короче 10000 слов — не считается»
-    assert "не считается" not in ttr.actual and ttr.actual.split()[0].replace(".", "").isdigit()
-    assert "брак 0.4" in ttr.threshold  # «переводной уровень 0,40 = брак» из 02 §5
-
-
 # ------------------------------------------------------------- новые проверки §5
 
 
@@ -112,19 +68,6 @@ def test_доля_диалога_однострочные_абзацы_и_док
     with_doc = text + "\n\n→ ДОКУМЕНТ\nРапорт.\n← КОНЕЦ ДОКУМЕНТА\n"
     checks = {c.check_id: c for c in verifier1.analyze(with_doc, "", brief, norms, stops)}
     assert checks["V1.11_документ_вставка"].status == "PASS"
-
-
-# ------------------------------------------------------------- ПРОЗА-3 (2.1)
-
-
-@real_only
-def test_линтер_подсвечивает_принятую_главу_вне_норм(real):
-    """Р-015 против Р-018: гл. 5 принята при средней 6,2 — автор должен видеть противоречие."""
-    report = lint.run_lint(LIBRARY, real.exports, real.logs, export=False)
-    f = next((f for f in report.findings if f.code == "ПРОЗА-3"), None)
-    assert f is not None and "Глава05" in f.file and f.severity == "предупреждение"
-    assert "V1.2a_средняя_длина" in f.message and "решение автора" in f.message
-    assert report.errors == 0
 
 
 # ------------------------------------------------------------- точность маркеров линтера (п. 18)

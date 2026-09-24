@@ -2,34 +2,17 @@
 Р-026 (материал аналитика кругов: тема цикла, арки, участники сцен)."""
 
 import json
-import shutil
 from pathlib import Path
 
-import pytest
 
-from konveyer import circles, compiler, exporter, guard, lint, verifier2
+from konveyer import circles, compiler, exporter, lint, verifier2
 from tests.профиль import realcanon
-from konveyer.paths import Workspace
 from konveyer.schemas import Act, CircleStep, StoryCircle
 
-REPO = Path(__file__).resolve().parent.parent
-LIBRARY = REPO / "Библиотека"
-real_only = pytest.mark.skipif(not LIBRARY.exists(), reason="реальная библиотека не подключена")
 
+REPO = Path(__file__).resolve().parent.parent
 ACTS = [Act(act=1, title="МОКРОЕ ДЕЛО", from_chapter=1, to_chapter=5, parts="I", steps="1–2")]
 NAMES = circles.STEP_NAMES
-
-
-@pytest.fixture
-def real_copy(tmp_path: Path) -> tuple[Workspace, Path]:
-    """Временная копия реальной библиотеки (мутации не трогают канон автора) + выгрузки."""
-    lib = tmp_path / "Библиотека"
-    shutil.copytree(LIBRARY, lib)
-    (tmp_path / "конфиг.yaml").write_text("library_dir: Библиотека\n", encoding="utf-8")
-    guard.set_library_dir(lib)
-    ws = Workspace(tmp_path)
-    exporter.run_export(lib, ws.exports, ws.logs)
-    return ws, lib
 
 
 def _edit(path: Path, old: str, new: str) -> None:
@@ -169,82 +152,3 @@ def test_арки_вне_актов_секции_нет(ws, library):
     assert compiler.arc_lines(exporter.load_arcs(ws.exports), [], exporter.load_brief(ws.exports, 1), [], ["Каширин"]) == []
 
 
-# ------------------------------------------------------------------ реальная библиотека
-
-
-@real_only
-def test_скелет_22_реальной_библиотеки(real_copy):
-    ws, lib = real_copy
-    arcs = exporter.load_arcs(ws.exports)
-    assert {a.character for a in arcs} == {"Лемм", "Степан", "Штерн", "Заварзин", "Ася"}
-    assert sorted({a.act for a in arcs}) == [1, 2, 3, 4] and len(arcs) == 20
-    assert not any(a.filled for a in arcs)  # скелет: ничего не сочинено за автора
-    assert {a.act for a in exporter.load_acts(ws.exports)} == {1, 2, 3, 4}
-    # окно главы 5 без секции арок (скелет), линтер без АРКА-*
-    w = compiler.compile_window(ws, lib, 5)[0].read_text(encoding="utf-8")
-    assert "арки тома" not in w and "⚠ заполнить" not in w
-    report = lint.run_lint(lib, ws.exports, ws.logs, export=False)
-    assert not [f for f in report.findings if f.code.startswith("АРКА")]
-    assert "| 2.5 |" in (lib / "00_ИНДЕКС_БИБЛИОТЕКИ.md").read_text(encoding="utf-8")
-
-
-@real_only
-def test_фильтр_тайн_в_строке_арки(real_copy):
-    """Строка Штерна с маркером тайны Т-05 («сын») фокалу Степану не показывается; строка Лемма без маркеров — да;
-    ложь/желание/потребность не выводятся никогда."""
-    ws, lib = real_copy
-    doc = lib / "22_Арки_Том1.md"
-    _edit(doc, "| Штерн | 1 | ⚠ заполнить | ⚠ заполнить | ⚠ заполнить | — | — |",
-          "| Штерн | 1 | ⚠ заполнить | ⚠ заполнить | ⚠ заполнить | — | Держится чужим; отца не поминает, сын молчит. |")
-    _edit(doc, "| Лемм | 1 | ⚠ заполнить | ⚠ заполнить | ⚠ заполнить | — | — |",
-          "| Лемм | 1 | ЛОЖЬ-ЛЕММА | ЖЕЛАНИЕ-ЛЕММА | ПОТРЕБНОСТЬ-ЛЕММА | ГДЕ-НА-АРКЕ | Сухой, точный; смотрит поверх головы собеседника. |")
-    exporter.run_export(lib, ws.exports, ws.logs)
-    arcs, acts, infobans = exporter.load_arcs(ws.exports), exporter.load_acts(ws.exports), exporter.load_infobans(ws.exports)
-    brief = exporter.load_brief(ws.exports, 5)  # фокал Степан, акт 1
-    assert brief.focal == "Степан"
-    t05 = next(b for b in infobans if b.ban_id == "Т-05")
-    assert "сын" in t05.markers and not t05.known_to("Степан", 5)
-    brief = brief.model_copy(update={"participants": ["Лемм", "Штерн"]})
-    lines = compiler.arc_lines(arcs, acts, brief, infobans, ["Лемм", "Степан", "Штерн"])
-    assert lines == ["Лемм: Сухой, точный; смотрит поверх головы собеседника."]
-
-    w = compiler.compile_window(ws, lib, 5)[0].read_text(encoding="utf-8")
-    assert "- Лемм: Сухой, точный; смотрит поверх головы собеседника." in w
-    assert "сын молчит" not in w
-    for hidden in ("ЛОЖЬ-ЛЕММА", "ЖЕЛАНИЕ-ЛЕММА", "ПОТРЕБНОСТЬ-ЛЕММА", "ГДЕ-НА-АРКЕ"):
-        assert hidden not in w
-    # аналитику кругов — всё, включая ложь и строку с маркером тайны
-    _, material = circles.build_material(ws, "книга")
-    assert "ЛОЖЬ-ЛЕММА" in material and "сын молчит" in material
-
-
-@real_only
-def test_линтер_арка_1_и_2(real_copy):
-    ws, lib = real_copy
-    doc = lib / "22_Арки_Том1.md"
-    _edit(doc, "| Ася | 4 | ⚠ заполнить | ⚠ заполнить | ⚠ заполнить | — | — |",
-          "| Ася | 4 | ⚠ заполнить | ⚠ заполнить | ⚠ заполнить | — | — |\n| Никто | 9 | — | — | — | — | — |")
-    report = lint.run_lint(lib, ws.exports, ws.logs)
-    found = {f.code: f for f in report.findings if f.code.startswith("АРКА")}
-    assert set(found) == {"АРКА-1", "АРКА-2"} and all(f.severity == "заметка" for f in found.values())
-    assert "Никто" in found["АРКА-1"].message and "22_Арки_Том1.md" in found["АРКА-1"].file
-    assert "акт 9" in found["АРКА-2"].message and found["АРКА-2"].line
-
-
-@real_only
-def test_материал_аналитика_тома_реальный(real_copy):
-    """Р-026: тема цикла из 13 §1, арки целиком, события сетки с участниками; промпт Писателю не идёт."""
-    ws, lib = real_copy
-    title, material = circles.build_material(ws, "книга")
-    assert title == "Книга (том целиком)"
-    assert "## Тема цикла (13 §1)" in material and "опеку через ложь" in material and "наследование вины" in material
-    assert "## Арки тома (" in material and "| Штерн | 1 |" in material and "| Ася | 4 |" in material
-    assert "гл. 13 · " in material and "фокал Штерн · участники: Степан" in material
-    _, act_material = circles.build_material(ws, "акт", 2)
-    assert "## Арки акта 2" in act_material and "| Лемм | 2 |" in act_material and "| Лемм | 1 |" not in act_material
-    assert "участники:" in act_material
-    # без документа 13 материал просто без темы (деградация)
-    assert circles.cycle_theme(None) == "" and circles.cycle_theme(ws.root) == ""
-    # окно Писателя материала аналитика не содержит
-    w = compiler.compile_window(ws, lib, 5)[0].read_text(encoding="utf-8")
-    assert "Тема цикла" not in w and "| Ложь |" not in w and "Ядро цикла" not in w
