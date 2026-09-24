@@ -1,5 +1,5 @@
-"""Такт главы (§5.4, FR-O2): export → compile → write → verify1 → verify2 → review → apply-edits →
-diff-check → accept → canonize; `run` — такт целиком с паузами на шагах автора (FR-O1).
+"""Такт главы (§5.4, §7.2): export → compile → write → verify1 → verify2 → review → apply-edits →
+diff-check → accept → canonize; `run` — такт целиком с паузами на шагах автора (§7.2).
 
 Ядро без typer: аргументы — обычные значения, вывод — stdout, ошибки — исключения konveyer/errors.py.
 """
@@ -33,7 +33,7 @@ from .common import Confirm, _ctx, _print_variants, _print_verdict, _sha256, col
 
 
 def export() -> dict[str, str]:
-    """Перегенерировать все выгрузки из MD-библиотеки (FR-X1…FR-X3). Возвращает хэши файлов выгрузок."""
+    """Перегенерировать все выгрузки из MD-библиотеки (§6.4). Возвращает хэши файлов выгрузок."""
     ws, cfg, lib = _ctx()
     try:
         hashes = exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
@@ -44,7 +44,7 @@ def export() -> dict[str, str]:
 
 
 def compile(chapter: int) -> Path:  # noqa: A001 — имя команды `konveyer compile`
-    """Собрать окно контекста главы N (FR-C1…FR-C6). Экспорт выполняется автоматически (риск R-5)."""
+    """Собрать окно контекста главы N (§7.3). Экспорт выполняется автоматически."""
     ws, cfg, lib = _ctx()
     try:
         exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
@@ -68,7 +68,7 @@ def compile(chapter: int) -> Path:  # noqa: A001 — имя команды `konv
     secho(f"Окно собрано: {path} (~{size} символов)", fg=colors.GREEN)
     if breakdown.get("драматургия", 0) and "в канон ещё не внесён" in path.read_text(encoding="utf-8"):
         secho(
-            f"⚠ Каркас драматургии главы {chapter} в канон не внесён (Р-020): `konveyer circles` → "
+            f"⚠ Каркас драматургии главы {chapter} в канон не внесён: `konveyer каркас` → "
             "`konveyer circles --в-канон`, затем пересоберите окно.",
             fg=colors.YELLOW,
         )
@@ -82,7 +82,7 @@ def compile(chapter: int) -> Path:  # noqa: A001 — имя команды `konv
 
 
 def write(chapter: int, manual: bool = False, variants: int = 1, choose: str | None = None) -> int | None:
-    """Отправить окно Писателю, сохранить черновик_k.md (FR-W1). `variants` ≥ 2 — A/B (черновик_k.md, черновик_k.alt1.md …),
+    """Отправить окно Писателю, сохранить черновик_k.md (§7.4). `variants` ≥ 2 — A/B (черновик_k.md, черновик_k.alt1.md …),
     `choose` — сделать вариант текущим черновик_k.md (состояние не меняется). Возвращает номер черновика."""
     ws, cfg, lib = _ctx()
     variants = int(variants)
@@ -139,7 +139,7 @@ def write(chapter: int, manual: bool = False, variants: int = 1, choose: str | N
 
 
 def verify1(chapter: int):
-    """Формальные проверки Э1 (FR-V1.*). Брак метрик → авто-повтор генерации (≤2, §5.4).
+    """Формальные проверки Э1 (§7.5). Брак метрик → авто-повтор генерации (≤2, §7.2).
     Возвращает вердикт; брак после всех авто-повторов — `StepExit(1)` (вердикт автору)."""
     ws, cfg, lib = _ctx()
     st = ChapterState(ws, chapter)
@@ -168,7 +168,7 @@ def verify1(chapter: int):
 
 
 def verify2(chapter: int, manual: bool = False, taste: bool = False, again: bool = False) -> list:
-    """Смысловые проверки Э2 (FR-V2.*). `again` — второй прогон после правок (advisory). Возвращает флаги."""
+    """Смысловые проверки Э2 (§7.6). `again` — второй прогон после правок (advisory). Возвращает флаги."""
     ws, cfg, lib = _ctx()
     st = ChapterState(ws, chapter)
     if again:
@@ -199,7 +199,7 @@ def verify2(chapter: int, manual: bool = False, taste: bool = False, again: bool
     if taste:
         try:
             advice = verifier2.run_taste(ws, cfg, chapter, st.draft)
-            echo(f"Вкус (совещательно, 02 §6.1): замечаний {len(advice)} → {ws.chapter_rel(chapter)}/вкус.json")
+            echo(f"Вкус (совещательно, правила вкуса стиля): замечаний {len(advice)} → {ws.chapter_rel(chapter)}/вкус.json")
         except adapters.ManualModeNeeded:
             echo(f"Промпт вкуса сохранён: {ws.chapter_rel(chapter)}/промпт_вкуса.md (ответ — в вкус.json).")
         except ValueError as e:
@@ -208,7 +208,7 @@ def verify2(chapter: int, manual: bool = False, taste: bool = False, again: bool
 
 
 def _verify2_again(ws: Workspace, cfg: Config, st: ChapterState, manual: bool) -> list:
-    """Повторный Э2 после правок (аудит 2, п. 24а): по текущему черновику, без смены состояния."""
+    """Повторный Э2 после правок (§7.8): по текущему черновику, без смены состояния."""
     chapter = st.chapter
     st.require("правки", "дифф-контроль")
     if manual:
@@ -244,7 +244,7 @@ def _verify2_again(ws: Workspace, cfg: Config, st: ChapterState, manual: bool) -
 
 
 def review(chapter: int) -> Path:
-    """Пакет приёмки автора: приёмка.md + правки.md + решения.json (FR-E1). Возвращает путь приёмка.md."""
+    """Пакет приёмки автора: приёмка.md + правки.md + решения.json (§7.7). Возвращает путь приёмка.md."""
     ws, cfg, lib = _ctx()
     st = ChapterState(ws, chapter)
     st.require("верифицировано-2")
@@ -252,7 +252,7 @@ def review(chapter: int) -> Path:
     from .. import htmlreview
 
     html_path = htmlreview.build_review_html(ws, chapter, st.draft)
-    st.data["база_приёмки"] = st.draft  # FR-E3: каждый цикл правок стартует от текста, принятого на приёмке
+    st.data["база_приёмки"] = st.draft  # §7.8: каждый цикл правок стартует от текста, принятого на приёмке
     st.transition("на-приёмке", "review")
     secho(f"Пакет приёмки: {path}", fg=colors.GREEN)
     secho(f"Чтение с флагами (браузер): {html_path}", fg=colors.GREEN)
@@ -264,13 +264,13 @@ def review(chapter: int) -> Path:
 
 
 def apply_edits(chapter: int, manual: bool = False) -> int:
-    """Внесение правок: дословные БЫЛО/СТАЛО — кодом (Р-023), свободные указания — Писателем (FR-W2, FR-E3).
+    """Внесение правок: дословные БЫЛО/СТАЛО — кодом, свободные указания — Писателем (§7.8).
     Возвращает номер нового черновика."""
     ws, cfg, lib = _ctx()
     st = ChapterState(ws, chapter)
     st.require("на-приёмке", "дифф-контроль")
     edits = review_mod.parse_edits_md(ws, chapter)
-    # база правок — черновик приёмки (FR-E3): повторный цикл не наследует самоволия прошлой итерации
+    # база правок — черновик приёмки (§7.8): повторный цикл не наследует самоволия прошлой итерации
     base = int(st.data.get("база_приёмки", st.draft))
     new_k = st.draft + 1
     base_path = ws.draft_path(chapter, base)
@@ -280,7 +280,7 @@ def apply_edits(chapter: int, manual: bool = False) -> int:
     over = st.data.get("итераций_правок", 0) >= cfg.edit_cycle_max_iterations
     if not manual and over and (local is None or local.needs_model):
         raise StepError(
-            f"итераций правок уже {st.data['итераций_правок']} (лимит FR-E3) — внесите правки вручную: "
+            f"итераций правок уже {st.data['итераций_правок']} (лимит §7.8) — внесите правки вручную: "
             f"сохраните исправленный текст как черновик_{st.draft + 1}.md, выполните "
             f"`konveyer apply-edits {chapter} --manual`, затем `konveyer diff-check {chapter} --авторская-правка`."
         )
@@ -288,16 +288,16 @@ def apply_edits(chapter: int, manual: bool = False) -> int:
     n_local = n_model = 0
     if manual:
         # завершение сорвавшейся автоматической итерации либо ручная правка автора —
-        # бюджет итераций FR-E3 (для циклов Писателя) не расходуется
+        # бюджет итераций §7.8 (для циклов Писателя) не расходуется
         if not ws.draft_path(chapter, new_k).exists():
             raise StepError(f"нет файла {ws.draft_path(chapter, new_k)} (ручной режим).")
     elif not edits:
         # правок нет — черновик приёмки переходит дальше без вызова Писателя
         shutil.copyfile(base_path, ws.draft_path(chapter, new_k))
     elif local is None:
-        raise StepError(f"нет базового черновика {base_path} (FR-E3: правки идут от черновика приёмки).")
+        raise StepError(f"нет базового черновика {base_path} (§7.8: правки идут от черновика приёмки).")
     elif not local.needs_model:
-        # Р-023: все пары найдены дословно ровно один раз — модель не нужна, бюджет итераций не расходуется
+        # все пары найдены дословно ровно один раз — модель не нужна, бюджет итераций не расходуется
         new_k, local = writer.apply_edits_locally(ws, cfg, chapter, base, edits, new_k=new_k)
         n_local = len(local.applied)
     else:
@@ -326,7 +326,7 @@ def apply_edits(chapter: int, manual: bool = False) -> int:
 
 
 def diff_check(chapter: int, author_fix: bool = False, fragments: list[str] | None = None):
-    """Дифф-контроль до/после правок (FR-V1.10, FR-E3). Возвращает отчёт дифф-контроля."""
+    """Дифф-контроль до/после правок (FR-V1-6, §7.8). Возвращает отчёт дифф-контроля."""
     ws, cfg, lib = _ctx()
     if not isinstance(fragments, list):
         fragments = []
@@ -369,20 +369,20 @@ def diff_check(chapter: int, author_fix: bool = False, fragments: list[str] | No
 
 
 def accept(chapter: int, yes: bool = False, confirm: Confirm | None = None) -> None:
-    """Приёмка главы автором (FR-E4): только из «дифф-контроль: чисто», с явным подтверждением."""
+    """Приёмка главы автором (§7.7): только из «дифф-контроль: чисто», с явным подтверждением."""
     ws, cfg, lib = _ctx()
     st = ChapterState(ws, chapter)
     st.require("дифф-контроль")
     report_path = ws.chapter_dir(chapter) / "дифф.json"
     data = json.loads(report_path.read_text(encoding="utf-8")) if report_path.exists() else {}
     if data.get("not_applied") or data.get("unauthorized"):
-        raise StepError("дифф-контроль не чист — приёмка недоступна (FR-E4).")
+        raise StepError("дифф-контроль не чист — приёмка недоступна (§7.8).")
     unresolved = review_mod.unresolved_samovolki(ws, chapter)
     if unresolved:
         raise StepError(f"не решены самоволки: {', '.join(unresolved)} (решения.json).")
     green = regression_mod.is_green(ws)
     if green is False:
-        secho("⚠ Регрессия КРАСНАЯ (FR-R3) — смена конфигурации запрещена, приёмка под вашу ответственность.", fg=colors.YELLOW)
+        secho("⚠ Регрессия КРАСНАЯ (§7.13) — смена конфигурации запрещена, приёмка под вашу ответственность.", fg=colors.YELLOW)
     confirm_or_reject(yes, confirm, f"Принять главу {chapter}? (y)")
     st.transition("принято", "accept")
     secho(f"Глава {chapter} принята. Далее: `konveyer canonize {chapter}`.", fg=colors.GREEN)
@@ -391,7 +391,7 @@ def accept(chapter: int, yes: bool = False, confirm: Confirm | None = None) -> N
 def canonize(
     chapter: int, apply: bool = False, yes: bool = False, redo: bool = False, confirm: Confirm | None = None,
 ) -> str | Path | None:
-    """Канонист: пакет записей в канон (FR-K1); применение — только после подписи (FR-K2).
+    """Канонист: пакет записей в канон (§7.9); применение — только после подписи (FR-CN-2).
     Без `apply` возвращает путь пакета, с `apply` — SHA коммита приёмки."""
     ws, cfg, lib = _ctx()
     if not isinstance(redo, bool):
@@ -423,7 +423,7 @@ def canonize(
     if not gitops.is_repo(lib):
         # 2.6: без git нет коммита приёмки и отката — отказ ДО записи и без перевода FSM
         raise StepError(
-            "библиотека не под git — применение пакета невозможно (FR-K2: откат только git-revert'ом). "
+            "библиотека не под git — применение пакета невозможно (§7.9: откат только git-revert'ом). "
             "Инициализируйте репозиторий в библиотеке (git init; git add -A; git commit), затем повторите."
         )
     # Идемпотентность (4.1): если приёмка уже закоммичена, а состояние не успело смениться
@@ -450,7 +450,7 @@ def canonize(
 
 
 def _after_canonize(ws: Workspace, cfg: Config, lib: Path, chapter: int, commit: str) -> None:
-    """После приёмки (аудит 2, п. 28–29): тег версии канона `глава-N` (повторная приёмка после отката —
+    """После приёмки (FR-BK-2, FR-BK-3): тег версии канона `глава-N` (повторная приёмка после отката —
     `глава-N-2`) и архив рабочей области, если в конфиг.yaml задан backup_dir. Ни то, ни другое не может
     сорвать приёмку: она уже закоммичена и состояние сменено; сбой — предупреждение."""
     name = gitops.tag_chapter(lib, chapter, commit)
@@ -467,7 +467,7 @@ def _after_canonize(ws: Workspace, cfg: Config, lib: Path, chapter: int, commit:
 
 
 def run(chapter: int) -> None:
-    """Такт целиком с паузами на шагах автора (FR-O1): review, accept, canonize."""
+    """Такт целиком с паузами на шагах автора (§7.2): приёмка, принятие, канон."""
     ws, cfg, lib = _ctx()
     while True:
         st = ChapterState(ws, chapter)

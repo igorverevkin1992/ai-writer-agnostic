@@ -28,7 +28,7 @@ Confirm = Callable[[str], bool]
 
 
 def _ctx() -> tuple[Workspace, Config, Path]:
-    """Рабочая область ТЕКУЩЕГО тома (`конфиг.yaml: volume`; аудит 2, п. 27): пути глав, выгрузки,
+    """Рабочая область ТЕКУЩЕГО тома (`конфиг.yaml: volume`; §7.12): пути глав, выгрузки,
     документы канона и журнал API привязаны к нему."""
     ws = find_workspace()
     cfg = load_config(ws)

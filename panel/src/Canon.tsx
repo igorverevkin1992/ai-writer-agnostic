@@ -235,7 +235,7 @@ export function Canon(props: {
 
   const lintLlm = () =>
     run(async () => {
-      const n = current ? 1 : docs.filter((d) => !d.path.startsWith("ИНСТРУМЕНТ_") && !d.path.startsWith("ТЗ_") && !d.path.startsWith("Тест_Писателя/")).length;
+      const n = current ? 1 : docs.length; // модельный слой линтера проходит по всем документам библиотеки
       const ok = await confirm(`Проверить моделью ${current ? `документ «${current.path}»` : `все документы (${n} вызовов Anthropic)`} на смысловые противоречия?`);
       if (!ok) return;
       await runCommand("lint-llm", undefined, { files: current ? [current.path] : [] });

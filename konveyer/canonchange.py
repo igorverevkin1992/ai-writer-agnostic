@@ -1,4 +1,4 @@
-"""Единый конвейер изменения канона (этап 5, п. 25; аудит 4.9).
+"""Единый конвейер изменения канона (П-3, FR-RL-1).
 
 ЛЮБАЯ запись в `Библиотека/` проходит через `canon_change()`:
 
@@ -7,7 +7,7 @@
 
 Только этот модуль открывает `guard.canon_write_session()` (статический тест): приёмка главы (канонист), внесение кругов истории,
 правка документа и исправление линтера из панели, `konveyer canon-commit` — все идут здесь.
-Подтверждение автора (FR-K2, Д-8) вызывающий даёт явно флагом `author_confirmed`.
+Подтверждение автора (FR-RL-1) вызывающий даёт явно флагом `author_confirmed`.
 """
 
 from __future__ import annotations
@@ -125,7 +125,7 @@ def canon_change(
     * `require_clean=False` — коммит поверх незакоммиченных правок автора допустим (сценарий Б).
     """
     if not author_confirmed:
-        raise PermissionError("изменение канона без подтверждения автора запрещено (FR-K2, Д-8).")
+        raise PermissionError("изменение канона без подтверждения автора запрещено (FR-RL-1).")
     repo = gitops.is_repo(library)
     clean_at_entry = check_git(library, commit=commit, require_clean=require_clean, action=action)
     try:

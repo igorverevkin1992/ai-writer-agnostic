@@ -10,7 +10,7 @@ from .common import colors, echo, secho
 
 
 def init(demo: bool = False) -> Workspace:
-    """Создать каркас рабочей области: конфиг.yaml, .env.example, папки (NFR-1). Возвращает рабочую область."""
+    """Создать каркас рабочей области: конфиг.yaml, .env.example, папки (FR-LC-3). Возвращает рабочую область."""
     ws = Workspace(Path.cwd())
     if not (ws.root / "конфиг.yaml").exists():
         shutil.copyfile(Path(__file__).parent.parent / "data" / "конфиг.пример.yaml", ws.root / "конфиг.yaml")

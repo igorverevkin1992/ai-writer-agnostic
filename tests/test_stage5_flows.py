@@ -80,7 +80,7 @@ def test_retest_пакет_и_запрет_фиксации(ws, library, monkeyp
     assert not ws.window_path(1).exists()  # окно главы в работе не создаётся/не трогается (2.10)
     # фиксация без прогона регрессии запрещена (FR-R3)
     r = runner.invoke(app, ["пере-тест", "--зафиксировать"])
-    assert r.exit_code == 1 and "FR-R3" in r.output
+    assert r.exit_code == 1 and "фиксация пере-теста запрещена" in r.output
     # после зелёного прогона — разрешена
     assert runner.invoke(app, ["regress"]).exit_code == 0
     r = runner.invoke(app, ["пере-тест", "--зафиксировать"])

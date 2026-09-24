@@ -1,4 +1,4 @@
-"""Обзор: status (FR-D2), log (журнал API §6.3), find (поиск по канону), doctor (NFR-1), dashboard (FR-D1)."""
+"""Обзор: status (§8.2), log (журнал API §6.3), find (поиск по канону), doctor (NFR-1), dashboard (§8.2)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from .common import NEXT_STEP, _chapter_flags_summary, _ctx, _print_verdict, col
 
 
 def status(chapter: int | None = None, volume: int | None = None) -> list:
-    """Состояния глав и следующий шаг (FR-D2); с `chapter` — карточка главы; `volume` — главы тома N.
+    """Состояния глав и следующий шаг (FR-CL-3); с `chapter` — карточка главы; `volume` — главы тома N.
     Возвращает состояния глав тома (для карточки — список из одной главы)."""
     ws, cfg, lib = _ctx()
     if volume is not None and volume != ws.volume:
@@ -73,7 +73,7 @@ def _status_detail(ws: Workspace, chapter: int) -> ChapterState:
 
 
 def log(n: int = 15) -> list[dict]:
-    """Последние API-вызовы: роль, модель, токены, стоимость (журнал §6.3). Возвращает показанные строки."""
+    """Последние API-вызовы: роль, модель, токены, стоимость (FR-CT-1). Возвращает показанные строки."""
     from ..apilog import read_log
 
     ws, cfg, lib = _ctx()
@@ -115,7 +115,7 @@ def find(query: str) -> dict:
 
 
 def doctor() -> None:
-    """Диагностика установки и готовности конвейера (NFR-1)."""
+    """Диагностика установки и готовности проекта (FR-LC-2, FR-BK-4)."""
     import importlib.util
 
     ws, cfg, lib = _ctx()
@@ -133,7 +133,7 @@ def doctor() -> None:
         lay = backup_mod.layout(lib, ws.root)
         item(lay.kind != "no-git", "библиотека под git", "git init внутри библиотеки (версионирование канона, §5.1)")
         if lay.kind != "no-git":
-            item(lay.ok, lay.label, lay.hint)  # три раскладки (п. 28): своя / внутри репозитория кода / не под git
+            item(lay.ok, lay.label, lay.hint)  # три раскладки (FR-BK-4): своя / внутри репозитория кода / не под git
         if gitops.is_repo(lib):
             item(gitops.has_identity(lib) or bool(cfg.commit_author), "авторство git настроено",
                  "git config user.email/user.name или commit_author в конфиг.yaml (Д-8)")
@@ -141,12 +141,12 @@ def doctor() -> None:
                  f"завершите или отмените: git {gitops.in_progress(lib) or ''} --abort (в документах могут быть маркеры конфликта)")
             n_remotes = len(gitops.remotes(lib))
             item(n_remotes >= cfg.backup_remotes_min, f"удалённых копий: {n_remotes} (нужно ≥{cfg.backup_remotes_min})",
-                 "`konveyer backup --добавить-remote <имя> <url|папка>` — папка на внешнем диске подходит (NFR-6, §1.3)")
+                 "`konveyer backup --добавить-remote <имя> <url|папка>` — папка на внешнем диске подходит (FR-BK-1)")
     arch_dir = backup_mod.archive_dir(ws, cfg)
     arch_age = backup_mod.archive_age_days(arch_dir)
     if arch_age is None:
         item(None if cfg.backup_dir is None else False, f"архив рабочей области: ещё не делался ({arch_dir})",
-             "`konveyer backup --архив`; backup_dir в конфиг.yaml — архив после каждой приёмки главы (п. 29)")
+             "`konveyer backup --архив`; backup_dir в конфиг.yaml — архив после каждой приёмки главы (FR-BK-2)")
     else:
         item(arch_age <= 7, f"архив рабочей области: {arch_age:.1f} дн. назад ({backup_mod.latest_archive(arch_dir)})",
              "`konveyer backup --архив`")
@@ -181,7 +181,7 @@ def doctor() -> None:
         item(has_module("google.genai"), "SDK google-genai", "pip install 'konveyer[llm]'")
     if "anthropic" in providers:
         item(has_module("anthropic"), "SDK anthropic", "pip install 'konveyer[llm]'")
-    # пины моделей против API (п. 31): только чтение метаданных, ни одной генерации
+    # пины моделей против API (FR-RT-3): только чтение метаданных, ни одной генерации
     seen: set[tuple[str, str]] = set()
     labels = {"писатель": "Писатель", "верификатор2": "Верификатор-2", "канонист": "Канонист",
               "аналитик": "аналитик", "линтер": "линтер", "архивариус": "архивариус"}
@@ -203,13 +203,13 @@ def doctor() -> None:
         )
     else:
         label = "регрессия зелёная" if green else "регрессия КРАСНАЯ"
-    item(green, label, "`konveyer regress`" if green is None else "пропущенные флаги блокируют смену конфигурации (FR-R3)")
+    item(green, label, "`konveyer regress`" if green is None else "пропущенные флаги блокируют смену конфигурации (§7.13)")
     n_tests = len(regression_mod.load_tests(ws)) if ws.regression.exists() else 0
-    item(n_tests > 0, f"золотых тестов: {n_tests}", "корпус пуст — регрессия не может быть зелёной; пополните: `konveyer add-golden` (FR-R1)")
+    item(n_tests > 0, f"золотых тестов: {n_tests}", "корпус пуст — регрессия не может быть зелёной; пополните: `konveyer add-golden` (§7.13)")
 
 
 def dashboard() -> Path:
-    """Собрать дашборд.html (FR-D1). Возвращает путь файла."""
+    """Собрать дашборд.html (§8.2). Возвращает путь файла."""
     ws, cfg, lib = _ctx()
     path = dashboard_mod.build_dashboard(ws)
     secho(f"Дашборд: {path}", fg=colors.GREEN)

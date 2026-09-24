@@ -144,7 +144,7 @@ def test_apply_edits_лимит_итераций_не_мешает_правка�
     st._save()
     (ws.chapter_dir(1) / "правки.md").write_text("УКАЗАНИЕ: переписать\n", encoding="utf-8")
     r = runner.invoke(app, ["apply-edits", "1"])
-    assert r.exit_code == 1 and "FR-E3" in r.output + (r.stderr or "")
+    assert r.exit_code == 1 and "лимит" in r.output + (r.stderr or "")
 
 
 # ------------------------------------------------------------ п. 23: время такта

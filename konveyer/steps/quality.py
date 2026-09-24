@@ -1,5 +1,5 @@
-"""Качество и регрессия: check (Э1 по произвольному файлу), circles (круги истории, Р-020),
-regress (золотые тесты, FR-R2), add_golden (FR-R1)."""
+"""Качество и регрессия: check (Э1 по произвольному файлу), circles (круги истории),
+regress (золотые тесты, §7.13), add_golden (§7.13)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from .common import Confirm, _ctx, _print_verdict, colors, confirm_or_reject, ec
 def check(
     file: Path, chapter: int | None = None, focal: str = "", year: int | None = None, volume_words: int | None = None,
 ) -> str:
-    """Прогнать проверки Э1 по произвольному файлу — вне такта и FSM (ручной режим, NFR-3).
+    """Прогнать проверки Э1 по произвольному файлу — вне такта и FSM (ручной режим, FR-RL-3).
     Возвращает итог: PASS / FLAG / BRAK."""
     ws, cfg, lib = _ctx()
     from ..schemas import Brief
@@ -25,7 +25,7 @@ def check(
         brief = exporter.load_brief(ws.exports, chapter)
         window_path = ws.window_path(chapter)
         window = window_path.read_text(encoding="utf-8") if window_path.exists() else ""
-        # принятая глава уже лежит в корпусе — не сравнивать текст с самим собой (аудит 3.4)
+        # принятая глава уже лежит в корпусе — не сравнивать текст с самим собой
         own = exporter.find_corpus_file(ws.corpus, chapter, brief.volume)
         part_range = verifier1.part_range_for(ws.exports, chapter)
     else:
@@ -57,8 +57,8 @@ def circles(
     scope: str = "всё", chapter: int | None = None, redo: bool = False, to_canon: bool = False,
     yes: bool = False, confirm: Confirm | None = None,
 ) -> dict | None:
-    """Круги истории (8 шагов) — каркас драматургии (Р-020): книга → четыре акта → главы; черновики в драматургия/.
-    `to_canon` — внести черновики в документ 2.1 библиотеки и закоммитить (Д-8). Возвращает результат прогона."""
+    """Круги истории (8 шагов) — каркас драматургии по методике проекта (§7.10): книга → четыре акта → главы; черновики в драматургия/.
+    `to_canon` — внести черновики в документ каркасов библиотеки и закоммитить. Возвращает результат прогона."""
     from .. import circles as circles_mod
 
     ws, cfg, lib = _ctx()
@@ -92,13 +92,13 @@ def circles(
 
 
 def regress(llm: bool = False) -> dict:
-    """Прогон регрессионного корпуса золотых тестов (FR-R2). Красная регрессия — `StepExit(1)`."""
+    """Прогон регрессионного корпуса золотых тестов (§7.13). Красная регрессия — `StepExit(1)`."""
     ws, cfg, lib = _ctx()
     report = regression_mod.run_regression(ws, llm=llm, cfg=cfg)
     if not report["всего"]:
         secho(
             "⚠ Корпус золотых тестов ПУСТ (регрессия/золотые/) — регрессия ничего не проверила и зелёной "
-            "считаться не может (FR-R3). Пополните корпус: `konveyer add-golden` (FR-R1).",
+            "считаться не может (§7.13). Пополните корпус: `konveyer add-golden` (§7.13).",
             fg=colors.YELLOW,
         )
     elif not report.get("выполнено"):
@@ -120,7 +120,7 @@ def regress(llm: bool = False) -> dict:
         why = report.get("причина") or "пропущены ожидаемые флаги"
         secho(
             f"Регрессия КРАСНАЯ: {why}{' ' + str(report['провалено']) if report['провалено'] else ''} "
-            "(FR-R3: смена конфигурации заблокирована).",
+            "(§7.13: смена конфигурации заблокирована).",
             fg=colors.RED,
         )
         raise StepExit(1)
@@ -131,7 +131,7 @@ def add_golden(
     test_id: str, fragment_file: Path, expect: list[str] | None = None, focal: str = "", year: int | None = None,
     echelon: str = "Э1",
 ) -> Path:
-    """Добавить золотой тест из пойманной автором ошибки (FR-R1). Возвращает путь теста."""
+    """Добавить золотой тест из пойманной автором ошибки (FR-RG-1). Возвращает путь теста."""
     ws, cfg, lib = _ctx()
     test = GoldenTest(
         test_id=test_id,

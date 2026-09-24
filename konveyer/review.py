@@ -1,4 +1,4 @@
-"""Review: пакет приёмки автора и разбор правок (FR-E1, FR-E2, FR-V2.5)."""
+"""Review: пакет приёмки автора и разбор правок (§7.7, §7.6)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from .schemas import CheckResult, Edit, Flag, Resolution, Verdict
 
 
 def _anchor(text: str, quote: str, marker: str) -> str:
-    """Якорь флага в тексте (FR-E1): маркер после первого вхождения цитаты."""
+    """Якорь флага в тексте (§7.7): маркер после первого вхождения цитаты."""
     quote = quote.strip()
     if quote and quote in text and marker not in text:
         return text.replace(quote, quote + marker, 1)
@@ -20,7 +20,7 @@ def _anchor(text: str, quote: str, marker: str) -> str:
 
 
 def build_review_pack(ws: Workspace, chapter: int, draft: int) -> Path:
-    """FR-E1: текст с якорями флагов Э1/Э2 + форма правок + форма решений по самоволкам."""
+    """§7.7: текст с якорями флагов Э1/Э2 + форма правок + форма решений по самоволкам."""
     chdir = ws.chapter_dir(chapter)
     text = ws.draft_path(chapter, draft).read_text(encoding="utf-8")
 
@@ -64,7 +64,7 @@ def build_review_pack(ws: Workspace, chapter: int, draft: int) -> Path:
         lines.append("- нет")
     taste = verifier2.load_taste(ws, chapter)
     if taste:
-        lines += ["", "## Вкус (советы, не блокируют приёмку; 02 §6.1)", ""]
+        lines += ["", "## Вкус (советы, не блокируют приёмку; правила вкуса документа стиля)", ""]
         for f in taste:
             lines.append(f"- **{f.flag_id}** — {f.rule}; {f.recommendation}")
             lines.append(f"  > {f.quote}")
@@ -95,7 +95,7 @@ def build_review_pack(ws: Workspace, chapter: int, draft: int) -> Path:
             + "\n",
         )
 
-    # форма решений по самоволкам (FR-V2.5): пересобирается по ТЕКУЩЕМУ флаги.json при каждом
+    # форма решений по самоволкам (§7.6): пересобирается по ТЕКУЩЕМУ флаги.json при каждом
     # review (2.9) — решения по флагам, которые остались, сохраняются; исчезнувшие флаги
     # («фантомные самоволки» прошлого прогона Э2) не блокируют приёмку
     rebuild_resolutions(ws, chapter, samovolki)
@@ -151,7 +151,7 @@ def rebuild_resolutions(ws: Workspace, chapter: int, samovolki: list[Flag]) -> l
 
 
 class EditsFormatError(ValueError):
-    """Ошибка формата правки.md с номером строки (FR-E2)."""
+    """Ошибка формата правки.md с номером строки (§7.7)."""
 
     def __init__(self, path: Path, line: int, message: str):
         super().__init__(f"{path.name}:{line}: {message}")
@@ -238,7 +238,7 @@ def parse_edits_text(text: str, chapter: int, path: Path | None = None) -> list[
 
 
 def parse_edits_md(ws: Workspace, chapter: int) -> list[Edit]:
-    """FR-E2: правки.md (пары «было → стало» и/или свободные указания) → правки.jsonl."""
+    """§7.7: правки.md (пары «было → стало» и/или свободные указания) → правки.jsonl."""
     path = ws.chapter_dir(chapter) / "правки.md"
     if not path.exists():
         raise FileNotFoundError(f"Нет файла правок {path}. Сначала `konveyer review {chapter}`.")

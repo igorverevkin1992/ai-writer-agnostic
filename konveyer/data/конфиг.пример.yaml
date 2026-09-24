@@ -1,39 +1,39 @@
-# КОНВЕЙЕР · конфиг.yaml (Д-6, Д-11, Д-12, R-6)
-# Точные ID и параметры моделей впишите при настройке; изменение — записью в журнал 3.6.
+# КОНВЕЙЕР · конфиг.yaml рабочей области (раздел 9 ТЗ: адаптеры моделей; 7.15: сохранность)
+# Точные ID и параметры моделей впишите при настройке; смена модели — записью в журнал решений и пере-тест (7.14).
 
 library_dir: "Библиотека"
 
-writer:                      # Писатель (§6.1) — пин версии (Р-016)
+writer:                      # Писатель (FR-AD-1: провайдер, модель, параметры и цены — только здесь)
   provider: gemini
-  model: "gemini-3.1-pro"    # R-6: уточнить точный ID при старте (`konveyer doctor` сверяет пины с API)
-  params:                    # Д-6: параметры, при которых пройден отбор; передаются в SDK как есть
+  model: "gemini-3.1-pro"    # точный ID уточните при старте (`konveyer доктор` сверяет пины с API)
+  params:                    # параметры, при которых модель прошла отбор; передаются в SDK как есть
     thinking_config:         # уровень размышлений (google-genai: ThinkingConfig.thinking_level)
       thinking_level: HIGH   # MINIMAL | LOW | MEDIUM | HIGH; HIGH = значение провайдера для Gemini 3 Pro
-  # цены за 1 млн токенов для оценки стоимости в журналы/api.jsonl (§6.3); 0 = не считать
+  # цены за 1 млн токенов для расчёта стоимости в журналы/api.jsonl (FR-CT-1); 0 = не считать
   price_in_per_1m: 0.0
   price_out_per_1m: 0.0
 
-verifier2:                   # Верификатор-2 (§6.2, Д-11)
+verifier2:                   # Верификатор-2 (FR-AD-2)
   provider: anthropic
   model: "claude-sonnet-4-5" # пин точного ID при настройке
   params:
     max_tokens: 8192
 
-canonist:                    # Канонист (§6.2, Д-11)
+canonist:                    # Канонист (FR-AD-2); аналитик, линтер и архивариус наследуют его, если не заданы
   provider: anthropic
   model: "claude-sonnet-4-5"
   params:
     max_tokens: 8192
 
-api:                         # §6.3
+api:                         # повторы и таймауты вызовов (FR-AD-4)
   retries: 3
   backoff_base_s: 2.0
   timeout_s: 120
 
-window_soft_limit_chars: 80000   # Д-12
-auto_retries_verify1: 2          # §5.4
-edit_cycle_max_iterations: 3     # FR-E3
-backup_remotes_min: 2            # NFR-6
-# backup_dir: "../архивы"    # архив рабочей области после каждой приёмки главы (п. 29); без него — `konveyer backup --архив`
+window_soft_limit_chars: 80000   # мягкий предел окна Писателя (FR-WN-7)
+auto_retries_verify1: 2          # авто-повторов генерации при браке Э1 (7.2)
+edit_cycle_max_iterations: 3     # итераций цикла правок (§7.8)
+backup_remotes_min: 2            # мест хранения библиотеки, ниже — предупреждение доктора (FR-BK-1)
+# backup_dir: "../архивы"    # архив рабочей области после каждой приёмки главы (FR-BK-2); без него — `konveyer бэкап --архив`
 # backup_keep: 10                # сколько последних архивов хранить
-# commit_author: "Автор <автор@example.com>"  # Д-8
+# commit_author: "Автор <автор@example.com>"  # авторство коммитов библиотеки

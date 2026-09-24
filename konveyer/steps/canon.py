@@ -1,5 +1,5 @@
 """Канон и бэкап: lint (линтер канона), snapshot (срез тома 3.5), rollback (сценарий Г), retest (сценарий В),
-canon_commit (сценарий Б), backup (NFR-6), library_split (аудит 2, п. 28)."""
+canon_commit (сценарий Г), backup (§7.15), library_split (FR-BK-4)."""
 
 from __future__ import annotations
 
@@ -92,8 +92,8 @@ def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False,
 
 
 def snapshot(volume: int | None = None) -> Path:
-    """Черновик снапшота тома (реестр 3.5): кто что знает, закладки, хронология.
-    В канон снапшот вносит `konveyer volume close N`. Возвращает путь черновика."""
+    """Черновик снапшота тома (документ типа «снапшоты», §7.12): кто что знает, закладки, хронология.
+    В канон снапшот вносит `konveyer том закрыть N`. Возвращает путь черновика."""
     from .. import snapshot as snapshot_mod
 
     ws, cfg, lib = _ctx()
@@ -103,7 +103,7 @@ def snapshot(volume: int | None = None) -> Path:
     exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
     path = snapshot_mod.build_snapshot(ws, volume)
     secho(f"Срез тома {volume}: {path}", fg=colors.GREEN)
-    echo("Внесите его в библиотеку правкой канона и `konveyer canon-commit` (FR-K3 соблюдён).")
+    echo("Внесите его в библиотеку правкой канона и `konveyer canon-commit` (§7.9 соблюдён).")
     return path
 
 
@@ -159,7 +159,7 @@ def rollback(chapter: int, to: str | None = None, yes: bool = False, confirm: Co
 
 
 def retest(chapter: int = 1, fix: bool = False) -> Path:
-    """Пере-тест моделей (сценарий В, Д-10): пакет раунда 1 протокола отбора; прогон полуручной.
+    """Пере-тест моделей (§7.14): пакет раунда 1 протокола отбора; прогон полуручной.
     Возвращает папку пакета (или черновика записи журнала при `fix`)."""
     ws, cfg, lib = _ctx()
     if fix:
@@ -170,7 +170,7 @@ def retest(chapter: int = 1, fix: bool = False) -> Path:
                 else "отчёт регрессии устарел (изменились конфиг.yaml, шаблоны или нормы)"
                 if regression_mod.is_stale(ws) else "регрессия не запускалась"
             )
-            raise StepError(f"фиксация retest запрещена: {why} (FR-R3). Сначала `konveyer regress` с непустым корпусом.")
+            raise StepError(f"фиксация пере-теста запрещена: {why} (FR-RT-2). Сначала `konveyer регрессия` с непустым корпусом.")
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
         from .. import pins
 
@@ -295,7 +295,7 @@ def _compile_window_to(ws: Workspace, cfg: Config, lib: Path, chapter: int, targ
 
 
 def canon_commit(message: str, yes: bool = False, confirm: Confirm | None = None) -> str | None:
-    """Правка канона автором (сценарий Б): валидация структуры, перегенерация выгрузок, коммит.
+    """Правка канона автором (сценарий Г): валидация структуры, перегенерация выгрузок, коммит.
     Возвращает SHA коммита (None — коммитить было нечего)."""
     ws, cfg, lib = _ctx()
     if not gitops.is_repo(lib):
@@ -313,7 +313,7 @@ def canon_commit(message: str, yes: bool = False, confirm: Confirm | None = None
             and not gitops.check_norm_change_message(message)
         ):
             secho(
-                "⚠ Изменены нормы (02 §5), но в сообщении коммита нет ссылки Р-№ на запись "
+                "⚠ Изменены нормы стиля, но в сообщении коммита нет ссылки Р-№ на запись "
                 "в 36_Журнал — предупреждение, не блокировка (сценарий Б).",
                 fg=colors.YELLOW,
             )
@@ -348,7 +348,7 @@ def library_split(
     target: str | None = None, show: bool = False, with_history: bool = False, yes: bool = False,
     confirm: Confirm | None = None,
 ) -> None:
-    """Вынести библиотеку канона в отдельный git-репозиторий рядом с рабочей областью (аудит 2, п. 28):
+    """Вынести библиотеку канона в отдельный git-репозиторий рядом с рабочей областью (FR-BK-4):
     перенос папки, git init + первый коммит, library_dir в конфиг.yaml, .gitignore в прежнем репозитории."""
     ws, cfg, lib = _ctx()
     try:
@@ -374,8 +374,8 @@ def backup(
     folder: str | None = None, push: bool = False, archive: bool = False, add_remote: tuple[str, str] | None = None,
     yes: bool = False, confirm: Confirm | None = None,
 ) -> None:
-    """Сохранность (NFR-6): состояние копий; `push` — во все remotes; `archive` — zip рабочей области;
-    `add_remote` — второе место хранения (папка на внешнем диске = без облака, §1.3 ТЗ)."""
+    """Сохранность (§7.15): состояние копий; `push` — во все remotes; `archive` — zip рабочей области;
+    `add_remote` — второе место хранения (папка на внешнем диске = без облака, FR-BK-1)."""
     ws, cfg, lib = _ctx()
     if not gitops.is_repo(lib):
         raise StepError("библиотека не под git — инициализируйте репозиторий (`konveyer library-split` — как отдельный).")
@@ -397,7 +397,7 @@ def backup(
     remotes = gitops.remotes(lib)
     echo(f"Удалённых мест: {len(remotes)} ({', '.join(remotes) or 'нет'}); требуется ≥{cfg.backup_remotes_min}.")
     if len(remotes) < cfg.backup_remotes_min:
-        secho("⚠ Добавьте удалённые репозитории/внешние копии (NFR-6): `konveyer backup --добавить-remote <имя> <url|папка>`.",
+        secho("⚠ Добавьте удалённые репозитории/внешние копии (FR-BK-1): `konveyer backup --добавить-remote <имя> <url|папка>`.",
               fg=colors.YELLOW)
     if gitops.dirty(lib):
         secho("⚠ В библиотеке незакоммиченные изменения (`konveyer canon-commit`).", fg=colors.YELLOW)

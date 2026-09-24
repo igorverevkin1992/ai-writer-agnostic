@@ -1,4 +1,4 @@
-"""Writer-adapter: вызовы Писателя (FR-W1, FR-W2) и дословные правки кодом (Р-023)."""
+"""Адаптер Писателя: вызовы Писателя (§7.4) и дословные правки кодом (§7.8)."""
 
 from __future__ import annotations
 
@@ -38,13 +38,13 @@ def _save_draft(ws: Workspace, chapter: int, k: int, text: str, cfg: Config, mod
 
 
 def write_chapter(ws: Workspace, cfg: Config, chapter: int, k: int) -> None:
-    """FR-W1: отправляет окно, сохраняет ответ как черновик_k.md. Контекст — только окно."""
+    """§7.4: отправляет окно, сохраняет ответ как черновик_k.md. Контекст — только окно."""
     window = ws.window_path(chapter).read_text(encoding="utf-8")
     text = adapters.call_model(cfg.writer, cfg.api, "", window, ws.logs, role="писатель", chapter=chapter)
     _save_draft(ws, chapter, k, text, cfg, mode="генерация")
 
 
-# ------------------------------------------------------------ варианты A/B (аудит 2, п. 24б)
+# ------------------------------------------------------------ варианты A/B (FR-WR-4)
 
 
 def variant_suffix(label: str) -> str:
@@ -113,7 +113,7 @@ def choose_variant(ws: Workspace, chapter: int, k: int, label: str) -> None:
     guard.write_text(ws.chapter_dir(chapter) / f"черновик_{k}.meta.json", json.dumps(meta, ensure_ascii=False, indent=2) + "\n")
 
 
-# ------------------------------------------------------------ правки кодом (аудит 2, п. 19; Р-023)
+# ------------------------------------------------------------ правки кодом (§7.8)
 
 
 @dataclass
@@ -144,7 +144,7 @@ def find_quote(text: str, quote: str) -> list[tuple[int, int]]:
 
 
 def apply_edits_text(text: str, edits: list[Edit]) -> LocalEdits:
-    """Р-023: пары БЫЛО/СТАЛО, чьё «БЫЛО» найдено в тексте ровно один раз, применяются кодом
+    """Дословные правки: пары БЫЛО/СТАЛО, чьё «БЫЛО» найдено в тексте ровно один раз, применяются кодом
     (пустое «СТАЛО» — удаление). Свободные указания и не найденные / неоднозначные цитаты —
     остаются Писателю. Правки применяются по порядку к уже изменённому тексту."""
     result = LocalEdits(text=text)
@@ -174,7 +174,7 @@ def apply_edits_text(text: str, edits: list[Edit]) -> LocalEdits:
 
 def apply_edits_locally(ws: Workspace, cfg: Config, chapter: int, черновик_k: int, edits: list[Edit],
                         new_k: int | None = None) -> tuple[int, LocalEdits]:
-    """Правки кодом от черновика черновик_k (база приёмки, FR-E3): новый черновик_{new_k} с mode «правки (код)».
+    """Правки кодом от черновика черновик_k (база приёмки, §7.8): новый черновик_{new_k} с mode «правки (код)».
     Возвращает (номер нового черновика, итог). Если что-то осталось Писателю — черновик НЕ пишется:
     промежуточный текст отдаётся в `apply_edits(..., base_text=…)`."""
     base_text = ws.draft_path(chapter, черновик_k).read_text(encoding="utf-8")
@@ -187,8 +187,8 @@ def apply_edits_locally(ws: Workspace, cfg: Config, chapter: int, чернови
 
 
 def edit_prompt(ws: Workspace, chapter: int, черновик_k: int, edits: list[Edit], draft_text: str | None = None) -> str:
-    """FR-W2: принятый черновик + правки + инструкция «внести точно» (шаблон в шаблоны/).
-    `draft_text` — промежуточный текст после правок кодом (Р-023); без него — сам черновик_k."""
+    """§7.4: принятый черновик + правки + инструкция «внести точно» (шаблон в шаблоны/).
+    `draft_text` — промежуточный текст после правок кодом; без него — сам черновик_k."""
     tpl = None
     for cand in (ws.root / "промпты" / "правки.md.j2", ws.templates / "правки.md.j2"):
         if cand.exists():
@@ -205,7 +205,7 @@ def edit_prompt(ws: Workspace, chapter: int, черновик_k: int, edits: lis
 
 def apply_edits(ws: Workspace, cfg: Config, chapter: int, черновик_k: int, edits: list[Edit], new_k: int | None = None,
                 base_text: str | None = None, applied_locally: list[int] | None = None) -> int:
-    """Вызов Писателя в режиме правок от черновика черновик_k (база приёмки, FR-E3); возвращает номер нового черновика.
+    """Вызов Писателя в режиме правок от черновика черновик_k (база приёмки, §7.8); возвращает номер нового черновика.
     `base_text` — текст с уже применёнными кодом правками (Писателю уходят только `edits`)."""
     prompt = edit_prompt(ws, chapter, черновик_k, edits, draft_text=base_text)
     guard.write_text(ws.chapter_dir(chapter) / "промпт_правок.md", prompt)

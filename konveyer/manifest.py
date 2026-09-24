@@ -124,7 +124,7 @@ class Manifest(BaseModel):
 
     def missing_types(self, library: Path, types: dict[str, catalog.TypeSpec], modules: dict[str, catalog.ModuleSpec],
                       volume: int | None) -> dict[str, list[str]]:
-        """Чего не хватает по включённым модулям: {модуль: [типы без документа]} (FR-ON-19 п. 3, FR-ON-20)."""
+        """Чего не хватает по включённым модулям: {модуль: [типы без документа]} (FR-ON-19, FR-ON-20)."""
         out: dict[str, list[str]] = {}
         for m in modules.values():
             if not (m.base or self.module_enabled(m.name, modules)):

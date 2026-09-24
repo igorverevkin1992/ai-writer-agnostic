@@ -1,9 +1,9 @@
 """CLI универсального конвейера книжной серии (интерфейсы из реестра модулей 4.2; язык — русский, NFR-2).
 
-Каждый шаг такта исполним отдельной командой (FR-O2): отказ любого компонента
+Каждый шаг такта исполним отдельной командой (§7.2): отказ любого компонента
 не блокирует такт — артефакты человекочитаемы, ручной режим всегда возможен (NFR-3).
 
-Тонкая обёртка над ядром `konveyer/steps/*` (аудит 2, п. 30): здесь только регистрация команд typer
+Тонкая обёртка над ядром `konveyer/steps/*` (§8.1): здесь только регистрация команд typer
 (имена, опции, панели справки), вызов функции ядра и перевод её исключений в сообщения и коды
 возврата (`_friendly`). Логика шагов, тексты сообщений и подтверждения — в ядре; typer в ядре нет.
 """
@@ -126,14 +126,14 @@ def _friendly(fn):
 @app.command("export", rich_help_panel="Такт главы")
 @_friendly
 def cmd_export() -> None:
-    """Перегенерировать все выгрузки из MD-библиотеки (FR-X1…FR-X3)."""
+    """Перегенерировать все выгрузки из MD-библиотеки (§6.4)."""
     tact.export()
 
 
 @app.command("compile", rich_help_panel="Такт главы")
 @_friendly
 def cmd_compile(chapter: int) -> None:
-    """Собрать окно контекста главы N (FR-C1…FR-C6). Экспорт выполняется автоматически (риск R-5)."""
+    """Собрать окно контекста главы N (§7.3). Экспорт выполняется автоматически."""
     tact.compile(chapter)
 
 
@@ -142,7 +142,7 @@ def cmd_compile(chapter: int) -> None:
 def cmd_write(
     chapter: int,
     manual: bool = typer.Option(
-        False, "--manual", help="Зарегистрировать черновик, сохранённый вручную как черновик_{k+1}.md (NFR-3)."
+        False, "--manual", help="Зарегистрировать черновик, сохранённый вручную как черновик_{k+1}.md (FR-RL-3)."
     ),
     variants: int = typer.Option(
         1, "--варианты", "--variants", min=1, max=4,
@@ -152,14 +152,14 @@ def cmd_write(
         None, "--выбрать", "--choose", help="Сделать вариант (alt1, alt0 — прежний основной) текущим черновик_k.md; состояние не меняется.",
     ),
 ) -> None:
-    """Отправить окно Писателю, сохранить черновик_k.md (FR-W1). `--варианты 2` — A/B, `--выбрать alt1` — выбор варианта."""
+    """Отправить окно Писателю, сохранить черновик_k.md (§7.4). `--варианты 2` — A/B, `--выбрать alt1` — выбор варианта."""
     tact.write(chapter, manual=manual, variants=variants, choose=choose)
 
 
 @app.command("verify1", rich_help_panel="Такт главы")
 @_friendly
 def cmd_verify1(chapter: int) -> None:
-    """Формальные проверки Э1 (FR-V1.*). Брак метрик → авто-повтор генерации (≤2, §5.4)."""
+    """Формальные проверки Э1 (§7.5). Брак метрик → авто-повтор генерации (≤2, §7.2)."""
     tact.verify1(chapter)
 
 
@@ -167,22 +167,22 @@ def cmd_verify1(chapter: int) -> None:
 @_friendly
 def cmd_verify2(
     chapter: int,
-    manual: bool = typer.Option(False, "--manual", help="Принять флаги.json, заполненный вручную (NFR-3)."),
-    taste: bool = typer.Option(False, "--вкус", "--taste", help="Дополнительно: советы по вкусу автора (02 §6.1) — не блокируют приёмку."),
+    manual: bool = typer.Option(False, "--manual", help="Принять флаги.json, заполненный вручную (FR-RL-3)."),
+    taste: bool = typer.Option(False, "--вкус", "--taste", help="Дополнительно: советы по вкусу автора (правила вкуса документа стиля) — не блокируют приёмку."),
     again: bool = typer.Option(
         False, "--повторно", "--после-правок", "--again",
         help="Повторный Э2 по текущему черновику после правок (из «правки»/«дифф-контроль»): совещательно — "
              "флаги_повторно.json и раздел в приёмка.md; FSM, флаги.json и решения не меняются.",
     ),
 ) -> None:
-    """Смысловые проверки Э2 (FR-V2.*). `--повторно` — второй прогон после правок (advisory)."""
+    """Смысловые проверки Э2 (§7.6). `--повторно` — второй прогон после правок (advisory)."""
     tact.verify2(chapter, manual=manual, taste=taste, again=again)
 
 
 @app.command("review", rich_help_panel="Такт главы")
 @_friendly
 def cmd_review(chapter: int) -> None:
-    """Пакет приёмки автора: приёмка.md + правки.md + решения.json (FR-E1)."""
+    """Пакет приёмки автора: приёмка.md + правки.md + решения.json (§7.7)."""
     tact.review(chapter)
 
 
@@ -192,7 +192,7 @@ def cmd_apply_edits(
     chapter: int,
     manual: bool = typer.Option(False, "--manual", help="Черновик с правками сохранён вручную как черновик_{k+1}.md."),
 ) -> None:
-    """Внесение правок: дословные БЫЛО/СТАЛО — кодом (Р-023), свободные указания — Писателем (FR-W2, FR-E3)."""
+    """Внесение правок: дословные БЫЛО/СТАЛО — кодом, свободные указания — Писателем (§7.8)."""
     tact.apply_edits(chapter, manual=manual)
 
 
@@ -208,14 +208,14 @@ def cmd_diff_check(
         help="С --авторская-правка: снять только эти самоволия (номер в списке или подстрока текста); можно несколько раз.",
     ),
 ) -> None:
-    """Дифф-контроль до/после правок (FR-V1.10, FR-E3)."""
+    """Дифф-контроль до/после правок (FR-V1-6, §7.8)."""
     tact.diff_check(chapter, author_fix=author_fix, fragments=fragments)
 
 
 @app.command("accept", rich_help_panel="Такт главы")
 @_friendly
 def cmd_accept(chapter: int, yes: bool = typer.Option(False, "--yes", "-y", help="Подтверждение без вопроса.")) -> None:
-    """Приёмка главы автором (FR-E4): только из «дифф-контроль: чисто», с явным подтверждением."""
+    """Приёмка главы автором (§7.7): только из «дифф-контроль: чисто», с явным подтверждением."""
     tact.accept(chapter, yes=yes, confirm=typer.confirm)
 
 
@@ -227,7 +227,7 @@ def cmd_canonize(
     yes: bool = typer.Option(False, "--yes", "-y"),
     redo: bool = typer.Option(False, "--заново", "--redo", help="Пересобрать пакет, даже если автор его уже правил (правки пропадут)."),
 ) -> None:
-    """Канонист: пакет записей в канон (FR-K1); применение — только после подписи (FR-K2)."""
+    """Канонист: пакет записей в канон (§7.9); применение — только после подписи (FR-CN-2)."""
     tact.canonize(chapter, apply=apply, yes=yes, redo=redo, confirm=typer.confirm)
 
 
@@ -240,7 +240,7 @@ def cmd_status(
     chapter: int | None = typer.Argument(None, help="Номер главы — подробная карточка."),
     volume: int | None = typer.Option(None, "--том", "--volume", help="Том (по умолчанию — текущий из конфиг.yaml)."),
 ) -> None:
-    """Состояния глав и следующий шаг (FR-D2); `konveyer status N` — карточка главы; `--том N` — главы тома N."""
+    """Состояния глав и следующий шаг (§8.1); `konveyer status N` — карточка главы; `--том N` — главы тома N."""
     overview.status(chapter, volume=volume)
 
 
@@ -253,7 +253,7 @@ def cmd_resolve(
     registry: str | None = typer.Option(None, "--реестр", "--registry", help="Целевой реестр (имя типа: эпистемика, закладки, континуити…)."),
     reason: str = typer.Option("", "--причина", "--reason", help="Причина отклонения флага (обязательна для «отклонить»)."),
 ) -> None:
-    """Решения по флагам без ручной правки JSON (FR-RV-2): самоволку — вычеркнуть или канонизировать, любой флаг — отклонить с причиной.
+    """Решения по флагам без ручной правки JSON (§7.7): самоволку — вычеркнуть или канонизировать, любой флаг — отклонить с причиной.
 
     Без аргументов — список; с флагом и решением — записывает решение.
     """
@@ -276,7 +276,7 @@ def cmd_check(
     year: int | None = typer.Option(None, "--год", "--year"),
     volume_words: int | None = typer.Option(None, "--объём", "--volume"),
 ) -> None:
-    """Прогнать проверки Э1 по произвольному файлу — вне такта и FSM (ручной режим, NFR-3)."""
+    """Прогнать проверки Э1 по произвольному файлу — вне такта и FSM (ручной режим, FR-RL-3)."""
     quality.check(file, chapter=chapter, focal=focal, year=year, volume_words=volume_words)
 
 
@@ -328,7 +328,7 @@ def cmd_types(
 @app.command("учёт", rich_help_panel="Обзор")
 @_friendly
 def cmd_accounting(volume: int | None = typer.Option(None, "--том", "--volume", help="Номер тома (по умолчанию — текущий).")) -> None:
-    """Стоимость и время по главам, тому и ролям; прогноз остатка тома (FR-CT-3, FR-EC-4)."""
+    """Стоимость и время по главам, тому и ролям; прогноз остатка тома (FR-CT-3)."""
     overview.accounting(volume)
 
 
@@ -353,7 +353,7 @@ def cmd_diff(
 @app.command("log", rich_help_panel="Обзор")
 @_friendly
 def cmd_log(n: int = typer.Option(15, "-n", help="Сколько последних вызовов показать.")) -> None:
-    """Последние API-вызовы: роль, модель, токены, стоимость (журнал §6.3)."""
+    """Последние API-вызовы: роль, модель, токены, стоимость (FR-CT-1)."""
     overview.log(n)
 
 
@@ -363,7 +363,7 @@ def cmd_panel(
     port: int = typer.Option(8765, "--port", help="Порт локального сервера."),
     open_browser: bool = typer.Option(True, "--открыть/--не-открывать", "--open/--no-open"),
 ) -> None:
-    """Панель (этап 3): такт целиком в браузере — очередь, чтение с флагами,
+    """Панель (§8.2): такт целиком в браузере — очередь, чтение с флагами,
     правки, решения, дифф, приёмка, дашборд, журнал. Только 127.0.0.1, без облака."""
     from . import server as server_mod
 
@@ -400,11 +400,11 @@ def cmd_circles(
     chapter: int | None = typer.Option(None, "--глава", "--chapter", help="Только одна глава (для охвата «главы»)."),
     redo: bool = typer.Option(False, "--заново", "--redo", help="Пересчитать уже существующие круги."),
     to_canon: bool = typer.Option(
-        False, "--в-канон", "--to-canon", help="Внести черновики кругов в документ 2.1 библиотеки и закоммитить (Д-8)."
+        False, "--в-канон", "--to-canon", help="Внести черновики кругов в документ каркасов библиотеки и закоммитить."
     ),
     yes: bool = typer.Option(False, "--yes", "-y"),
 ) -> None:
-    """Круги истории (8 шагов) — каркас драматургии (Р-020): книга → четыре акта → главы; черновики в драматургия/."""
+    """Круги истории (8 шагов) — каркас драматургии по методике проекта (§7.10): книга → четыре акта → главы; черновики в драматургия/."""
     quality.circles(scope, chapter=chapter, redo=redo, to_canon=to_canon, yes=yes, confirm=typer.confirm)
 
 
@@ -426,13 +426,13 @@ def cmd_lint(
 @app.command("snapshot", rich_help_panel="Канон и бэкап")
 @_friendly
 def cmd_snapshot(volume: int | None = typer.Argument(None, help="Номер тома (по умолчанию — текущий).")) -> None:
-    """Черновик снапшота тома (реестр 3.5): кто что знает, закладки, хронология.
-    В канон снапшот вносит `konveyer volume close N`."""
+    """Черновик снапшота тома (документ типа «снапшоты», §7.12): кто что знает, закладки, хронология.
+    В канон снапшот вносит `konveyer том закрыть N`."""
     canon.snapshot(volume)
 
 
 volume_app = typer.Typer(
-    help="Тома (аудит 2, п. 27): сводка тома, закрытие тома (снапшот 3.5, тег, рукопись, статистика), переключение текущего тома.",
+    help="Тома (§7.12): сводка тома, закрытие тома (снапшот, тег, рукопись, статистика), переключение текущего тома.",
     no_args_is_help=True,
 )
 app.add_typer(volume_app, name="volume", rich_help_panel="Канон и бэкап", hidden=True)
@@ -455,7 +455,7 @@ def cmd_volume_close(
     yes: bool = typer.Option(False, "--yes", "-y", help="Подтверждение без вопросов (снапшот в канон; переключение тома — только явным ответом)."),
     next_volume: bool | None = typer.Option(None, "--следующий/--без-переключения", help="Переключить config.volume на N+1 без вопроса / не переключать."),
 ) -> None:
-    """Закрыть том: все главы «зафиксировано» → снапшот 3.5 в библиотеку (35_Снапшот_ТомN.md, коммит) →
+    """Закрыть том: все главы «зафиксировано» → снапшот в библиотеку (35_Снапшот_ТомN.md, коммит) →
     тег `том-N` → рукопись рукопись/ТомN.md (+ .docx при python-docx) → статистика → переход к тому N+1."""
     volume_steps.volume_close(volume, again=again, yes=yes, next_volume=next_volume, confirm=typer.confirm)
 
@@ -470,7 +470,7 @@ def cmd_volume_open(volume: int = typer.Argument(..., help="Номер тома,
 @app.command("doctor", rich_help_panel="Обзор")
 @_friendly
 def cmd_doctor() -> None:
-    """Диагностика установки и готовности конвейера (NFR-1)."""
+    """Диагностика установки и готовности проекта (FR-LC-2, FR-BK-4)."""
     overview.doctor()
 
 
@@ -478,17 +478,17 @@ def cmd_doctor() -> None:
 @_friendly
 def cmd_rollback(
     chapter: int,
-    to: str | None = typer.Option(None, "--to", help="Целевое состояние (§5.4); без него — на один шаг назад."),
+    to: str | None = typer.Option(None, "--to", help="Целевое состояние (§7.2); без него — на один шаг назад."),
     yes: bool = typer.Option(False, "--yes", "-y"),
 ) -> None:
-    """Откат главы в предыдущее состояние (сценарий Г); без --to — на шаг назад по цепочке состояний §5.4."""
+    """Откат главы в предыдущее состояние (сценарий Е, FR-SC-4); без --to — на шаг назад по цепочке состояний такта (§7.2)."""
     canon.rollback(chapter, to=to, yes=yes, confirm=typer.confirm)
 
 
 @app.command("regress", rich_help_panel="Качество и регрессия")
 @_friendly
 def cmd_regress(llm: bool = typer.Option(False, "--llm", help="Включить тесты Э2.")) -> None:
-    """Прогон регрессионного корпуса золотых тестов (FR-R2)."""
+    """Прогон регрессионного корпуса золотых тестов (§7.13)."""
     quality.regress(llm=llm)
 
 
@@ -502,7 +502,7 @@ def cmd_add_golden(
     year: int | None = typer.Option(None, "--year"),
     echelon: str = typer.Option("Э1", "--echelon"),
 ) -> None:
-    """Добавить золотой тест из пойманной автором ошибки (FR-R1)."""
+    """Добавить золотой тест из пойманной автором ошибки (FR-RG-1)."""
     quality.add_golden(test_id, fragment_file, expect=expect, focal=focal, year=year, echelon=echelon)
 
 
@@ -511,7 +511,7 @@ def cmd_add_golden(
 def cmd_dashboard(
     open_browser: bool = typer.Option(False, "--открыть", "--open", help="Открыть в браузере."),
 ) -> None:
-    """Собрать дашборд.html (FR-D1)."""
+    """Собрать дашборд.html (§8.2)."""
     path = overview.dashboard()
     if open_browser:
         import webbrowser
@@ -522,7 +522,7 @@ def cmd_dashboard(
 @app.command("run", rich_help_panel="Такт главы")
 @_friendly
 def cmd_run(chapter: int) -> None:
-    """Такт целиком с паузами на шагах автора (FR-O1): review, accept, canonize."""
+    """Такт целиком с паузами на шагах автора (§7.2): приёмка, принятие, канон."""
     tact.run(chapter)
 
 
@@ -530,9 +530,9 @@ def cmd_run(chapter: int) -> None:
 @_friendly
 def cmd_retest(
     chapter: int = typer.Option(1, "--chapter", help="Глава для свежего брифа пакета."),
-    fix: bool = typer.Option(False, "--зафиксировать", "--fix", help="Зафиксировать результаты (требует зелёной регрессии, FR-R3)."),
+    fix: bool = typer.Option(False, "--зафиксировать", "--fix", help="Зафиксировать результаты (требует зелёной регрессии, FR-RT-2)."),
 ) -> None:
-    """Пере-тест моделей (сценарий В, Д-10): пакет раунда 1 протокола отбора; прогон полуручной."""
+    """Пере-тест моделей (§7.14): пакет раунда 1 протокола отбора; прогон полуручной."""
     canon.retest(chapter=chapter, fix=fix)
 
 
@@ -542,7 +542,7 @@ def cmd_canon_commit(
     message: str = typer.Option(..., "-m", "--message", help="Сообщение коммита (изменение норм — со ссылкой Р-№)."),
     yes: bool = typer.Option(False, "--yes", "-y"),
 ) -> None:
-    """Правка канона автором (сценарий Б): валидация структуры, перегенерация выгрузок, коммит."""
+    """Правка канона автором (сценарий Г): валидация структуры, перегенерация выгрузок, коммит."""
     canon.canon_commit(message, yes=yes, confirm=typer.confirm)
 
 
@@ -555,7 +555,7 @@ def cmd_library_split(
                                       help="Перенести историю папки в новый репозиторий (git subtree split)."),
     yes: bool = typer.Option(False, "--yes", "-y"),
 ) -> None:
-    """Вынести библиотеку канона в отдельный git-репозиторий рядом с рабочей областью (аудит 2, п. 28):
+    """Вынести библиотеку канона в отдельный git-репозиторий рядом с рабочей областью (FR-BK-4):
     перенос папки, git init + первый коммит, library_dir в конфиг.yaml, .gitignore в прежнем репозитории."""
     canon.library_split(target=target, show=show, with_history=with_history, yes=yes, confirm=typer.confirm)
 
@@ -572,8 +572,8 @@ def cmd_backup(
     ),
     yes: bool = typer.Option(False, "--yes", "-y"),
 ) -> None:
-    """Сохранность (NFR-6): состояние копий; --push — во все remotes; --архив — zip рабочей области;
-    --добавить-remote — второе место хранения (папка на внешнем диске = без облака, §1.3 ТЗ)."""
+    """Сохранность (§7.15): состояние копий; --push — во все remotes; --архив — zip рабочей области;
+    --добавить-remote — второе место хранения (папка на внешнем диске = без облака, FR-BK-1)."""
     canon.backup(folder, push=push, archive=archive, add_remote=add_remote, yes=yes, confirm=typer.confirm)
 
 
@@ -582,14 +582,14 @@ def cmd_backup(
 def cmd_init(
     demo: bool = typer.Option(False, "--демо", "--demo", help="Развернуть демо-библиотеку и золотые тесты — играбельный пример."),
 ) -> None:
-    """Создать каркас рабочей области: конфиг.yaml, .env.example, папки (NFR-1)."""
+    """Создать каркас рабочей области: конфиг.yaml, .env.example, папки (FR-LC-3)."""
     setup.init(demo=demo)
 
 
 @app.command("импорт", rich_help_panel="Онбординг")
 @_friendly
 def cmd_import(source: str = typer.Argument(..., help="Файл, папка или .zip с материалами автора.")) -> None:
-    """Импортировать материалы в сырьё/: копии оригиналов, извлечения в Markdown, индекс (раздел 5.1)."""
+    """Импортировать материалы в сырьё/: копии оригиналов, извлечения в Markdown, индекс (§5.1)."""
     try:
         onboarding_steps.import_materials(source)
     except FileNotFoundError as e:

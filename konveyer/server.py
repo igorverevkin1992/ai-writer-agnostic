@@ -2,7 +2,7 @@
 
 Контур остаётся локальным (§1.3): сервер слушает ТОЛЬКО 127.0.0.1, наружу
 ничего не ходит, все операции — те же функции ядра `konveyer/steps`, что у CLI (FSM, guard и
-подтверждения сохраняются). Защита от чужих сайтов (аудит 4.2/4.3):
+подтверждения сохраняются). Защита от чужих сайтов (FR-SC-7, FR-SC-8):
 
 * каждый запрос обязан нести `Host: 127.0.0.1:<порт>` или `localhost:<порт>`
   — DNS-rebinding приходит с чужим Host и получает 403;
@@ -48,7 +48,7 @@ COMMANDS = {
     "snapshot", "calibrate", "doctor",
 }
 
-# допустимые уровни кругов истории (Р-020) и виды промптов ручного режима
+# допустимые уровни кругов истории и виды промптов ручного режима
 CIRCLE_SCOPES = ("книга", "акт", "глава")
 PROMPT_KINDS = ("verify2", "edits")
 
@@ -61,7 +61,7 @@ _PROGRESS_RE = re.compile(r"\[(\d+)/(\d+)\]")
 
 
 class Busy(RuntimeError):
-    """Сервер занят задачей или синхронной операцией → HTTP 423 (аудит 5.4)."""
+    """Сервер занят задачей или синхронной операцией → HTTP 423."""
 
 
 class _LiveBuffer(io.TextIOBase):
@@ -375,7 +375,7 @@ class PanelAPI:
     CANON_STATUS_TTL = 10.0  # секунд: коммит из терминала виден панели без события
 
     def canon_status(self) -> list[str]:
-        """Незакоммиченные файлы библиотеки (п. 25): `git status --porcelain` не чаще раза в CANON_STATUS_TTL,
+        """Незакоммиченные файлы библиотеки: `git status --porcelain` не чаще раза в CANON_STATUS_TTL,
         сброс — при любом изменении канона/задаче/событии наблюдателя."""
         now = time.monotonic()
         with self._cache_lock:
@@ -479,7 +479,7 @@ class PanelAPI:
         return read_log(self.ws.logs)[-n:]
 
     def window(self, n: int) -> dict:
-        """Окно контекста главы + флаг превышения лимита (FR-C5)."""
+        """Окно контекста главы + флаг превышения лимита (§7.3)."""
         path = self.ws.window_path(n)
         flag = self.ws.chapter_dir(n) / "window_size_флаг.md"
         return {
@@ -805,7 +805,7 @@ class PanelAPI:
         self.request_lint(wait=30.0)
 
     def lint(self) -> dict:
-        """GET без побочных эффектов (аудит 4.3): только текущий отчёт и флаги очереди."""
+        """GET без побочных эффектов (FR-AP-3): только текущий отчёт и флаги очереди."""
         from . import lint as lint_mod
 
         fresh = lint_mod.load_report(self.ws.logs)
@@ -874,7 +874,7 @@ class PanelAPI:
                 "canon_uncommitted": result.uncommitted, "canon_uncommitted_files": result.dirty_files}
 
     def _canon_change(self, writer, message: str, changed: list[str]) -> canonchange.ChangeResult:
-        """Изменение канона из панели — единым конвейером (п. 25) БЕЗ коммита: сессия записи → выгрузки →
+        """Изменение канона из панели — единым конвейером (П-3) БЕЗ коммита: сессия записи → выгрузки →
         линт (сводка сразу в ответе, без очереди наблюдателя) → состояние «незакоммичено» в /api/state;
         коммит — отдельным действием автора («Закоммитить канон» / `konveyer canon-commit`).
         Вызывать под `jobs.exclusive()`; подтверждение автор дал диалогом в панели (Д-8)."""
@@ -918,7 +918,7 @@ class PanelAPI:
             ),
             # подтверждение автор дал диалогом в панели (Д-8)
             "circles-canon": lambda: _job(quality.circles, "всё", chapter=None, redo=False, to_canon=True, yes=True),
-            "run": lambda: _job(tact.run, chapter),  # машинные шаги до паузы автора (FR-O1)
+            "run": lambda: _job(tact.run, chapter),  # машинные шаги до паузы автора (§7.2)
             "export": lambda: _job(tact.export),
             "compile": lambda: _job(tact.compile, chapter),
             "write": lambda: _job(tact.write, chapter, manual=False),
@@ -1215,7 +1215,7 @@ def make_handler(api: PanelAPI):
                 self.close_connection = True
                 self._error(f"тело запроса больше {MAX_BODY // (1024 * 1024)} МБ", 413)
             except VersionConflict as e:
-                # отдельный код: панель предлагает «различия / перечитать / перезаписать» (аудит 5.2)
+                # отдельный код: панель предлагает «различия / перечитать / перезаписать»
                 self._json({"error": _sanitize(str(e), api), "code": "конфликт"}, 409)
             except FileNotFoundError as e:
                 self._error(str(e), 404)

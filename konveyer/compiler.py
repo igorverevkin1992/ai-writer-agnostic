@@ -1,7 +1,7 @@
-"""Compiler: сборка окна контекста главы (FR-C1…FR-C6).
+"""Compiler: сборка окна контекста главы (§7.3).
 
 Окно собирается строго по шаблону v1.1 (шаблон `окно.md.j2`), детерминированно:
-одинаковые вход и выгрузки → байт-в-байт одинаковое окно (FR-C4).
+одинаковые вход и выгрузки → байт-в-байт одинаковое окно (§7.3).
 """
 
 from __future__ import annotations
@@ -97,7 +97,7 @@ def _present(briefs: list[Brief], volume: int) -> dict[int, set[str]]:
 
 def prior_continuity(events: list, brief: Brief, infobans: list, participants: list[str], briefs: list[Brief] | None = None) -> list[str]:
     """Закреплённые детали континуити 3.3, касающиеся участников сцены (внешность, предметы, кабинет):
-    без них Писатель дрейфует (аудит 2, находка 1.7). FR-C3: деталь показывается фокалу, только если
+    без них Писатель дрейфует. FR-WN-3: деталь показывается фокалу, только если
     он ПРИСУТСТВОВАЛ в главе, где она закреплена, либо это внешность/манера участника сцены
     («Имя: …» — видна любому, кто с ним встречался). Деталь сцены, где фокал был один, другому персонажу не показывается."""
     markers = _focal_markers(brief, infobans)
@@ -151,7 +151,7 @@ def _focalization_laws(exports_dir: Path) -> str:
 
 
 def _line_rules(stoplists: list[StopRule], participants: list[str], year: int | None) -> list[dict]:
-    """Правила линий только участников сцены + лексика года главы (FR-C1, FR-V1.5)."""
+    """Правила линий только участников сцены + лексика года главы (§7.3, §7.5)."""
     result = []
     for rule in sorted(stoplists, key=lambda r: (r.scope, r.rule_id)):
         if rule.kind != "лексика":  # усилители и прозаические запреты линий выводятся отдельно
@@ -178,7 +178,7 @@ def _line_rules(stoplists: list[StopRule], participants: list[str], year: int | 
 
 
 def ban_active(b, brief: Brief) -> bool:
-    """Запрет информрежима действует для главы? Единый фильтр компилятора и Э2 (FR-C3)."""
+    """Запрет информрежима действует для главы? Единый фильтр компилятора и Э2 (§7.3)."""
     if b.until_chapter is not None:  # реестр тайн: до главы раскрытия читателю
         return brief.chapter < b.until_chapter
     return b.until_volume is None or brief.volume <= b.until_volume
@@ -223,7 +223,7 @@ _SENT_SPLIT_RE = re.compile(r"(?<=[.!?])(?<!\bгл\.)(?<!\bт\.)(?<!\bсц\.)(?<
 
 def _phrase_safe(phrase: str, low_markers: list[str], volume: int) -> bool:
     """Элемент фразы без маркеров незнакомых фокалу тайн, без ссылок на будущие тома (все ссылки
-    проверяются), без арки «A → B» и без траектории «от … к …» через тома (Р-022)."""
+    проверяются), без арки «A → B» и без траектории «от … к …» через тома (FR-WN-3)."""
     low = phrase.lower()
     if any(m in low for m in low_markers):
         return False
@@ -238,7 +238,7 @@ def _phrase_safe(phrase: str, low_markers: list[str], volume: int) -> bool:
 
 
 def _safe_sentences(text: str, markers: list[str], volume: int) -> str:
-    """Оставляет только фразы без маркеров незнакомых фокалу тайн и без ссылок на будущие тома (Р-022).
+    """Оставляет только фразы без маркеров незнакомых фокалу тайн и без ссылок на будущие тома (FR-WN-3).
 
     Фраза = предложение до точки; элементы перечисления внутри неё разделены «;». Если хотя бы один
     элемент вычищен, фраза убирается целиком — обрывков списков в окне не бывает. Скобочные пометки
@@ -260,7 +260,7 @@ def _safe_sentences(text: str, markers: list[str], volume: int) -> str:
 
 
 def secret_markers(infobans: list, brief: Brief) -> list[str]:
-    """Маркеры тайн реестра, которых фокал главы ещё не знает (Р-022) — фразы с ними в окно не идут."""
+    """Маркеры тайн реестра, которых фокал главы ещё не знает (FR-WN-3) — фразы с ними в окно не идут."""
     markers: list[str] = []
     for b in infobans:
         if b.secret and not b.known_to(brief.focal, brief.chapter):
@@ -289,7 +289,7 @@ def _clause_bad(chunk: str, low_markers: list[str], volume: int) -> bool:
 def strip_reader_clauses(text: str, markers: list[str] = (), volume: int = 1) -> str:
     """Вычищает из текста поглавника клаузы не для Писателя: скобочные группы изнутри наружу, затем
     элементы через «;» верхнего уровня; клауза с маркером читателя/инструмента, с маркером тайны, которой
-    фокал не знает, или со ссылкой на будущий том убирается целиком (FR-C3)."""
+    фокал не знает, или со ссылкой на будущий том убирается целиком (§7.3)."""
     low_markers = [m.lower() for m in markers if m]
     kept: list[str] = []
 
@@ -327,7 +327,7 @@ def scene_line(sc: Scene) -> str:
 
 
 def safe_dossier(d, brief: Brief, infobans: list, participants: list[str]):
-    """Проекция досье для окна (FR-C3, Р-022): без каркаса/арки/статуса, без фраз о тайнах,
+    """Проекция досье для окна (FR-WN-3): без каркаса/арки/статуса, без фраз о тайнах,
     которых фокал не знает к этой главе, без будущих томов; отношения — только к участникам сцены."""
     markers = secret_markers(infobans, brief)
     relations = {
@@ -345,15 +345,15 @@ def safe_dossier(d, brief: Brief, infobans: list, participants: list[str]):
 
 
 def chapter_act(acts: list[Act], chapter: int) -> Act | None:
-    """Акт главы по таблице актов 2.1 (Р-021); None — актов нет или глава вне их границ."""
+    """Акт главы по таблице актов документа драматургии; None — актов нет или глава вне их границ."""
     return next((a for a in acts if a.from_chapter <= chapter <= a.to_chapter), None)
 
 
 def arc_lines(arcs: list[Arc], acts: list[Act], brief: Brief, infobans: list, participants: list[str]) -> list[str]:
-    """Строки «Имя: что видно снаружи» из арок 2.5 (Р-025) для участников сцены и фокала — по акту главы.
+    """Строки «Имя: что видно снаружи» из документа арок для участников сцены и фокала — по акту главы.
 
-    FR-C3: ложь / желание / потребность / «где на арке» в окно НЕ выводятся никогда; «что видно снаружи» —
-    через тот же фильтр, что досье (маркеры тайн, которых фокал не знает, Р-022), и без любых ссылок
+    §7.3: ложь / желание / потребность / «где на арке» в окно НЕ выводятся никогда; «что видно снаружи» —
+    через тот же фильтр, что досье (маркеры тайн, которых фокал не знает, FR-WN-3), и без любых ссылок
     на тома; пустая ячейка и «⚠ заполнить» — строки нет. Пусто → секции в окне нет."""
     act = chapter_act(acts, brief.chapter)
     if act is None or not arcs:
@@ -372,7 +372,7 @@ def arc_lines(arcs: list[Arc], acts: list[Act], brief: Brief, infobans: list, pa
 
 
 def chapter_plants(exports_dir: Path, brief: Brief) -> list:
-    """Закладки, назначенные главе (FR-C2): по брифу и/или по реестру (placed = том/глава)."""
+    """Закладки, назначенные главе (§7.3): по брифу и/или по реестру (placed = том/глава)."""
     plants = exporter.load_plants(exports_dir)
     selected = [
         p
@@ -386,7 +386,7 @@ def chapter_plants(exports_dir: Path, brief: Brief) -> list:
 
 def chapter_doses(exports_dir: Path, brief: Brief) -> list:
     """Доза прошлого главы (§5 реестра): ТОЛЬКО доза этой главы — содержание доз других глав
-    (в том числе будущее относительно фокала) в окно не идёт (FR-C3)."""
+    (в том числе будущее относительно фокала) в окно не идёт (§7.3)."""
     try:
         doses = exporter.load_doses(exports_dir)
     except FileNotFoundError:
@@ -447,10 +447,10 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
 
     participants = sorted(set([brief.focal, *brief.participants]) - {""})
 
-    # «что знает фокал»: только факты с from_chapter ≤ N (FR-C1, FR-C3)
+    # «что знает фокал»: только факты с from_chapter ≤ N (§7.3)
     known = sorted(
         (
-            # частичное/неверное знание (курсив матрицы) — Писателю показывается текст пометки, не сам факт (FR-C3)
+            # частичное/неверное знание (курсив матрицы) — Писателю показывается текст пометки, не сам факт (§7.3)
             f.model_copy(update={"fact": f.note.split(":", 1)[1].strip() + " (знание неполное)"})
             if f.note.startswith("частично") else f
             for f in matrix
@@ -465,7 +465,7 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
     )
 
     # «НЕ знает»: только явные формулировки брифа. Содержание тайн из матрицы
-    # в окно НЕ попадает (FR-C3) — Писатель не должен знать то, чего не знает фокал;
+    # в окно НЕ попадает (§7.3) — Писатель не должен знать то, чего не знает фокал;
     # число скрытых фактов сообщается без раскрытия.
     hidden = sum(
         1 for f in matrix
@@ -488,10 +488,10 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
         {w for r in stoplists if r.kind == "усилитель" for w in r.items}
     )
 
-    # запреты брифа + запреты информрежима 2.2 как явные «НЕ упоминать» (FR-C3)
+    # запреты брифа + запреты информрежима 2.2 как явные «НЕ упоминать» (§7.3)
     def _ban_text(b) -> str:
         if b.secret:
-            # тайна реестра: содержание Писателю не сообщаем (FR-C3), только факт запрета
+            # тайна реестра: содержание Писателю не сообщаем (§7.3), только факт запрета
             when = f"читатель узнаёт в гл. {b.until_chapter}" if b.until_chapter else "не раскрывается в этом томе"
             return f"НЕ раскрывать и не намекать: тайна {b.ban_id} реестра информрежима ({when})"
         return f"НЕ упоминать (информрежим {b.ban_id}): {b.text}"
@@ -500,23 +500,23 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
         _ban_text(b) for b in sorted(infobans, key=lambda b: b.ban_id) if ban_active(b, brief)
     ]
 
-    # каркас драматургии (Р-020): только из канона (2.1 → circles.json), не из черновиков
+    # каркас драматургии: только из канона (документ каркасов → circles.json), не из черновиков
     try:
         acts = exporter.load_acts(exports_dir)
         drama = circles.frame_for_chapter(exporter.load_circles(exports_dir), acts, chapter)
     except FileNotFoundError:
         acts = []
         drama = circles.frame_for_chapter([], [], chapter)
-    # арки тома 2.5 (Р-025): Писателю — только «что видно снаружи» участников сцены по акту главы
+    # арки тома: Писателю — только «что видно снаружи» участников сцены по акту главы
     arcs = arc_lines(exporter.load_arcs(exports_dir), acts, brief, infobans, participants)
 
-    # «что было раньше» глазами фокала (аудит 2, вывод 1): события, детали, хвост предыдущей главы
+    # «что было раньше» глазами фокала (FR-WN-5): события, детали, хвост предыдущей главы
     try:
         continuity = exporter.load_continuity(exports_dir)
     except FileNotFoundError:
         continuity = []
     tail_chapter, tail_text = prior_tail(library, briefs, brief, root)
-    # карточки сцен поглавника (аудит 2, 1.10): клаузы для читателя/инструмента вырезаны;
+    # карточки сцен плана глав: клаузы для читателя/инструмента вырезаны;
     # «кладём» сцен — в техзадание закладок, не в биты; без карточек — строки сцен как есть
     markers = secret_markers(infobans, brief)
     cards = [scene_for_window(sc, markers, brief.volume) for sc in brief.scene_cards]
@@ -569,7 +569,7 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
 
 
 def section_breakdown(window: str) -> dict[str, int]:
-    """Размер окна по секциям (FR-C5) — по маркерам <!-- СЕКЦИЯ: ... -->."""
+    """Размер окна по секциям (§7.3) — по маркерам <!-- СЕКЦИЯ: ... -->."""
     parts = SECTION_RE.split(window)
     breakdown: dict[str, int] = {}
     # parts: [до первой секции, имя1, тело1, имя2, тело2, ...]

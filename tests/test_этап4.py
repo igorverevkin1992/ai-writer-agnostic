@@ -138,7 +138,7 @@ def test_регрессия_пополнение_и_отпечаток(ws, monke
     (ws.root / "конфиг.yaml").write_text("library_dir: Библиотека\nwindow_soft_limit_chars: 70000\n", encoding="utf-8")
     assert regression.is_stale(ws)
     r = runner.invoke(app, ["пере-тест", "--зафиксировать"])
-    assert r.exit_code == 1 and "фиксация retest запрещена" in r.output
+    assert r.exit_code == 1 and "фиксация пере-теста запрещена" in r.output
 
 
 # ------------------------------------------------------------------ 7.14 пере-тест и пины

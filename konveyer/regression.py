@@ -1,6 +1,6 @@
-"""Регрессионный корпус золотых тестов (FR-R1…FR-R4).
+"""Регрессионный корпус золотых тестов (§7.13).
 
-Пропуск любого ожидаемого флага блокирует смену конфигурации (FR-R3):
+Пропуск любого ожидаемого флага блокирует смену конфигурации (§7.13):
 предупреждение при `accept`, запрет при фиксации `retest`.
 """
 
@@ -39,7 +39,7 @@ def safe_file_stem(test_id: str) -> str:
 
 
 def add_test(ws: Workspace, test: GoldenTest) -> Path:
-    """FR-R1: пополнение корпуса из ошибки, пропущенной эшелонами и пойманной автором."""
+    """§7.13: пополнение корпуса из ошибки, пропущенной эшелонами и пойманной автором."""
     path = golden_dir(ws) / f"{safe_file_stem(test.test_id)}.json"
     guard.write_text(path, json.dumps(test.model_dump(), ensure_ascii=False, indent=2) + "\n")
     return path
@@ -147,7 +147,7 @@ def run_e2_test(ws: Workspace, cfg: Config, test: GoldenTest) -> tuple[list[str]
 
 
 def run_regression(ws: Workspace, llm: bool = False, cfg: Config | None = None) -> dict:
-    """FR-R2: Э1 всегда; Э2 — по флагу --llm (при недоступном API — пропуск с пометкой)."""
+    """§7.13: Э1 всегда; Э2 — по флагу --llm (при недоступном API — пропуск с пометкой)."""
     tests = load_tests(ws)
     results = []
     for test in tests:
@@ -168,7 +168,7 @@ def run_regression(ws: Workspace, llm: bool = False, cfg: Config | None = None) 
     missed_total = [r["test_id"] for r in results if r.get("пропущено")]
     executed = [r["test_id"] for r in results if not r.get("skipped")]
     # «зелёная» — только когда что-то действительно проверено (2.8): пустой корпус или
-    # сплошь пропущенные Э2-тесты доказательством ничего не являются (FR-R3)
+    # сплошь пропущенные Э2-тесты доказательством ничего не являются (§7.13)
     green = bool(executed) and not missed_total
     if not tests:
         reason = "корпус пуст"
@@ -209,7 +209,7 @@ def is_stale(ws: Workspace) -> bool:
 
 def is_green(ws: Workspace) -> bool | None:
     """None — регрессия ещё не запускалась ИЛИ отчёт устарел (изменились конфиг.yaml,
-    шаблоны или нормы — FR-R3 требует нового прогона)."""
+    шаблоны или нормы — §7.13 требует нового прогона)."""
     report = load_report(ws)
     if report is None or report.get("хэши") != environment_hashes(ws):
         return None

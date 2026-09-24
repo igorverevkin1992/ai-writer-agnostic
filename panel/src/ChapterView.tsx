@@ -37,7 +37,7 @@ const ACTIONS: Record<string, { label: string; cmd: string; primary?: boolean; c
     {
       label: "Применить пакет + коммит",
       cmd: "canonize-apply",
-      confirm: "Применить пакет к УГАР_Библиотеке и сделать git-коммит? (Д-8)",
+      confirm: "Применить пакет к библиотеке проекта и сделать git-коммит?",
     },
   ],
   "зафиксировано": [],

@@ -1,4 +1,4 @@
-"""Правки и решения автора: resolve (решения по самоволкам, FR-V2.5), edits (предпросмотр правки.md),
+"""Правки и решения автора: resolve (решения по самоволкам, §7.6), edits (предпросмотр правки.md),
 diff (дифф черновиков)."""
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from .common import _ctx, colors, echo, secho
 
 def resolve(chapter: int, flag_id: str | None = None, decision: str | None = None, registry: str | None = None,
             reason: str = "") -> list:
-    """Решения по самоволкам без ручной правки JSON (FR-V2.5).
+    """Решения по самоволкам без ручной правки JSON (§7.6).
 
     Без флага — список; с флагом и решением — записывает решение. Возвращает решения главы.
     """
