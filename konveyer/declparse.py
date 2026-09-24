@@ -5,44 +5,60 @@
 `секции` (один документ = одна запись из тел секций), `строки` (регэксп с именованными группами по строкам),
 `плагин` (функция парсера проекта или движка для экзотики). Каждый формат либо даёт записи, либо молчит
 (`None`) — тогда пробуется следующий. Ошибка структуры — `MarkupError` с файлом и строкой (FR-EX-3).
+
+Контракт плагина (`вид: плагин`, `функция: "модуль:функция"`): модуль — файл `типы/парсеры/<модуль>.py` проекта
+или модуль движка `konveyer.<…>`; функция принимает путь документа и, по имени параметра, `volume` (том),
+`ctx` (ParseContext), `known_names` (известные имена), `library` (папка библиотеки); возвращает список записей
+(словарей или моделей схемы), словарь `{ключ: модель}` либо `None` («формат не мой»).
 """
 
 from __future__ import annotations
 
 import importlib
 import importlib.util
+import inspect
 import re
 import sys
 from pathlib import Path
 from typing import Any, Callable
 
-from . import mdparse
+from . import mdparse, names
 from .mdparse import MarkupError, parse_number
 
 EMPTY = {"", "—", "-", "–", "нет"}
+ENGINE_PLUGIN_PREFIX = "konveyer."
 
 
 class ParseContext:
-    """Что парсер знает о вызове: том, имя файла, переопределения колонок из манифеста, парсеры проекта."""
+    """Что парсер знает о вызове: том, имя файла, переопределения колонок/секций из манифеста, парсеры проекта,
+    имя текущего извлечения (для переопределения `секции: {имя_извлечения: образец}`)."""
 
     def __init__(self, *, volume: int = 1, overrides: dict | None = None, project_root: Path | None = None,
-                 library: Path | None = None, params: dict | None = None):
+                 library: Path | None = None, params: dict | None = None, extraction: str = "",
+                 sections: dict | None = None):
         self.volume = volume
         self.overrides = overrides or {}
+        self.sections = sections if sections is not None else self.overrides
         self.project_root = project_root
         self.library = library
         self.params = params or {}
+        self.extraction = extraction
 
 
 # ------------------------------------------------------------------ конвертеры значений
 
-_PLACE_RE = re.compile(r"т\s*(\d+)(?:\s*гл\s*(\d+))?", re.IGNORECASE)
+# «т1 гл5», «т.1 гл.5», «том 1, гл. 5», «Т.2», «т.1, глава 3»
+_PLACE_RE = re.compile(r"т(?:ом)?\.?\s*(\d+)(?:[\s,;]*гл(?:ав[аы])?\.?\s*(\d+))?", re.IGNORECASE)
+_VOL_ONLY_RE = re.compile(r"(?<![а-яё\w])т(?:ом[а-я]*)?\.?\s*\d+", re.IGNORECASE)
 
 
 def conv_place(text: str) -> dict:
+    """«т.1 гл.5» → {vol: 1, ch: 5}; пусто/«—» → {}; непонятная запись — ValueError (ошибка с файлом и строкой)."""
+    if text.strip() in EMPTY:
+        return {}
     m = _PLACE_RE.search(text)
     if not m:
-        return {}
+        raise ValueError(f"место «{text.strip()}» не разобрано; ожидается «т.N гл.M» (том и глава)")
     place: dict = {"vol": int(m.group(1))}
     if m.group(2):
         place["ch"] = int(m.group(2))
@@ -54,14 +70,33 @@ def conv_places(text: str) -> list[dict]:
 
 
 def conv_years(text: str) -> dict:
-    """«до 1999» → {"year": {"before": 1999}}; «1990–1999» → from/to; «все» → {"all": True}."""
-    m = re.match(r"до\s+(\d{4})", text.strip())
+    """«до 1999» → {"year": {"before": 1999}}; «1990–1999» → from/to; «после 1999» / «с 2000» → from;
+    «1990-е» → десятилетие; «все»/пусто → {"all": True}. Иное непустое значение — ValueError."""
+    v = text.strip()
+    low = v.lower()
+    if low in EMPTY or low in {"все", "всегда", "любые", "любой"}:
+        return {"all": True}
+    m = re.fullmatch(r"до\s+(\d{4})(?:\s*г\.?)?", low)
     if m:
         return {"year": {"before": int(m.group(1))}}
-    m = re.match(r"(\d{4})\s*[–-]\s*(\d{4})", text.strip())
+    m = re.fullmatch(r"(\d{4})\s*[–-]\s*(\d{4})(?:\s*гг?\.?)?", low)
     if m:
         return {"year": {"from": int(m.group(1)), "to": int(m.group(2))}}
-    return {"all": True}
+    m = re.fullmatch(r"после\s+(\d{4})(?:\s*г\.?)?", low)
+    if m:
+        return {"year": {"from": int(m.group(1)) + 1}}
+    m = re.fullmatch(r"(?:с|от)\s+(\d{4})(?:\s*г\.?)?", low)
+    if m:
+        return {"year": {"from": int(m.group(1))}}
+    m = re.fullmatch(r"(\d{3})0\s*-?\s*[ех]", low)
+    if m:
+        start = int(m.group(1)) * 10
+        return {"year": {"from": start, "to": start + 9}}
+    m = re.fullmatch(r"(\d{4})(?:\s*г\.?)?", low)
+    if m:
+        return {"year": {"from": int(m.group(1)), "to": int(m.group(1))}}
+    raise ValueError(f"годы «{v}» не разобраны; ожидается «до ГГГГ», «после ГГГГ», «с ГГГГ», «ГГГГ–ГГГГ», "
+                     "«ГГГ0-е» или «все»")
 
 
 def conv_scope(text: str) -> dict:
@@ -70,13 +105,40 @@ def conv_scope(text: str) -> dict:
     return {"focal": v} if v and v.lower() not in {"все", "всем", "любой"} else {"all": True}
 
 
+def conv_number(text: str) -> float | None:
+    """Число; непустое нечисловое значение («много», «один») — ValueError (FR-EX-3)."""
+    if text.strip() in EMPTY:
+        return None
+    n = parse_number(text)
+    if n is None:
+        raise ValueError(f"«{text.strip()}» — не число")
+    return n
+
+
+def conv_int(text: str) -> int | None:
+    n = conv_number(text)
+    return int(n) if n is not None else None
+
+
+def conv_chapter(text: str) -> int | None:
+    """Номер главы: «гл. 5», «5», «т.2 гл.3» → 3; одна ссылка на том («т.2») — главы нет (None)."""
+    if text.strip() in EMPTY:
+        return None
+    m = names.CH_RE.search(text)
+    if m:
+        return int(m.group(1))
+    if _VOL_ONLY_RE.search(text):
+        return None
+    return conv_int(text)
+
+
 CONVERTERS: dict[str, Callable[[str], Any]] = {
     "строка": lambda s: s.strip(),
-    "число": parse_number,
-    "целое": lambda s: (int(parse_number(s)) if parse_number(s) is not None else None),
-    "глава": lambda s: (int(parse_number(s)) if parse_number(s) is not None else None),
+    "число": conv_number,
+    "целое": conv_int,
+    "глава": conv_chapter,
     "список": lambda s: [x.strip() for x in s.split(";") if x.strip()],
-    "список_запятая": lambda s: [x.strip() for x in s.split(",") if x.strip()],
+    "список_запятая": lambda s: [x.strip() for x in re.split(r"[;,]", s) if x.strip()],
     "место": conv_place,
     "места": conv_places,
     "годы": conv_years,
@@ -85,13 +147,19 @@ CONVERTERS: dict[str, Callable[[str], Any]] = {
     "да_нет": lambda s: s.strip().lower() in {"да", "вкл", "✓", "yes", "true"},
     "пусто_как_none": lambda s: (None if s.strip() in EMPTY else s.strip()),
 }
+NUMERIC_KINDS = ("число", "целое", "глава")
 
 
-PLACEHOLDER = "⚠ заполнить"  # заглушка стартового комплекта: машина её не читает (значение пустое)
+PLACEHOLDER = "⚠ заполнить"  # заглушка стартового комплекта: в выгрузки не попадает (значение пустое, запись из одних заглушек — нет)
 
 
 def is_placeholder(value: Any) -> bool:
     return isinstance(value, str) and value.strip().lower().startswith(PLACEHOLDER)
+
+
+def is_blank(value: Any) -> bool:
+    """Пустая ячейка или заглушка стартового комплекта («—» — осознанное значение, не пустота)."""
+    return isinstance(value, str) and (not value.strip() or is_placeholder(value))
 
 
 def convert(value: str, kind: str | None) -> Any:
@@ -105,68 +173,128 @@ def convert(value: str, kind: str | None) -> Any:
     return fn(value)
 
 
+def _convert_at(value: str, kind: str | None, path: Path, line: int, field: str) -> Any:
+    """Конвертация с адресом: ошибка значения → MarkupError с файлом, строкой и полем (FR-EX-3)."""
+    try:
+        return convert(value, kind)
+    except ValueError as e:
+        raise MarkupError(path, line, f"поле «{field}»: {e}") from None
+
+
 # ------------------------------------------------------------------ колонки
 
-def _synonyms(name: str, spec: Any, overrides: dict) -> list[str]:
-    syn: list[str] = []
-    if name in overrides and overrides[name]:
-        ov = overrides[name]
-        syn += [ov] if isinstance(ov, str) else list(ov)
+def _override_list(value: Any) -> list[str]:
+    if not value:
+        return []
+    return [str(value)] if isinstance(value, str) else [str(v) for v in value]
+
+
+def _spec_synonyms(name: str, spec: Any) -> list[str]:
     if isinstance(spec, dict):
-        syn += list(spec.get("синонимы") or [name])
-    elif isinstance(spec, str):
-        syn += [spec]
-    else:
-        syn += [name]
-    return syn
+        return [str(s) for s in (spec.get("синонимы") or [name])]
+    if isinstance(spec, str):
+        return [spec]
+    return [name]
+
+
+def _synonyms(name: str, spec: Any, overrides: dict) -> list[str]:
+    return _override_list(overrides.get(name)) + _spec_synonyms(name, spec)
+
+
+def _header_hits(headers: list[str], synonyms: list[str]) -> list[str]:
+    """Заголовки, подходящие под синонимы, по убыванию строгости: точное совпадение, совпадение с начала слова,
+    подстрока внутри слова (только для синонимов длиннее трёх букв: «том» не находит «Автомат»).
+    Возвращает заголовки лучшего найденного уровня (в порядке таблицы)."""
+    folded = [(h, mdparse.fold(h)) for h in headers]
+    syns = [mdparse.fold(s) for s in synonyms if s.strip()]
+    levels: list[list[str]] = [[], [], []]
+    for h, hf in folded:
+        for s in syns:
+            if hf == s:
+                levels[0].append(h)
+            elif re.search(rf"(?<![\w]){re.escape(s)}", hf):
+                levels[1].append(h)
+            elif len(s) > 3 and s in hf:
+                levels[2].append(h)
+    for level in levels:
+        if level:
+            return list(dict.fromkeys(level))
+    return []
 
 
 def match_columns(headers: list[str], columns: dict, overrides: dict) -> dict[str, str] | None:
-    """{поле: заголовок таблицы} по синонимам (подстрока без регистра). None — обязательной колонки нет."""
-    low = [h.lower() for h in headers]
-    found: dict[str, str] = {}
+    """{поле: заголовок таблицы} по синонимам без регистра и «ё/е»: сначала точное совпадение, затем совпадение
+    с начала слова («том» ↔ «Том 2», но не «Автомат»), затем подстрока; переопределения манифеста — прежде
+    синонимов типа. None — обязательной колонки нет. Два разных заголовка на одном уровне — ValueError
+    «неоднозначная колонка» (уточняется в проект.yaml)."""
+    hits: dict[str, list[str]] = {}
     for field, spec in columns.items():
         required = bool(spec.get("обязательна", False)) if isinstance(spec, dict) else False
-        hit = None
-        for s in _synonyms(field, spec, overrides):
-            s = s.lower()
-            hit = next((h for h, hl in zip(headers, low, strict=True) if hl == s), None) or \
-                  next((h for h, hl in zip(headers, low, strict=True) if s in hl), None)
-            if hit:
-                break
-        if hit is None and required:
+        hits[field] = _header_hits(headers, _override_list(overrides.get(field))) or \
+            _header_hits(headers, _spec_synonyms(field, spec))
+        if not hits[field] and required:
             return None
-        if hit:
-            found[field] = hit
+    # заголовок, однозначно занятый одним полем, не претендует на другие («получает» / «чего НЕ получает»)
+    found: dict[str, str] = {}
+    changed = True
+    while changed:
+        changed = False
+        for field, hs in hits.items():
+            if field in found or len(hs) != 1:
+                continue
+            found[field] = hs[0]
+            changed = True
+            for other, ohs in hits.items():
+                if other != field and len(ohs) > 1 and hs[0] in ohs:
+                    ohs.remove(hs[0])
+    ambiguous = [f"«{field}»: подходят {', '.join(f'«{h}»' for h in hs)}" for field, hs in hits.items()
+                 if field not in found and len(hs) > 1]
+    if ambiguous:
+        raise ValueError("неоднозначная колонка — " + "; ".join(ambiguous)
+                         + ". Уточните сопоставление в проект.yaml (блок «библиотека», колонки)")
     return found
 
 
 def _record(row: dict[str, str], mapping: dict[str, str], columns: dict, fmt: dict, ctx: ParseContext,
-            path: Path) -> dict:
+            path: Path, line: int) -> dict | None:
+    """Запись из строки таблицы. None — строка-заглушка стартового комплекта: все обязательные колонки, кроме ключа,
+    пусты или «⚠ заполнить»."""
     rec: dict[str, Any] = {}
+    blank_required = True
+    has_required = False
     for field, spec in columns.items():
         kind = spec.get("тип") if isinstance(spec, dict) else None
         default = spec.get("по_умолчанию") if isinstance(spec, dict) else None
+        required = bool(spec.get("обязательна", False)) if isinstance(spec, dict) else False
+        is_key = isinstance(spec, dict) and spec.get("роль") == "ключ"
         header = mapping.get(field)
         raw = row.get(header, "") if header else ""
+        if required and not is_key:
+            has_required = True
+            if not is_blank(raw):
+                blank_required = False
         if is_placeholder(raw):
             raw = ""
         if raw.strip() in EMPTY and kind not in ("строка", None):
-            rec[field] = default if default is not None else (None if kind in ("число", "целое", "глава") else convert("", kind))
+            rec[field] = default if default is not None else (None if kind in NUMERIC_KINDS else convert("", kind))
         elif raw.strip() in EMPTY and kind in ("строка", None):
             rec[field] = default if default is not None else ""
         else:
-            rec[field] = convert(raw, kind)
+            rec[field] = _convert_at(raw, kind, path, line, field)
+    if has_required and blank_required:
+        return None
     for k, v in (fmt.get("постоянные") or {}).items():
         rec[k] = _template(v, ctx, path, rec)
     return rec
 
 
 def _template(value: Any, ctx: ParseContext, path: Path, rec: dict | None = None) -> Any:
+    """`"{файл} (нормы)"`, `"{том}"`, `"{поле}"` — подстановка из контекста и записи; поле записи с именем
+    «файл»/«том» не конфликтует с контекстом (контекст в приоритете)."""
     if isinstance(value, str) and "{" in value:
         try:
-            return value.format(файл=path.name, том=ctx.volume, **(rec or {}))
-        except (KeyError, IndexError):
+            return value.format(**{**(rec or {}), "файл": path.name, "том": ctx.volume})
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError):
             return value
     return value
 
@@ -188,99 +316,193 @@ def _apply_mapping(rec: dict, fmt: dict, ctx: ParseContext, path: Path) -> dict:
 # ------------------------------------------------------------------ примитивы
 
 
-def _tables(path: Path, fmt: dict) -> list[mdparse.Table]:
-    section = fmt.get("секция")
-    if section:
-        sec = mdparse.find_section(mdparse.parse_sections(path), section)
-        if sec is None:
-            return []
-        return mdparse.parse_tables(path, sec.body, start_line=sec.line + 1)
-    return mdparse.parse_tables(path)
+def _section_patterns(base: Any, ctx: ParseContext, key: str, path: Path) -> list[str]:
+    """Образцы секции: из спецификации типа плюс переопределения манифеста (`секции: {ключ: образец|[…]}`)."""
+    pats = _override_list(base)
+    for ov_key in (key, "секция"):
+        ov = ctx.sections.get(ov_key, ctx.overrides.get(ov_key))
+        if ov is None or not ov_key:
+            continue
+        if not isinstance(ov, (str, list)) or (isinstance(ov, list) and not all(isinstance(x, str) for x in ov)):
+            raise MarkupError(path, 1, f"проект.yaml: переопределение секции «{ov_key}» должно быть строкой или "
+                                       f"списком строк, а не {type(ov).__name__}")
+        pats = _override_list(ov) + pats
+    return list(dict.fromkeys(pats))
+
+
+def _tables(path: Path, fmt: dict, ctx: ParseContext) -> list[mdparse.Table]:
+    """Таблицы документа; при `секция:` — из всех секций, подходящих под образец (типа или манифеста)."""
+    pats = _section_patterns(fmt.get("секция"), ctx, ctx.extraction, path)
+    if not pats:
+        return mdparse.parse_tables(path)
+    sections = mdparse.parse_sections(path)
+    seen: list[mdparse.Section] = []
+    for p in pats:
+        for sec in mdparse.find_sections(sections, p, min_level=1):
+            if sec not in seen:
+                seen.append(sec)
+    tables: list[mdparse.Table] = []
+    for sec in sorted(seen, key=lambda s: s.line):
+        tables.extend(mdparse.parse_tables(path, sec.raw_body, start_line=sec.line + 1))
+    return tables
 
 
 def fmt_table(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] | None:
+    """Записи из всех таблиц документа (или его секций), у которых сошлись колонки; ни одной — None."""
     columns: dict = fmt.get("колонки") or {}
     min_cols = int(fmt.get("минимум_колонок", 0) or 0)
     recognize = fmt.get("опознание")
-    for table in _tables(path, fmt):
+    key_field = next((f for f, s in columns.items() if isinstance(s, dict) and s.get("роль") == "ключ"), None)
+    records: list[dict] = []
+    matched = False
+    for table in _tables(path, fmt, ctx):
         if len(table.headers) < min_cols:
             continue
         if recognize and not re.search(recognize, " ".join(table.headers), re.IGNORECASE):
             continue
-        mapping = match_columns(table.headers, columns, ctx.overrides)
+        try:
+            mapping = match_columns(table.headers, columns, ctx.overrides)
+        except ValueError as e:
+            raise MarkupError(path, table.line, str(e)) from None
         if mapping is None:
             continue
-        records: list[dict] = []
+        matched = True
         for i, row in enumerate(table.rows, start=1):
-            rec = _record(row, mapping, columns, fmt, ctx, path)
-            rec["_строка"] = table.line + 1 + i
-            key_field = next((f for f, s in columns.items() if isinstance(s, dict) and s.get("роль") == "ключ"), None)
+            line = table.line + 1 + i
+            rec = _record(row, mapping, columns, fmt, ctx, path, line)
+            if rec is None:
+                continue
+            rec["_строка"] = line
             if key_field and not rec.get(key_field):
                 continue
             records.append(_apply_mapping(rec, fmt, ctx, path))
-        return records
-    return None
+    return records if matched else None
+
+
+# ---- широкая таблица: правила ячейки знания
+
+DEFAULT_CELL_RULES: dict[str, Any] = {"всегда|с начала|пролог": 0, "—|-|нет": None, "гл.N[ / источник]": "N"}
+_REGEX_MARKERS = ("\\", "(", "^", "$", "?", "+", "{")
+
+
+def _compile_cell_rule(pattern: str) -> re.Pattern:
+    """Образец правила ячейки: явный регэксп (есть `\\`, `(`, `^`…) — как есть (поиск по ячейке); иначе простая
+    запись: `|` — варианты, `.` необязательна, пробелы свободны, `N` — число, хвост в `[…]` — пояснение;
+    ищется с начала слова («с гл. 5» подходит под «гл.N»)."""
+    if any(ch in pattern for ch in _REGEX_MARKERS):
+        return re.compile(pattern, re.IGNORECASE)
+    plain = re.sub(r"\[.*\]\s*$", "", pattern)
+    alts = []
+    for alt in plain.split("|"):
+        alt = alt.strip()
+        if not alt:
+            continue
+        parts = []
+        for ch in alt:
+            if ch == "N":
+                parts.append(r"\s*(\d+)")
+            elif ch == ".":
+                parts.append(r"\.?\s*")
+            elif ch.isspace():
+                parts.append(r"\s*")
+            else:
+                parts.append(re.escape(ch))
+        alts.append("".join(parts))
+    return re.compile(r"(?<![\w])(?:" + "|".join(alts) + ")", re.IGNORECASE)
+
+
+def compile_cell_rules(rules: dict | None) -> list[tuple[re.Pattern, Any]]:
+    """Правила `ячейка_знания` типа: {образец: значение}. Значение: число — глава-константа («всегда» → 0);
+    null — субъект не знает; "N" — глава из числа в ячейке; "пометка" — не знает, текст ячейки в пометку."""
+    out: list[tuple[re.Pattern, Any]] = []
+    for pat, val in (rules or {}).items():
+        if val == "частичное_знание":
+            continue
+        out.append((_compile_cell_rule(str(pat)), val))
+    return out
+
+
+def partial_marker(rules: dict | None) -> str:
+    """Маркер частичного знания из правила `"*курсив*": частичное_знание` — обрамляющий символ (по умолчанию «*»)."""
+    for pat, val in (rules or {}).items():
+        if val == "частичное_знание" and str(pat):
+            return str(pat)[0]
+    return "*"
+
+
+def _knowledge_cell(clean: str, rules: list[tuple[re.Pattern, Any]]) -> tuple[int | None, str]:
+    """Ячейка знания по правилам типа: (глава, пометка). Ни одно правило не подошло — субъект не знает, текст
+    ячейки уходит в пометку (например «улики с гл. 5» — знание не показано)."""
+    low = clean.strip().lower()
+    if low in EMPTY:
+        return None, ""
+    for rx, val in rules:
+        m = rx.search(clean)
+        if not m:
+            continue
+        if val is None:
+            return None, ""
+        if isinstance(val, (int, float)) and not isinstance(val, bool):
+            return int(val), ""
+        sval = str(val).strip()
+        if sval == "N":
+            num = next((g for g in m.groups() if g and g.isdigit()), None)
+            if num is not None:
+                return int(num), ""
+            continue
+        if sval == "пометка":
+            return None, clean
+        if sval.isdigit():
+            return int(sval), ""
+        return None, clean
+    return None, clean
 
 
 def fmt_wide_table(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] | None:
-    """Широкая таблица: первая колонка-ключ («Факт»), номер («#»), остальные — субъекты (FR-DT-1)."""
-    key_syn = [s.lower() for s in _synonyms("ключ", fmt.get("ключ") or {"синонимы": ["факт", "событие"]}, ctx.overrides)]
-    num_syn = [s.lower() for s in _synonyms("номер", fmt.get("номер") or {"синонимы": ["#", "№"]}, ctx.overrides)]
+    """Широкая таблица: первая колонка-ключ («Факт»), номер («#»), остальные — субъекты (FR-DT-1). Строки и ячейки
+    с заглушкой «⚠ заполнить» пропускаются; ячейки читаются по правилам `ячейка_знания` (и
+    `ячейка_знания_псевдосубъекта` для субъектов вроде «Читатель»)."""
+    key_syn = [mdparse.fold(s) for s in _synonyms("ключ", fmt.get("ключ") or {"синонимы": ["факт", "событие"]}, ctx.overrides)]
+    num_syn = [mdparse.fold(s) for s in _synonyms("номер", fmt.get("номер") or {"синонимы": ["#", "№"]}, ctx.overrides)]
     min_cols = int(fmt.get("минимум_колонок", 4) or 4)
-    cell_rules: dict = fmt.get("ячейка_знания") or {}
-    exclude = {s.lower() for s in (fmt.get("исключить_колонки") or [])}
+    rules = compile_cell_rules(fmt.get("ячейка_знания") or DEFAULT_CELL_RULES)
+    pseudo_rules = compile_cell_rules(fmt.get("ячейка_знания_псевдосубъекта")) + rules
+    marker = partial_marker(fmt.get("ячейка_знания"))
+    exclude = {mdparse.fold(s) for s in (fmt.get("исключить_колонки") or [])}
     id_prefix = str(fmt.get("префикс_id", "М-"))
-    pseudo = set(fmt.get("псевдосубъекты") or [])
-    for table in _tables(path, fmt):
+    pseudo = set(fmt.get("псевдосубъекты") or []) | set(ctx.params.get("pseudo") or [])
+    facts: list[dict] = []
+    matched = False
+    for table in _tables(path, fmt, ctx):
         if len(table.headers) < min_cols:
             continue
-        key_col = next((h for h in table.headers if h.lower() in key_syn), None)
+        key_col = next((h for h in table.headers if mdparse.fold(h) in key_syn), None)
         if key_col is None:
             continue
-        num_col = next((h for h in table.headers if h.lower() in num_syn), None)
-        subjects = [h for h in table.headers if h not in (key_col, num_col) and h.lower() not in exclude]
-        facts: list[dict] = []
+        matched = True
+        num_col = next((h for h in table.headers if mdparse.fold(h) in num_syn), None)
+        subjects = [h for h in table.headers if h not in (key_col, num_col) and mdparse.fold(h) not in exclude]
         for i, row in enumerate(table.rows, start=1):
+            line = table.line + 1 + i
+            text = row.get(key_col, "").strip()
+            if is_blank(text):
+                continue
             num = parse_number(row.get(num_col, "")) if num_col else None
             num = int(num) if num is not None else len({f["fact_id"] for f in facts}) + 1
-            text = row.get(key_col, "")
             for subj in subjects:
                 raw = row.get(subj, "").strip()
-                if not raw:
+                if is_blank(raw):
                     continue
-                partial = raw.startswith("*") and raw.endswith("*") and not raw.startswith("**")
-                clean = raw.strip("*").strip()
-                from_ch, note = _knowledge_cell(clean, cell_rules, subj in pseudo)
+                partial = raw.startswith(marker) and raw.endswith(marker) and not raw.startswith(marker * 2)
+                clean = raw.strip(marker).strip()
+                from_ch, note = _knowledge_cell(clean, pseudo_rules if subj in pseudo else rules)
                 source = clean.split("/", 1)[1].strip() if "/" in clean else ""
                 facts.append({
                     "fact_id": f"{id_prefix}{num:02d}", "fact": text, "subject": subj, "from_chapter": from_ch,
                     "source": source, "note": ("частично/неверно: " + clean) if partial else note,
-                    "_строка": table.line + 1 + i,
+                    "_строка": line,
                 })
-        if facts:
-            return facts
-    return None
-
-
-def _knowledge_cell(clean: str, rules: dict, pseudo: bool) -> tuple[int | None, str]:
-    """Ячейка знания по правилам типа: «всегда|пролог» → 0, «—» → None, «гл.N …» → N; читатель-псевдосубъект —
-    «расчётная разгадка ≈гл.N» → N, «улики с гл.N» без разгадки → None (знание не показано)."""
-    low = clean.lower()
-    if low in EMPTY:
-        return None, ""
-    for pat, val in rules.items():
-        if val in (0, "0") and any(low.startswith(w.strip()) for w in str(pat).split("|")):
-            return 0, ""
-    if pseudo:
-        m = re.search(r"разгадк[а-я]*\D{0,25}?гл\.?\s*(\d+)", clean, re.IGNORECASE)
-        if m:
-            return int(m.group(1)), ""
-        if re.search(r"улик", clean, re.IGNORECASE):
-            return None, clean
-    m = re.search(r"[Гг]л\.?\s*(\d+)", clean)
-    if m:
-        return int(m.group(1)), ""
-    return None, clean
+    return facts if matched else None
 
 
 def fmt_keyed_sections(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] | None:
@@ -299,23 +521,23 @@ def fmt_keyed_sections(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] |
         for field, spec in keys.items():
             spec = spec if isinstance(spec, dict) else {"ключ": spec}
             label = spec.get("ключ", field)
-            labels = [label] + list(ctx.overrides.get(field, []) if isinstance(ctx.overrides.get(field), list) else
-                                    ([ctx.overrides[field]] if ctx.overrides.get(field) else []))
+            labels = [label] + _override_list(ctx.overrides.get(field))
             kind = spec.get("тип", "строка")
             value: Any = None
             for lb in labels:
-                if kind == "список":
-                    items = [i for i in mdparse.parse_list_items(sec.body, lb) if not is_placeholder(i)]
+                if kind in ("список", "список_запятая"):
+                    seps = ";," if kind == "список_запятая" else ";"
+                    items = [i for i in mdparse.parse_list_items(sec.body, lb, seps) if not is_placeholder(i)]
                     if items:
                         value = items
                         break
                 else:
                     raw = mdparse.parse_kv(sec.body, lb)
                     if raw:
-                        value = convert(raw, kind)
+                        value = _convert_at(raw, kind, path, sec.line, field)
                         break
             if value is None:
-                value = [] if kind == "список" else (None if kind in ("число", "целое", "глава") else "")
+                value = [] if kind in ("список", "список_запятая") else (None if kind in NUMERIC_KINDS else "")
             rec[field] = value
         if keys and all(rec[f] in (None, "", []) for f in keys):
             continue  # секция-заглушка стартового комплекта (все ключи «⚠ заполнить») — записи нет
@@ -328,39 +550,54 @@ def fmt_keyed_sections(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] |
 
 
 def fmt_sections(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] | None:
-    """Один документ — одна запись: поля из тел секций по образцу заголовка; имя — заголовок 1-го уровня."""
+    """Один документ — одна запись: поля из тел секций по образцу заголовка (вместе с подсекциями); имя —
+    заголовок 1-го уровня (тогда поля ищутся только среди секций уровня ≥ 2). Документ-каркас, где все поля
+    пусты или «⚠ заполнить», записи не даёт."""
     sections = mdparse.parse_sections(path)
     if not sections or all(s.level == 0 for s in sections):
         return None
     marker = fmt.get("опознание")
     if marker and not any(re.search(marker, s.title) for s in sections):
         return None
-    rec: dict[str, Any] = {"_строка": 1}
     name_from = fmt.get("имя", "заголовок_1")
+    top = next((s for s in sections if s.level == 1), None)
+    rec: dict[str, Any] = {"_строка": top.line if top else 1}
+    min_level = 1
     if name_from == "заголовок_1":
-        rec["name"] = next((s.title for s in sections if s.level == 1), path.stem)
+        rec["name"] = top.title if top else path.stem
+        min_level = 2
     elif name_from == "имя_файла":
         rec["name"] = path.stem
+    filled = False
     for field, spec in (fmt.get("поля") or {}).items():
         spec = spec if isinstance(spec, dict) else {"секция": spec}
-        pat = spec.get("секция", field)
-        pats = [pat] + ([ctx.overrides[field]] if ctx.overrides.get(field) else [])
-        sec = next((s for p in pats for s in [mdparse.find_section(sections, p)] if s), None)
-        if spec.get("тип") == "таблица_пар" and sec is not None:
+        pats = _section_patterns(spec.get("секция", field), ctx, field, path)
+        sec = next((s for p in pats for s in [mdparse.find_section(sections, p, min_level)] if s), None)
+        kind = spec.get("тип")
+        body = mdparse.nested_body(sections, sec) if sec is not None else ""
+        if kind == "таблица_пар" and sec is not None:
             pairs: dict[str, str] = {}
-            for t in mdparse.parse_tables(path, sec.body, start_line=sec.line + 1):
+            for t in mdparse.parse_tables(path, body, start_line=sec.line + 1):
                 if len(t.headers) >= 2:
                     for row in t.rows:
                         k, v = row[t.headers[0]], row[t.headers[1]]
-                        if k:
-                            pairs[k] = v
+                        if k and not is_blank(k) and k not in EMPTY:
+                            pairs[k] = "" if is_placeholder(v) else v
             rec[field] = pairs
-        elif spec.get("тип") == "список" and sec is not None:
-            rec[field] = [ln.strip()[2:].strip() for ln in sec.body.splitlines() if ln.strip().startswith("- ")]
+        elif kind == "список" and sec is not None:
+            rec[field] = [ln.strip()[2:].strip() for ln in body.splitlines()
+                          if ln.strip().startswith("- ") and not is_placeholder(ln.strip()[2:])]
         else:
-            rec[field] = sec.body if sec else ({} if spec.get("тип") == "таблица_пар" else "")
+            text = body.strip() if sec is not None else ""
+            if is_placeholder(text):
+                text = ""
+            rec[field] = text if sec is not None or kind != "таблица_пар" else {}
+        if rec[field] not in ("", {}, []):
+            filled = True
         if sec is not None:
             rec.setdefault("_секции", {})[field] = sec.line
+    if not filled and fmt.get("поля") and PLACEHOLDER in mdparse.read_text(path):
+        return []  # каркас стартового комплекта: карточки нет
     for k, v in (fmt.get("постоянные") or {}).items():
         rec[k] = _template(v, ctx, path, rec)
     return [_apply_mapping(rec, fmt, ctx, path)]
@@ -370,11 +607,11 @@ def fmt_lines(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] | None:
     rx = re.compile(fmt["регэксп"])
     kinds: dict = fmt.get("типы") or {}
     records: list[dict] = []
-    for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for i, line in enumerate(mdparse.read_text(path).splitlines(), start=1):
         m = rx.match(line.strip())
         if not m:
             continue
-        rec: dict[str, Any] = {k: convert(v or "", kinds.get(k)) for k, v in m.groupdict().items()}
+        rec: dict[str, Any] = {k: _convert_at(v or "", kinds.get(k), path, i, k) for k, v in m.groupdict().items()}
         rec["_строка"] = i
         for k, v in (fmt.get("постоянные") or {}).items():
             rec[k] = _template(v, ctx, path, rec)
@@ -400,37 +637,40 @@ def _load_module_from(path: Path, name: str):
 
 
 def resolve_plugin(func: str, ctx: ParseContext) -> Callable | None:
-    """«модуль:функция» — модуль ищется в `типы/парсеры/` проекта, затем как импортируемый модуль движка
-    (`konveyer.parsers.имя`). Нет плагина — формат молчит (None), а не падает: деградация П-5."""
+    """«модуль:функция» — модуль ищется только в `типы/парсеры/<модуль>.py` проекта или среди модулей движка
+    (`konveyer.…`); произвольные модули Python по имени из YAML не импортируются (§10). Нет плагина — формат
+    молчит (None), а не падает: деградация П-5."""
     if ":" not in func:
         return None
     mod_name, fn_name = func.split(":", 1)
+    mod_name, fn_name = mod_name.strip(), fn_name.strip()
     module = None
-    if ctx.project_root is not None:
+    if ctx.project_root is not None and re.fullmatch(r"[\w\-]+", mod_name):
         cand = ctx.project_root / "типы" / "парсеры" / f"{mod_name}.py"
         if cand.exists():
             module = _load_module_from(cand, mod_name)
-    if module is None:
-        for dotted in (mod_name, f"konveyer.parsers.{mod_name}"):
-            try:
-                module = importlib.import_module(dotted)
-                break
-            except ImportError:
-                continue
+    if module is None and mod_name.startswith(ENGINE_PLUGIN_PREFIX):
+        try:
+            module = importlib.import_module(mod_name)
+        except ImportError:
+            module = None
     if module is None:
         return None
-    return getattr(module, fn_name, None)
+    fn = getattr(module, fn_name, None)
+    return fn if callable(fn) else None
 
 
 def fmt_plugin(path: Path, fmt: dict, ctx: ParseContext) -> Any:
     fn = resolve_plugin(str(fmt.get("функция", "")), ctx)
     if fn is None:
         return None
-    kwargs = {}
-    for name in ("volume", "ctx", "known_names", "library"):
-        if name in getattr(fn, "__code__", None).co_varnames[: fn.__code__.co_argcount] if hasattr(fn, "__code__") else ():
-            kwargs[name] = {"volume": ctx.volume, "ctx": ctx, "known_names": ctx.params.get("known_names", set()),
-                            "library": ctx.library}[name]
+    available = {"volume": ctx.volume, "ctx": ctx, "known_names": ctx.params.get("known_names", set()),
+                 "library": ctx.library}
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        params = {}
+    kwargs = {name: value for name, value in available.items() if name in params}
     return fn(path, **kwargs)
 
 

@@ -28,6 +28,11 @@ def head(repo: Path) -> str:
     return _git(repo, "rev-parse", "HEAD")
 
 
+def head_date(repo: Path) -> str:
+    """Дата коммита HEAD (ISO 8601, с зоной) — детерминированная «дата» выгрузок (FR-EX-5, П-6)."""
+    return _git(repo, "log", "-1", "--format=%cI")
+
+
 def has_commits(repo: Path) -> bool:
     """Есть ли в репозитории хотя бы один коммит (свежий `git init` — нет; откатывать к HEAD нечего)."""
     return _git(repo, "rev-parse", "--verify", "-q", "HEAD", check=False).strip() != ""

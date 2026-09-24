@@ -1,6 +1,6 @@
 """Имена персонажей в тексте канона: падежные формы, участие в действии, перечисления глав и томов.
 
-Общий для всех проектов языковой инструмент (русский, Д-13): ни одного имени конкретной серии здесь нет (П-1) —
+Общий для всех проектов языковой инструмент (русский, FR-V1-3): ни одного имени конкретной серии здесь нет (П-1) —
 известные имена приходят из выгрузок проекта (субъекты эпистемики, карточки персонажей, линии повествования).
 """
 
@@ -9,24 +9,40 @@ from __future__ import annotations
 import re
 
 CH_RE = re.compile(r"[Гг]л\.?\s*(\d+)")
-# перечисление глав после одного «гл.»: «Гл. 9, 27», «Гл. 29 или 40», «гл. 34, 40»
-CH_LIST_RE = re.compile(r"[Гг]л\.?\s*(\d+(?:\s*(?:,|или|и|/)\s*\d+)*)")
+# перечисление глав после одного «гл.»: «Гл. 9, 27», «Гл. 29 или 40», «гл. 34, 40», «гл. 5–7» (диапазон)
+CH_LIST_RE = re.compile(r"[Гг]л\.?\s*(\d+(?:\s*(?:,|или|и|/|[–-])\s*\d+)*)")
 # том: «Том 2», «тома 9–10», «томов 2–5», «т.6»; «в томе N …» — оговорка, не ссылка на выстрел
 VOL_RE = re.compile(
     r"(?<!(?<![а-яё])[Вв]\s)[Тт]ом\w*\s*(\d+)(?:\s*[–-]\s*(\d+))?"
     r"|(?<!(?<![а-яё])[Вв]\s)(?<![а-яё])т\.?\s*(\d+)(?:\s*[–-]\s*(\d+))?"
 )
-_CH_RANGE_RE = re.compile(r"гл\.?\s*([\d\s,–\-]+)")
+# «гл. 1–3», «Гл. 1, 3», «главы 1–3», «глава 5»
+_CH_RANGE_RE = re.compile(r"гл(?:ав[аы]?)?\.?\s*([\d\s,–\-]+)", re.IGNORECASE)
+_RANGE_ITEM_RE = re.compile(r"(\d+)\s*[–-]\s*(\d+)|(\d+)")
 
-# падежные окончания имён: «Иванову», «Петровым», «Асю» (основа «Ас»), «куратору отдела»
-_NAME_ENDINGS = "ами|ями|ой|ей|ом|ем|ым|им|ою|ею|ах|ях|ов|ев|а|я|у|ю|е|и|ы"
+# падежные окончания имён: «Иванову», «Петровым», «Асю» (основа «Ас»), «Игорем» (основа «Игор»),
+# «Андрея» (основа «Андре»), «куратору отдела»
+_NAME_ENDINGS = "ами|ями|ой|ей|ом|ем|ым|им|ою|ею|ах|ях|ью|а|я|у|ю|е|и|ы|ь|й"
+_SHORT_STEM = 4  # основа короче — только полная форма имени или основа с непустым окончанием («Над» ≠ «Надя»)
+
+
+def _range_numbers(text: str) -> list[int]:
+    """Числа перечисления с раскрытием диапазонов: «1–3, 7» → [1, 2, 3, 7]."""
+    nums: list[int] = []
+    for m in _RANGE_ITEM_RE.finditer(text):
+        if m.group(3):
+            nums.append(int(m.group(3)))
+        else:
+            lo, hi = int(m.group(1)), int(m.group(2))
+            nums.extend(range(lo, hi + 1) if hi >= lo else [lo, hi])
+    return nums
 
 
 def chapters_listed(text: str) -> list[int]:
-    """Все главы из перечислений «гл. 9, 27» / «гл. 29 или 40»."""
+    """Все главы из перечислений «гл. 9, 27» / «гл. 29 или 40» / «гл. 5–7» (диапазон раскрывается)."""
     nums: list[int] = []
     for m in CH_LIST_RE.finditer(text):
-        nums.extend(int(x) for x in re.findall(r"\d+", m.group(1)))
+        nums.extend(_range_numbers(m.group(1)))
     return list(dict.fromkeys(nums))
 
 
@@ -41,7 +57,7 @@ def volumes_listed(text: str) -> list[int]:
 
 
 def chapter_range(text: str) -> tuple[int | None, int | None]:
-    """«гл. 1–3» / «гл. 5» / «гл. 1, 3» → (1, 3); «сц. 5.1» → (None, None)."""
+    """«гл. 1–3» / «Гл. 5» / «главы 1, 3» → (1, 3); «сц. 5.1» → (None, None)."""
     m = _CH_RANGE_RE.search(text)
     if not m:
         return None, None
@@ -67,23 +83,43 @@ def split_items(text: str) -> list[str]:
     return [it.strip(" .\t") for it in items if it.strip(" .\t")]
 
 
-def name_pattern(name: str) -> re.Pattern:
-    """Регэксп имени в любом падеже и регистре: «Ася» → Ас(я|и|е|ю…), «Куратор отдела» → куратор(у) отдела."""
+def _stem(word: str) -> str:
+    """Основа имени: «Ася» → «Ас», «Игорь» → «Игор», «Андрей» → «Андре», «Иван» → «Иван»."""
+    if len(word) > 2 and word[-1] in "аяьй":
+        return word[:-1]
+    return word
+
+
+def name_pattern(name: str, *, strict_case: bool = True) -> re.Pattern:
+    """Регэксп имени в любом падеже: «Ася» → Ас(я|и|е|ю…), «Игорь» → Игор(ь|я|ю|ем…), «Куратор отдела» →
+    Куратор(у) отдела. Первая буква сохраняет регистр имени (имя в прозе пишется с заглавной: «над столом» — не
+    «Надя»), остальное — без учёта регистра; для короткой основы («Над», «Ад», «Люб») нулевое окончание
+    допускается только в полной форме имени («Надя», но не «Над»). `strict_case=False` — первая буква в любом
+    регистре (для ячеек канона: «куратор» → «Куратор отдела»)."""
     first, *rest = name.split()
-    stem = first[:-1] if len(first) > 2 and first[-1] in "аяь" else first
-    pat = rf"(?<![А-Яа-яЁё]){re.escape(stem)}(?:{_NAME_ENDINGS})?(?![А-Яа-яЁё])"
+    stem = _stem(first)
+    lead = stem[0]
+    # имя с заглавной требует заглавную в тексте; имя-роль со строчной («куратор») находится в обоих регистрах
+    head = (re.escape(lead) if lead.isupper() and strict_case
+            else f"[{re.escape(lead.lower())}{re.escape(lead.upper())}]")
+    head += f"(?i:{re.escape(stem[1:])})" if len(stem) > 1 else ""
+    if len(stem) < _SHORT_STEM and stem != first:
+        tail = rf"(?:{_NAME_ENDINGS})"      # окончание обязательно: «Надя», «Наде», но не «Над»
+    else:
+        tail = rf"(?:{_NAME_ENDINGS})?"
+    pat = rf"(?<![А-Яа-яЁё]){head}(?i:{tail})(?![А-Яа-яЁё])"
     if rest:
-        pat += r"\s+" + r"\s+".join(re.escape(r) for r in rest)
-    return re.compile(pat, re.IGNORECASE)
+        pat += r"(?i:\s+" + r"\s+".join(re.escape(r) for r in rest) + ")"
+    return re.compile(pat)
 
 
 def _name_matches(text: str, known_names: set[str], pseudo: set[str] = frozenset()) -> list[tuple[str, re.Match]]:
-    """Вхождения известных имён (по основе, без учёта регистра). Имя из нескольких слов находится и по одному
-    первому слову, если оно единственное полное имя с таким началом; `pseudo` — субъекты, не являющиеся
-    персонажами (например «Читатель» из эпистемики)."""
+    """Вхождения известных имён (по основе). Имя из нескольких слов находится и по одному первому слову, если оно
+    единственное полное имя с таким началом; `pseudo` — субъекты, не являющиеся персонажами (например «Читатель»
+    из эпистемики)."""
     out: list[tuple[str, re.Match]] = []
     for n in known_names:
-        if n in pseudo:
+        if n in pseudo or not n.strip():
             continue
         found = list(name_pattern(n).finditer(text))
         first = n.split()[0]
@@ -94,7 +130,7 @@ def _name_matches(text: str, known_names: set[str], pseudo: set[str] = frozenset
 
 
 def find_names(text: str, known_names: set[str], pseudo: set[str] = frozenset()) -> list[str]:
-    """Известные имена, встречающиеся в тексте (в любом падеже и регистре); из пары
+    """Известные имена, встречающиеся в тексте (в любом падеже); из пары
     «Куратор» / «Куратор отдела» остаётся более длинное."""
     result: set[str] = set()
     for n, _ in _name_matches(text, known_names, pseudo):
@@ -132,16 +168,17 @@ def find_acting_names(text: str, known_names: set[str], pseudo: set[str] = froze
 
 
 def normalize_name(raw: str, known_names: set[str]) -> str:
-    """«Иванова» → «Иванов», «куратор отдела» → «Куратор отдела», «куратор» → «Куратор отдела» (единственное полное
-    имя с таким началом): известное имя в начале строки, в любом падеже."""
+    """«Иванова» → «Иванов», «Куратор» → «Куратор отдела» (единственное полное имя с таким началом): известное
+    имя в начале строки, в любом падеже. Ни одно известное имя не подошло — строка возвращается целиком
+    («Мария Петровна» без досье остаётся «Мария Петровна»)."""
     raw = raw.strip()
     word = raw.split()[0] if raw else ""
     for name in sorted(known_names, key=len, reverse=True):
-        if name_pattern(name).match(raw):
+        if name.strip() and name_pattern(name, strict_case=False).match(raw):
             return name
     for name in sorted(known_names, key=len, reverse=True):
         first = name.split()[0]
-        if " " in name and name_pattern(first).match(word) \
+        if " " in name and name_pattern(first, strict_case=False).match(word) \
                 and sum(1 for o in known_names if o.split()[0] == first) == 1:
             return name
-    return word
+    return raw

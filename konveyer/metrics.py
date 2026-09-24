@@ -472,16 +472,31 @@ def m_document(ctx: MetricContext) -> list[CheckResult]:
 ALWAYS = {"стоп_лексика", "утечка_окна", "межглавные_повторы", "объём_брифа", "документ_вставка"}  # без своей нормы
 
 
+LEXEME_PREFIX = "лексемы_"
+
+
+def is_lexeme_norm_id(norm_id: str) -> bool:
+    return norm_id.startswith(LEXEME_PREFIX)
+
+
+def lexeme_norm_spec(norm: Norm) -> tuple[list[str], int] | None:
+    """(слова, база) из единицы лексемной нормы «слово1, слово2 на 1000»; None — единица не разобрана."""
+    m = re.match(r"^\s*(.+?)\s+на\s+(\d+)", norm.unit or "")
+    if not m:
+        return None
+    words = [w.strip() for w in re.split(r"[,;/]", m.group(1)) if w.strip()]
+    return (words, int(m.group(2))) if words else None
+
+
 def register_lexeme_norms(norms: dict[str, Norm]) -> None:
     """Нормы вида `лексемы_<имя>` с перечнем слов в единице («слово1, слово2 на 1000») — динамические метрики."""
     for nid, n in norms.items():
-        if nid in REGISTRY or not nid.startswith("лексемы_"):
+        if nid in REGISTRY or not is_lexeme_norm_id(nid):
             continue
-        m = re.match(r"^\s*(.+?)\s+на\s+(\d+)", n.unit or "")
-        if not m:
+        spec = lexeme_norm_spec(n)
+        if spec is None:
             continue
-        words = [w.strip() for w in re.split(r"[,;/]", m.group(1)) if w.strip()]
-        lexeme_metric(nid, words, per=int(m.group(2)))
+        lexeme_metric(nid, spec[0], per=spec[1])
 
 
 def run(ctx: MetricContext) -> list[CheckResult]:

@@ -38,7 +38,7 @@ def export() -> dict[str, str]:
     try:
         hashes = exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
     except MarkupError as e:
-        raise StepError(f"структура MD расходится с соглашениями Д-1 → {e}") from e
+        raise StepError(f"документ канона не разобран (формат типа — `konveyer типы <тип>`) → {e}") from e
     secho(f"Выгрузки обновлены (том {ws.volume}): {len(hashes)} файлов в {ws.exports}/", fg=colors.GREEN)
     return hashes
 
