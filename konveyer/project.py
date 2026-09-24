@@ -198,7 +198,8 @@ def create(spec: ProjectSpec) -> CreatedProject:
     sample = Path(str(resources.files("konveyer").joinpath("data/конфиг.пример.yaml")))
     shutil.copyfile(sample, root / "конфиг.yaml")
     (root / ".env.example").write_text("GEMINI_API_KEY=\nANTHROPIC_API_KEY=\n", encoding="utf-8")
-    (root / ".gitignore").write_text(".env\nвыгрузки/\nжурналы/\nархивы/\n", encoding="utf-8")
+    # из версионирования исключается только производное и секреты: журналы такта и сырьё — артефакты (П-7, NFR-5)
+    (root / ".gitignore").write_text(".env\nвыгрузки/\nархивы/\n", encoding="utf-8")
 
     types = catalog.load_types(root)
     modules = catalog.load_modules(root)
@@ -380,6 +381,9 @@ def readiness(root: Path, library: Path) -> list[Check]:
     if unmapped:
         out.append(Check(None, f"документов вне карты манифеста: {len(unmapped)} ({', '.join(unmapped[:3])}{'…' if len(unmapped) > 3 else ''})",
                          "`konveyer онбординг` — сопоставить типы, или добавить в проект.yaml"))
+    # индекс библиотеки отстал от манифеста (FR-DM-3)
+    if INDEX_TYPE in types and index_outdated(root, library) is not None:
+        out.append(Check(None, "индекс библиотеки не совпадает с манифестом", "`konveyer проект индекс` — пересобрать из манифеста"))
     # незаполненные каркасы
     todo = [p.relative_to(library).as_posix() for p in sorted(library.rglob("*.md"))
             if "⚠ заполнить" in p.read_text(encoding="utf-8", errors="replace")]

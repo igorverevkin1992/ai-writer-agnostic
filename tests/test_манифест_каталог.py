@@ -162,16 +162,25 @@ def test_валидатор_ловит_поля_тома_дубли_и_мето�
     assert "23_План_глав.md»: тип «план_глав» потомный, а том не задан" in joined
     assert "методика «несуществующая_методика» неизвестна" in joined
     # потомный документ без тома читается как том 1 (совместимость), не теряется молча
-    assert [p.name for p in man.docs(lib, "план_глав", 1, types)] == ["23_План_глав.md", "23_План_глав_Том1.md", "23_План_глав_Том2.md"]
+    assert [p.name for p in man.docs(lib, "план_глав", 1, types)] == ["23_План_глав.md", "23_План_глав_Том2.md"]
+    assert man.docs(lib, "план_глав", 2, types) == []
+    # те же ошибки записей карты видит экспорт — с файлом и строкой манифеста (FR-MF-2)
+    with pytest.raises(exporter.ExportErrors) as ei:
+        exporter.run_export(lib, created.root / "выгрузки", created.root / "журналы", 1, created.root)
+    joined = "\n".join(str(e) for e in ei.value.errors)
+    assert "проект.yaml:14: «23_План_глав_Том1.md»: том 9 больше плана" in joined and "файл уже есть в карте" in joined, joined
 
 
 def test_доктор_показывает_ошибки_манифеста(tmp_path):
     created = _create(tmp_path)
-    text = manifest_mod.path_of(created.root).read_text(encoding="utf-8").replace("томов_план: 1", "томов_план: 1\nметодики:\n  глава: нет_такой")
-    text = re.sub(r"^методики:\s*\{\}\s*$", "", text, flags=re.M)
-    manifest_mod.path_of(created.root).write_text(text, encoding="utf-8")
+    man = manifest_mod.load(created.root)
+    man.методики.глава = "нет_такой"
+    manifest_mod.save(created.root, man)
     labels = [c.label for c in project.readiness(created.root, created.library) if c.ok is False]
     assert any("методика «нет_такой» неизвестна" in lb for lb in labels), labels
+    (created.library / "14_Мир.md").unlink()
+    labels = [c.label for c in project.readiness(created.root, created.library) if c.ok is False]
+    assert any("«14_Мир.md»: файла нет в библиотеке" in lb for lb in labels), labels
 
 
 # ------------------------------------------------------------------ миграция (A2-19, D1-21)
@@ -226,8 +235,8 @@ def test_вложенная_папка_не_теряется_молча(tmp_path
     assert manifest_mod.unmapped(man, created.library) == ["Досье/Второстепенные/Сторож.md"]
     labels = [c.label for c in project.readiness(created.root, created.library)]
     assert any("вне карты" in lb and "Сторож" in lb for lb in labels), labels
-    auto = manifest_mod.with_auto_entries(man, created.library, catalog.load_types(created.root))
-    assert any(e.авто and e.файл == "Досье/Второстепенные/" and e.тип == "персонажи" for e in auto.библиотека)
+    inferred = manifest_mod.infer(created.library, catalog.load_types(created.root))
+    assert any(e.файл == "Досье/Второстепенные/" and e.тип == "персонажи" for e in inferred.библиотека)
 
 
 @pytest.mark.parametrize("name,vol", [("02_Стиль_Том_2.md", 2), ("23_Поглавник_том2.md", 2), ("23_Поглавник_T2.md", 2),
@@ -235,6 +244,35 @@ def test_вложенная_папка_не_теряется_молча(tmp_path
                                       ("Досье_Тома.md", None), ("02_Стиль.md", None)])
 def test_маркер_тома_в_имени(name, vol):
     assert manifest_mod.doc_volume(Path(name)) == vol
+
+
+def test_потомный_документ_без_тома_том_1_и_доктор_просит_том(tmp_path):
+    created = _create(tmp_path, volumes=2, modules=("закладки",))
+    lib = created.library
+    (lib / "32_Закладки_Том2.md").unlink()
+    (lib / "32_Закладки_Том1.md").rename(lib / "32_Закладки.md")
+    man = manifest_mod.load(created.root)
+    man.библиотека = [e for e in man.библиотека if e.тип != "закладки"] + [manifest_mod.LibraryEntry(файл="32_Закладки.md", тип="закладки")]
+    manifest_mod.save(created.root, man)
+    types = catalog.load_types(created.root)
+    # потомный документ без «том:» и маркера читается как том 1; общесерийный (стиль) — в каждом томе (FR-EX-4)
+    assert [p.name for p in man.docs(lib, "закладки", 1, types)] == ["32_Закладки.md"]
+    assert man.docs(lib, "закладки", 2, types) == []
+    assert [p.name for p in man.docs(lib, "стиль", 2, types)] == ["02_Стиль.md"]
+    errors = manifest_mod.validate(man, lib, types, catalog.load_modules(created.root))
+    assert any("«32_Закладки.md»: тип «закладки» потомный, а том не задан" in e for e in errors), errors
+    # экспорт этим не блокируется (П-5): документ тома 1 разбирается
+    _export(created)
+
+
+def test_собственный_документ_движка_вне_карты(tmp_path):
+    from konveyer.canonist import INBOX_DOC
+
+    created = _create(tmp_path)
+    (created.library / INBOX_DOC).write_text("# Входящие\n\n## Глава 1\n- факт\n", encoding="utf-8")
+    man = manifest_mod.load(created.root)
+    assert manifest_mod.unmapped(man, created.library) == []
+    assert not any(e.файл == INBOX_DOC for e in manifest_mod.infer(created.library, catalog.load_types(created.root)).библиотека)
 
 
 def test_служебные_маски_из_манифеста_и_профиля(tmp_path):
@@ -284,6 +322,35 @@ def test_все_модули_разом_и_разбор_каркасов_сво�
             assert records is not None or catalog.flag(ext.get("необязательно")), (spec.name, ext["имя"])
 
 
+def test_заглушки_каркаса_не_попадают_в_выгрузки(tmp_path):
+    assert declparse.strip_placeholders("- Одна глава — одна голова.\n- ⚠ заполнить\n⚠ заполнить (см. выше)\n") == "- Одна глава — одна голова."
+    created = _create(tmp_path, modules=("фокализация",))
+    ws = _export(created)
+    narration = exporter.load_narration(ws.exports)
+    assert narration and "заполнить" not in narration[0].laws and "одна голова" in narration[0].laws
+    dossier = next(iter(exporter.load_dossiers(ws.exports)))
+    assert dossier.profile == "" and dossier.relations == {}
+    # .gitignore рабочей области исключает только производное: журналы такта и сырьё версионируются (П-7)
+    ignored = (created.root / ".gitignore").read_text(encoding="utf-8").split()
+    assert "журналы/" not in ignored and "сырьё/" not in ignored and "выгрузки/" in ignored
+
+
+def test_выгрузки_другой_версии_схемы_пересобираются(tmp_path):
+    import json
+
+    created = _create(tmp_path)
+    ws = _export(created)
+    idx = ws.exports / exporter.INDEX
+    data = json.loads(idx.read_text(encoding="utf-8"))
+    data["версия_схемы"] = exporter.SCHEMA_VERSION + 1
+    idx.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(FileNotFoundError, match="схемой версии"):
+        exporter.load_stoplists(ws.exports)
+    assert exporter.load_manifest(ws.exports) == {}
+    _export(created)
+    assert exporter.exports_schema_version(ws.exports) == exporter.SCHEMA_VERSION and exporter.load_stoplists(ws.exports) == []
+
+
 def test_табличный_план_глав_даёт_брифы(tmp_path):
     created = _create(tmp_path)
     (created.library / "23_План_глав_Том1.md").write_text(
@@ -306,6 +373,7 @@ def test_индекс_библиотеки_создаётся_и_пересоб�
     man.библиотека.append(manifest_mod.LibraryEntry(файл="16_Топография.md", тип="топография"))
     manifest_mod.save(created.root, man)
     assert project.index_outdated(created.root, created.library) is not None
+    assert any("индекс библиотеки не совпадает" in c.label for c in project.readiness(created.root, created.library))
     monkeypatch.chdir(created.root)
     r = runner.invoke(app, ["проект", "индекс", "-y", "--без-коммита"])
     assert r.exit_code == 0 and "пересобран" in r.output, r.output
@@ -366,6 +434,7 @@ def test_коды_типов_действуют_по_документу_но_я�
     assert "АКТ-1" not in catalog.enabled_lint_codes(modules, set(), types, set())
     assert "АКТ-1" in catalog.enabled_lint_codes(modules, set(), types, {"акты"})
     assert "АКТ-1" not in catalog.enabled_lint_codes(modules, set(), types, {"акты"}, disabled={"драматургия"})
+    assert manifest_mod.Manifest(модули={"драматургия": "выкл", "арки": "вкл"}).disabled_modules() == {"драматургия"}
     assert "ЧАСТЬ-1" not in catalog.all_lint_codes(modules, types)
 
 
@@ -431,10 +500,12 @@ def test_типы_питающие_окно_объявляют_что_показ
             assert spec.window.get("показывать") is not None or spec.window.get("запрещено"), spec.name
 
 
-def test_роли_безымянных_в_языковом_слое():
+def test_роли_безымянных_и_не_имена_в_языковом_слое():
     assert "роли_безымянных" not in (TYPES / "персонажи.yaml").read_text(encoding="utf-8")
     roles = lang.get().unnamed_roles
     assert "сторож" in roles and "врач" in roles
+    text = "| Линия | Тома |\n|---|---|\n| Анна | 1–2 |\n| Борис — никогда не фокален | — |\n"
+    assert exporter._focal_names(text, lang.get().not_names) == ["Анна"]
 
 
 def test_конфиг_нового_проекта_по_тз_v1(tmp_path):
@@ -450,6 +521,10 @@ def test_конфиг_нового_проекта_по_тз_v1(tmp_path):
     roles = cfg.roles()
     assert roles["писатель"].provider == "gemini" and roles["канонист"].provider == "anthropic"
     assert roles["аналитик"].model == roles["канонист"].model and roles["писатель"].no_training
+    assert "цена_вход_1м" in text and roles["писатель"].price_in_per_1m == 0.0
+    from konveyer.config import ModelConfig
+
+    assert ModelConfig(provider="ручной", model="x", цена_вход_1м=1.5, цена_выход_1м=3).price_out_per_1m == 3.0
     assert cfg.window_soft_limit_chars == 80000 and cfg.volume == 1
 
 

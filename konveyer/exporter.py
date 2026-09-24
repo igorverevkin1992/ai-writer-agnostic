@@ -18,7 +18,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from . import catalog, declparse, guard, manifest as manifest_mod, names, textutils
+from . import catalog, declparse, guard, lang as lang_mod, manifest as manifest_mod, names, textutils
 from .mdparse import MarkupError
 from .schemas import (
     Act, Arc, Brief, Checklist, ChronicleEvent, ChronologyEvent, ContinuityEvent, Decision, DocumentSpec, Dose,
@@ -224,6 +224,11 @@ def collect(library: Path, volume: int = 1, root: Path | None = None, *, require
     types = catalog.load_types(root)
     man = manifest_mod.effective(root, library, types)
     col = Collected()
+    mpath = manifest_mod.path_of(root)
+    if mpath.exists() and not man.выведен:
+        # карта с неверными записями разбирается не так, как думает автор (FR-MF-2): ошибка с файлом и строкой манифеста
+        for line, msg in manifest_mod.entry_problems(man, library, types, mpath.read_text(encoding="utf-8"), strict=False):
+            col.errors.append(MarkupError(mpath, line or 0, msg))
     for spec in _type_sequence(types):
         col.pseudo |= set(spec.raw.get("псевдосубъекты") or [])
         if not spec.extractions:
@@ -279,7 +284,7 @@ def collect(library: Path, volume: int = 1, root: Path | None = None, *, require
                     col.add(export, {str(rec.get(key, rec.get("_ключ", getattr(m, key, "")))): m for rec, m in pairs})
                 else:
                     col.add(export, [m for _, m in pairs])
-        _after_type(spec.name, col, volume)
+        _after_type(spec.name, col, root)
     _postprocess(col, volume, library, root)
     return col
 
@@ -292,7 +297,7 @@ def _stamp_file(model: BaseModel, rel: str) -> None:
             pass
 
 
-def _after_type(name: str, col: Collected, volume: int) -> None:
+def _after_type(name: str, col: Collected, root: Path | None) -> None:
     """Известные имена накапливаются по мере разбора: субъекты эпистемики, карточки, фокалы."""
     if name == "эпистемика":
         col.known_names |= {f.subject for f in col.data["matrix.json"] if f.subject and f.subject not in col.pseudo}
@@ -300,13 +305,13 @@ def _after_type(name: str, col: Collected, volume: int) -> None:
         col.known_names |= {d.name for d in col.data["dossiers.json"] if d.name}
     elif name == "повествование":
         for n in col.data["narration.json"]:
-            n.focal_names = n.focal_names or _focal_names(n.focals_text)
+            n.focal_names = n.focal_names or _focal_names(n.focals_text, lang_mod.for_project(root).not_names)
             col.known_names |= set(n.focal_names)
 
 
-def _focal_names(text: str) -> list[str]:
+def _focal_names(text: str, not_names: list[str] | tuple[str, ...] = ()) -> list[str]:
     """Имена из таблицы/списка фокалов документа повествования: заглавные слова ячеек, кроме ячеек-предложений
-    («Имя — никогда не фокален» — оговорка, не список)."""
+    («Имя — никогда не фокален» — оговорка, не список) и слов, объявленных языковым слоем не именами (`не_имена`)."""
     out: set[str] = set()
     for line in text.splitlines():
         if not line.strip().startswith("|"):
@@ -317,7 +322,7 @@ def _focal_names(text: str) -> list[str]:
             if set(cell_text.strip()) <= set(":- "):
                 continue
             out.update(re.findall(r"\b([А-ЯЁ][а-яё]{2,})\b", cell_text))
-    return sorted(out - {"Тома", "Без", "Открывается", "Фокальные", "Линии", "Фокал"})
+    return sorted(out - set(not_names))
 
 
 # ------------------------------------------------------------------ постобработка (общая, без серии)
@@ -488,15 +493,28 @@ def _write_if_changed(path: Path, text: str, known_hash: str | None = None) -> s
     return digest
 
 
-def load_manifest(exports_dir: Path) -> dict[str, str]:
-    """{файл: sha256} прошлого экспорта; пусто, если индекса нет или он повреждён."""
-    path = exports_dir / INDEX
+def _read_index(exports_dir: Path) -> dict:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        files = data.get("files", {}) if isinstance(data, dict) else {}
-        return {k: v for k, v in files.items() if isinstance(k, str) and isinstance(v, str)}
-    except (OSError, ValueError, AttributeError):
+        data = json.loads((exports_dir / INDEX).read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
         return {}
+
+
+def exports_schema_version(exports_dir: Path) -> int | None:
+    """Версия схемы выгрузок по `индекс.json`; None — выгрузок нет (или индекс повреждён)."""
+    v = _read_index(exports_dir).get("версия_схемы")
+    return int(v) if isinstance(v, int) else None
+
+
+def load_manifest(exports_dir: Path) -> dict[str, str]:
+    """{файл: sha256} прошлого экспорта; пусто, если индекса нет, он повреждён или выгрузки другой версии схемы
+    (тогда экспорт полный, без инкрементальности — NFR-11)."""
+    data = _read_index(exports_dir)
+    if data.get("версия_схемы") != SCHEMA_VERSION:
+        return {}
+    files = data.get("files", {})
+    return {k: v for k, v in files.items() if isinstance(k, str) and isinstance(v, str)} if isinstance(files, dict) else {}
 
 
 def canon_fingerprint(library: Path) -> str:
@@ -527,7 +545,8 @@ def _load_corpus_index(corpus_dir: Path) -> dict[str, dict]:
 
 def _corpus_plan(library: Path, exports_dir: Path, root: Path | None) -> tuple[list[tuple[Path, str | None, dict]], dict[str, dict]]:
     corpus_dir = exports_dir / CORPUS_DIR
-    index = _load_corpus_index(corpus_dir)
+    # выгрузки другой версии схемы — кэш корпуса не доверяется, тексты пересобираются целиком
+    index = _load_corpus_index(corpus_dir) if exports_schema_version(exports_dir) == SCHEMA_VERSION else {}
     plan: list[tuple[Path, str | None, dict]] = []
     for path in docs_of_type(library, "проза", None, root):
         out = corpus_dir / (path.stem + ".txt")
@@ -610,6 +629,10 @@ def load_export(exports_dir: Path, name: str):
     path = exports_dir / name
     if not path.exists():
         raise FileNotFoundError(f"Выгрузка {name} не найдена. Выполните `konveyer экспорт` (экспорт обязателен перед сборкой окна).")
+    version = exports_schema_version(exports_dir)
+    if version is not None and version != SCHEMA_VERSION:
+        raise FileNotFoundError(f"Выгрузки собраны движком со схемой версии {version}, а нужна {SCHEMA_VERSION}. "
+                                "Выполните `konveyer экспорт` — выгрузки пересоберутся целиком (NFR-11).")
     return json.loads(path.read_text(encoding="utf-8"))
 
 

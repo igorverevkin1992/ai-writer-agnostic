@@ -95,6 +95,13 @@ def is_placeholder(value: Any) -> bool:
     return isinstance(value, str) and value.strip().lower().startswith(PLACEHOLDER)
 
 
+def strip_placeholders(body: str) -> str:
+    """Тело секции без строк-заглушек («⚠ заполнить», «- ⚠ заполнить»): каркас стартового комплекта не попадает
+    в выгрузки и окно."""
+    kept = [ln for ln in body.splitlines() if not is_placeholder(re.sub(r"^\s*(?:[-*+]|\d+[.)])\s+", "", ln))]
+    return "\n".join(kept).strip("\n")
+
+
 def convert(value: str, kind: str | None) -> Any:
     if is_placeholder(value):
         value = ""
@@ -232,10 +239,13 @@ def fmt_table(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] | None:
         if mapping is None:
             continue
         records: list[dict] = []
+        required = [f for f, s in columns.items() if isinstance(s, dict) and flag(s.get("обязательна"))]
+        key_field = next((f for f, s in columns.items() if isinstance(s, dict) and s.get("роль") == "ключ"), None)
         for i, row in enumerate(table.rows, start=1):
+            if any(is_placeholder(row.get(mapping[f], "")) for f in required if f in mapping):
+                continue  # строка-заглушка каркаса (обязательная колонка «⚠ заполнить») — записи нет
             rec = _record(row, mapping, columns, fmt, ctx, path)
             rec["_строка"] = table.line + 1 + i
-            key_field = next((f for f, s in columns.items() if isinstance(s, dict) and s.get("роль") == "ключ"), None)
             if key_field and not rec.get(key_field):
                 continue
             records.append(_apply_mapping(rec, fmt, ctx, path))
@@ -410,13 +420,14 @@ def fmt_sections(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] | None:
                 if len(t.headers) >= 2:
                     for row in t.rows:
                         k, v = row[t.headers[0]], row[t.headers[1]]
-                        if k:
+                        if k and k.strip() not in EMPTY and not is_placeholder(k):
                             pairs[k] = v
             rec[field] = pairs
         elif spec.get("тип") == "список" and sec is not None:
-            rec[field] = [ln.strip()[2:].strip() for ln in sec.body.splitlines() if ln.strip().startswith("- ")]
+            rec[field] = [ln.strip()[2:].strip() for ln in sec.body.splitlines()
+                          if ln.strip().startswith("- ") and not is_placeholder(ln.strip()[2:])]
         else:
-            rec[field] = sec.body if sec else ({} if spec.get("тип") == "таблица_пар" else "")
+            rec[field] = strip_placeholders(sec.body) if sec else ({} if spec.get("тип") == "таблица_пар" else "")
         if sec is not None:
             rec.setdefault("_секции", {})[field] = sec.line
     for k, v in (fmt.get("постоянные") or {}).items():

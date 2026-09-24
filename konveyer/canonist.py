@@ -21,7 +21,7 @@ from .config import Config
 from .paths import Workspace
 from .schemas import Verdict
 
-INBOX_DOC = "КОНВЕЙЕР_Входящие.md"
+INBOX_DOC = manifest_mod.ENGINE_DOC_PREFIX + "Входящие.md"  # собственный документ движка — вне карты библиотеки
 _NOTE_COLUMN_RE = re.compile(r"примеч|источник|коммент|заметк", re.IGNORECASE)
 _EMPTY_CELLS = {"", "—", "-", "–"}
 BATCH_ROW_RE = re.compile(r"^- РЕЕСТР\s+(?P<registry>[\w.\-]+)\s+→\s+(?P<row>.+)$")

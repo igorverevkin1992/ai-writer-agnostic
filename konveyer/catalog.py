@@ -210,7 +210,12 @@ def documentation(types: dict[str, TypeSpec], modules: dict[str, ModuleSpec]) ->
              "Документ сгенерирован из каталога типов движка (`konveyer типы --документация`). "
              "Здесь описано, что именно машина читает из документа каждого типа, что попадает в окно Писателя "
              "и какие проверки линтера тип включает. Канон не переформатируется под парсер: имена колонок и "
-             "секций сопоставляются в манифесте проекта (`проект.yaml`, блок `библиотека`).", ""]
+             "секций сопоставляются в манифесте проекта (`проект.yaml`, блок `библиотека`).", "",
+             "Том документа (FR-EX-4): поле `том:` записи манифеста, иначе маркер в имени файла (`Том2`, `Том_2`, `_Т2`); "
+             "документ без того и другого — общесерийный и входит в каждый том, а для потомного типа (`по_тому`) читается "
+             "как том 1, и при плане в несколько томов доктор просит указать том. Флаги в спецификациях и манифесте пишутся по-русски: `да`/`нет` "
+             "(`вкл`/`выкл`); коды линтера типа действуют, когда документ типа есть в карте, если модуль-владелец "
+             "не выключен явно.", ""]
     for name in sorted(types):
         t = types[name]
         lines += [f"## {t.name}", "", f"- Назначение: {t.purpose or '—'}",
@@ -260,12 +265,16 @@ def all_lint_codes(modules: dict[str, ModuleSpec], types: dict[str, TypeSpec] | 
 
 
 def enabled_lint_codes(modules: dict[str, ModuleSpec], enabled: set[str],
-                       types: dict[str, TypeSpec] | None = None, present_types: set[str] | None = None) -> set[str]:
+                       types: dict[str, TypeSpec] | None = None, present_types: set[str] | None = None,
+                       disabled: set[str] | None = None) -> set[str]:
     """Коды линтера, действующие в проекте (FR-LT-1): коды включённых модулей (базовые — всегда) плюс коды типов,
-    документы которых есть в карте библиотеки (`present_types`) — тип включает свои проверки сам, без модуля-владельца."""
+    документы которых есть в карте библиотеки (`present_types`) — тип включает свои проверки сам, без модуля-владельца.
+    Явно выключенный автором модуль (`disabled`) свои коды глушит и через тип (NFR-4: выключенный модуль — не ложные
+    ошибки)."""
     codes = {c for m in modules.values() if m.base or m.name in enabled for c in m.lint_codes}
     if types and present_types:
-        codes |= {c for n, t in types.items() if n in present_types for c in t.lint_codes}
+        muted = {c for m in modules.values() if m.name in (disabled or set()) for c in m.lint_codes}
+        codes |= {c for n, t in types.items() if n in present_types for c in t.lint_codes} - muted
     return codes
 
 

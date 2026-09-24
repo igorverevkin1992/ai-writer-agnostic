@@ -13,10 +13,10 @@ import fnmatch
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError, field_validator
 
 from . import catalog, guard
 
@@ -26,6 +26,9 @@ FILENAME = "проект.yaml"
 VOLUME_MARK_RE = re.compile(r"(?:(?<![А-Яа-яЁёA-Za-z])[Тт]ом|_[ТтT])[\s_]*0*(\d+)(?!\d)", re.IGNORECASE)
 ON = ("вкл", "да", "on", "true", "1", "yes")
 OFF = ("выкл", "нет", "off", "false", "0", "no", "")
+# префикс собственных документов движка в библиотеке (входящие Канониста и т. п.): они не входят в карту
+ENGINE_DOC_PREFIX = "КОНВЕЙЕР_"
+ENGINE_SERVICE_MASKS = (ENGINE_DOC_PREFIX + "*",)
 
 # переводы типовых сообщений схемы (FR-MF-3: валидатор объясняет ошибку по-русски)
 _MESSAGES = {
@@ -110,7 +113,7 @@ class LibraryEntry(BaseModel):
         return "*" in self.файл or "?" in self.файл
 
 
-def normalize_switch(name: str, value: Any) -> str:
+def normalize_switch(value: Any) -> str:
     """Значение переключателя модуля → «вкл»/«выкл»: YAML превращает on/true/yes в bool, 1 — в int, всё это допустимо."""
     if isinstance(value, bool):
         return "вкл" if value else "выкл"
@@ -123,7 +126,10 @@ def normalize_switch(name: str, value: Any) -> str:
         return "вкл"
     if v in OFF:
         return "выкл"
-    raise ValueError(f"модуль «{name}»: «{value}» — допустимо вкл/выкл (да/нет)")
+    raise ValueError(f"«{value}» — допустимо вкл/выкл (да/нет)")
+
+
+Switch = Annotated[str, BeforeValidator(normalize_switch)]  # значение блока `модули:`; ошибка — с именем модуля и строкой
 
 
 class Manifest(BaseModel):
@@ -131,7 +137,7 @@ class Manifest(BaseModel):
 
     версия_схемы: int = SCHEMA_VERSION
     проект: Passport = Passport()
-    модули: dict[str, str] = Field(default_factory=dict)
+    модули: dict[str, Switch] = Field(default_factory=dict)
     методики: Methodics = Methodics()
     библиотека: list[LibraryEntry] = Field(default_factory=list)
     служебные: list[str] = Field(default_factory=list)  # маски файлов библиотеки, не входящих в карту (ТЗ, инструменты)
@@ -139,12 +145,12 @@ class Manifest(BaseModel):
 
     @field_validator("модули", mode="before")
     @classmethod
-    def _switches(cls, v: Any) -> dict[str, str]:
+    def _switches(cls, v: Any) -> Any:
         if v is None:
             return {}
         if not isinstance(v, dict):
             raise ValueError("ожидается словарь «модуль: вкл/выкл»")
-        return {str(k): normalize_switch(str(k), val) for k, val in v.items()}
+        return v
 
     # -------------------------------------------------------------- модули
 
@@ -158,6 +164,10 @@ class Manifest(BaseModel):
 
     def enabled_modules(self, modules: dict[str, catalog.ModuleSpec]) -> set[str]:
         return {m for m in modules if self.module_enabled(m, modules)}
+
+    def disabled_modules(self) -> set[str]:
+        """Модули, явно выключенные автором (`выкл`): их проверки молчат, даже если документ типа-владельца есть (NFR-4)."""
+        return {m for m, v in self.модули.items() if str(v).strip().lower() not in ON}
 
     # -------------------------------------------------------------- карта
 
@@ -185,23 +195,24 @@ class Manifest(BaseModel):
         return None
 
     def is_service(self, rel: str) -> bool:
-        return is_excluded(rel, self.служебные)
+        """Служебный файл: по маскам `служебные:` манифеста или собственный документ движка (`ENGINE_DOC_PREFIX`)."""
+        return is_excluded(rel, self.служебные) or is_excluded(rel, ENGINE_SERVICE_MASKS)
 
     def docs(self, library: Path, тип: str, volume: int | None = None, types: dict | None = None) -> list[Path]:
-        """Документы типа для тома `volume` (FR-EX-4): запись с `том: N` — только тому N; запись без тома и без маркера
-        в имени — общесерийная. Для потомных типов (`по_тому`) такой документ относится к тому 1 (совместимость со
-        старыми библиотеками); при плане в несколько томов валидатор требует указать `том:`."""
+        """Документы типа для тома `volume` (FR-EX-4): запись с `том: N` — только тому N, иначе том — по маркеру в
+        имени; документ без того и другого — общесерийный (входит в каждый том). Исключение — потомный тип
+        (`по_тому`): его документ без тома относится к тому 1 (первый том серии обычно пишется без номера), а при
+        плане в несколько томов валидатор и доктор просят указать `том:`, чтобы документ не потерялся молча."""
         spec = (types or {}).get(тип)
         per_volume = bool(spec and spec.per_volume)
         out: list[Path] = []
         for e in self.entries_of_type(тип):
-            paths = _expand(library, e)
-            for p in paths:
+            for p in _expand(library, e):
                 vol = e.том if e.том is not None else doc_volume(p)
+                if vol is None and per_volume:
+                    vol = 1
                 if volume is not None and vol is not None and vol != volume:
                     continue
-                if volume is not None and vol is None and per_volume and volume >= 2:
-                    continue  # потомный документ без тома — том 1
                 out.append(p)
         return sorted(dict.fromkeys(out))
 
@@ -376,12 +387,57 @@ def type_fields(spec: catalog.TypeSpec) -> set[str]:
     return fields
 
 
+def entry_problems(manifest: Manifest, library: Path, types: dict[str, catalog.TypeSpec],
+                   text: str = "", strict: bool = True) -> list[tuple[int | None, str]]:
+    """Ошибки записей карты (FR-MF-2), по одной на (строка манифеста, сообщение): неизвестный тип, недопустимая
+    множественность, дубль файла, том вне плана, том против маркера в имени, сопоставление неизвестных полей —
+    с такими записями карта разбирается не так, как думает автор, и экспорт их показывает как ошибки. Только при
+    `strict` (доктор): отсутствующий файл (документа может ещё не быть, П-5) и потомный тип без тома при многотомном
+    плане (документ читается как том 1)."""
+    out: list[tuple[int | None, str]] = []
+    plan = manifest.проект.томов_план
+    seen: dict[str, LibraryEntry] = {}
+    for e in manifest.библиотека:
+        line = _entry_line(text, e) if text else None
+
+        def add(msg: str, _line=line, _e=e) -> None:
+            out.append((_line, f"«{_e.файл}»: {msg}"))
+
+        spec = types.get(e.тип)
+        if spec is None:
+            add(f"неизвестный тип «{e.тип}»; доступные: {', '.join(sorted(types))}")
+        if strict and not e.выключен and not _expand(library, e) \
+                and not (e.is_folder and (library / e.файл.rstrip("/")).is_dir()):
+            add(f"файла нет в библиотеке ({library.name}/)")
+        if e.множественность and e.множественность not in catalog.MULTIPLICITY:
+            add(f"множественность «{e.множественность}» — допустимо {', '.join(catalog.MULTIPLICITY)}")
+        if e.файл in seen and not e.выключен and not seen[e.файл].выключен:
+            add(f"файл уже есть в карте (тип «{seen[e.файл].тип}») — документ разбирался бы дважды")
+        seen.setdefault(e.файл, e)
+        if e.том is not None and e.том > plan:
+            add(f"том {e.том} больше плана ({plan} т.) — поправьте «том:» или «томов_план»")
+        marked = doc_volume(Path(e.файл.rstrip("/"))) if not e.is_folder and not e.is_mask else None
+        if e.том is not None and marked is not None and marked != e.том:
+            add(f"в манифесте «том: {e.том}», а по имени файла — том {marked}; оставьте одно из двух")
+        if strict and spec is not None and spec.per_volume and not e.выключен and e.том is None and marked is None \
+                and plan >= 2 and not e.is_folder and not e.is_mask:
+            add(f"тип «{e.тип}» потомный, а том не задан ни в манифесте, ни маркером в имени (Том2, _Т2) — "
+                f"при плане в {plan} т. укажите «том: N» (без него документ читается как том 1)")
+        if spec is not None:
+            allowed = type_fields(spec)
+            for block in ("колонки", "секции", "синонимы"):
+                unknown = sorted(k for k in (getattr(e, block) or {}) if k not in allowed)
+                if unknown and allowed:
+                    add(f"{block}: неизвестные поля типа «{e.тип}»: {', '.join(unknown)}; доступные: {', '.join(sorted(allowed))}")
+    return out
+
+
 def validate(manifest: Manifest, library: Path, types: dict[str, catalog.TypeSpec],
              modules: dict[str, catalog.ModuleSpec], text: str = "",
              methodics: set[str] | None = None) -> list[str]:
-    """Ошибки манифеста по-русски с номером строки: неизвестный тип, отсутствующий файл, включённый модуль без
-    требуемого типа, незнакомый модуль, том вне плана, дубли файлов, несогласованный том, сопоставление неизвестных
-    полей, незнакомая методика (`methodics` — имена доступных методик; None — не проверять)."""
+    """Ошибки манифеста по-русски с номером строки: записи карты (`entry_problems`), незнакомый модуль, включённый
+    модуль без требуемого типа, текущий том вне плана, версия схемы новее движка, незнакомая методика
+    (`methodics` — имена доступных методик; None — не проверять)."""
     errors: list[str] = []
     plan = manifest.проект.томов_план
 
@@ -389,43 +445,10 @@ def validate(manifest: Manifest, library: Path, types: dict[str, catalog.TypeSpe
         n = _line_of(text, needle) if text else None
         return f"{FILENAME}:{n}: " if n else f"{FILENAME}: "
 
-    def at(e: LibraryEntry) -> str:
-        n = _entry_line(text, e)
-        return f"{FILENAME}:{n}: " if n else f"{FILENAME}: "
-
     if manifest.версия_схемы > SCHEMA_VERSION:
         errors.append(f"{where('версия_схемы')}версия схемы {manifest.версия_схемы} новее, чем у движка ({SCHEMA_VERSION}) — "
                       "обновите движок")
-    seen: dict[str, LibraryEntry] = {}
-    for e in manifest.библиотека:
-        spec = types.get(e.тип)
-        if spec is None:
-            errors.append(f"{at(e)}«{e.файл}»: неизвестный тип «{e.тип}»; доступные: {', '.join(sorted(types))}")
-        if not e.выключен and not _expand(library, e) and not (e.is_folder and (library / e.файл.rstrip("/")).is_dir()):
-            errors.append(f"{at(e)}«{e.файл}»: файла нет в библиотеке ({library.name}/)")
-        if e.множественность and e.множественность not in catalog.MULTIPLICITY:
-            errors.append(f"{at(e)}«{e.файл}»: множественность «{e.множественность}» — "
-                          f"допустимо {', '.join(catalog.MULTIPLICITY)}")
-        if e.файл in seen and not e.выключен and not seen[e.файл].выключен:
-            errors.append(f"{at(e)}«{e.файл}»: файл уже есть в карте (тип «{seen[e.файл].тип}») — документ разбирался бы дважды")
-        seen.setdefault(e.файл, e)
-        if e.том is not None and e.том > plan:
-            errors.append(f"{at(e)}«{e.файл}»: том {e.том} больше плана ({plan} т.) — поправьте «том:» или «томов_план»")
-        marked = doc_volume(Path(e.файл.rstrip("/"))) if not e.is_folder and not e.is_mask else None
-        if e.том is not None and marked is not None and marked != e.том:
-            errors.append(f"{at(e)}«{e.файл}»: в манифесте «том: {e.том}», а по имени файла — том {marked}; "
-                          "оставьте одно из двух")
-        if spec is not None and spec.per_volume and not e.выключен and e.том is None and marked is None and plan >= 2 \
-                and not e.is_folder and not e.is_mask:
-            errors.append(f"{at(e)}«{e.файл}»: тип «{e.тип}» потомный, а том не задан ни в манифесте, ни маркером в имени "
-                          f"(Том2, _Т2) — при плане в {plan} т. укажите «том: N»")
-        if spec is not None:
-            allowed = type_fields(spec)
-            for block in ("колонки", "секции", "синонимы"):
-                unknown = sorted(k for k in (getattr(e, block) or {}) if k not in allowed)
-                if unknown and allowed:
-                    errors.append(f"{at(e)}«{e.файл}»: {block}: неизвестные поля типа «{e.тип}»: {', '.join(unknown)}; "
-                                  f"доступные: {', '.join(sorted(allowed))}")
+    errors += [f"{FILENAME}:{n}: {msg}" if n else f"{FILENAME}: {msg}" for n, msg in entry_problems(manifest, library, types, text)]
     for name in manifest.модули:
         if name not in modules:
             errors.append(f"{where(name + ':')}модуль «{name}» неизвестен; доступные: {', '.join(sorted(modules))}")
@@ -458,7 +481,7 @@ def infer(library: Path, types: dict[str, catalog.TypeSpec], threshold: float = 
         return Manifest(выведен=True, служебные=list(exclude))
     for path in sorted(library.rglob("*.md")):
         rel = path.relative_to(library).as_posix()
-        if is_excluded(rel, exclude):
+        if is_excluded(rel, exclude) or is_excluded(rel, ENGINE_SERVICE_MASKS):
             continue
         hyps = classify.classify_file(path, types)
         if not hyps or hyps[0].confidence < threshold:

@@ -163,7 +163,8 @@ def load_context(library: Path, exports_dir: Path, volume: int, root: Path | Non
     types = catalog.load_types(root)
     modules = catalog.load_modules(root)
     man = manifest_mod.effective(root, library, types)
-    enabled = catalog.enabled_lint_codes(modules, man.enabled_modules(modules), types, man.present_types())
+    enabled = catalog.enabled_lint_codes(modules, man.enabled_modules(modules), types, man.present_types(),
+                                         man.disabled_modules())
     ctx = LintContext(library=library, exports=exports_dir, root=root, volume=volume, types=types, modules=modules,
                       manifest=man, enabled_codes=enabled)
     ctx.briefs = exporter.load_briefs(exports_dir)
