@@ -657,3 +657,24 @@ def test_push_после_приёмки_и_доктор_видит_отстав�
     assert gitops.remote_lag(library, "диск") == 1
     r = runner.invoke(app, ["доктор"])
     assert "копия диск: отстаёт на 1 коммит" in r.output and "бэкап --push" in r.output
+
+
+def test_битый_конфиг_и_недопустимые_значения_без_трейсбека(ws):
+    cfg = ws.root / "конфиг.yaml"
+    cfg.write_text("library_dir: [\n", encoding="utf-8")
+    r = runner.invoke(app, ["статус"])
+    assert r.exit_code == 1 and "конфиг.yaml не читается как YAML" in r.output and "Traceback" not in r.output, r.output
+    cfg.write_text("auto_retries_verify1: много\nvolume: 0\n", encoding="utf-8")
+    r = runner.invoke(app, ["статус"])
+    assert r.exit_code == 1 and "auto_retries_verify1: ожидается целое число, получено «много»" in r.output, r.output
+    assert "pydantic" not in r.output and "Traceback" not in r.output
+    cfg.write_text("- список\n", encoding="utf-8")
+    r = runner.invoke(app, ["статус"])
+    assert r.exit_code == 1 and "ожидался YAML-словарь" in r.output
+    cfg.write_text("library_dir: Библиотека\n", encoding="utf-8")
+    r = runner.invoke(app, ["статус", "--том", "0"])
+    assert r.exit_code == 1 and "≥ 1" in r.output
+    r = runner.invoke(app, ["статус", "42"])
+    assert r.exit_code == 0 and "нет в плане глав" in r.output, r.output
+    r = runner.invoke(app, ["статус", "1"])
+    assert r.exit_code == 0 and "нет в плане глав" not in r.output

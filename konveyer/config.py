@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from . import guard
 from .paths import Workspace
@@ -155,13 +155,49 @@ def config_path(ws: Workspace) -> Path:
 
 
 def load_config(ws: Workspace) -> Config:
+    """конфиг.yaml рабочей области; нет файла — умолчания. Битый YAML или недопустимое значение —
+    `ValueError` с русским текстом (интерфейсы печатают «ОШИБКА: …» без трейсбека, FR-CL-3)."""
     path = config_path(ws)
     data: dict[str, Any] = {}
     if path.exists():
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    cfg = Config.model_validate(data)
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError as e:
+            mark = getattr(e, "problem_mark", None)
+            where = f" (строка {mark.line + 1}, столбец {mark.column + 1})" if mark is not None else ""
+            raise ValueError(f"{path.name} не читается как YAML{where}: {getattr(e, 'problem', None) or e}. "
+                             "Поправьте файл или восстановите из data/конфиг.пример.yaml.") from None
+        if not isinstance(data, dict):
+            raise ValueError(f"{path.name}: ожидался YAML-словарь «ключ: значение», а не {type(data).__name__}.")
+    try:
+        cfg = Config.model_validate(data)
+    except ValidationError as e:
+        problems = "; ".join(
+            f"{'.'.join(str(x) for x in err['loc']) or 'конфиг'}: {_describe_validation(err)}" for err in e.errors()
+        )
+        raise ValueError(f"{path.name}: недопустимые значения — {problems}.") from None
     _load_dotenv(ws.root / ".env")
     return cfg
+
+
+def _describe_validation(err: dict) -> str:
+    kind = str(err.get("type", ""))
+    value = err.get("input")
+    shown = f"получено «{value}»" if not isinstance(value, dict) else "получен словарь"
+    if kind.startswith("int_"):
+        return f"ожидается целое число, {shown}"
+    if kind.startswith("float_"):
+        return f"ожидается число, {shown}"
+    if kind.startswith("bool_"):
+        return f"ожидается да/нет, {shown}"
+    if kind in ("string_type", "str_type"):
+        return f"ожидается строка, {shown}"
+    if kind == "missing":
+        return "обязательное поле не задано"
+    if kind == "extra_forbidden":
+        return "неизвестное поле"
+    msg = str(err.get("msg", ""))
+    return (msg.replace("Value error, ", "") or kind) + (f" ({shown})" if value is not None else "")
 
 
 def library_dir(ws: Workspace, cfg: Config) -> Path:

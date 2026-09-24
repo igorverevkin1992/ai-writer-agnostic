@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .. import adapters, backup as backup_mod, dashboard as dashboard_mod, gitops, regression as regression_mod
 from .. import review as review_mod, timing, verifier2
+from ..errors import StepError
 from ..fsm import ChapterState, all_states
 from ..paths import Workspace
 from .common import _chapter_flags_summary, _ctx, _print_verdict, cmd, colors, echo, next_step, secho
@@ -16,6 +17,8 @@ def status(chapter: int | None = None, volume: int | None = None) -> list:
     """Состояния глав и следующий шаг (FR-D2); с `chapter` — карточка главы; `volume` — главы тома N.
     Возвращает состояния глав тома (для карточки — список из одной главы)."""
     ws, cfg, lib = _ctx()
+    if volume is not None and int(volume) < 1:
+        raise StepError(f"номер тома должен быть ≥ 1, получено: {volume}.")
     if volume is not None and volume != ws.volume:
         ws = ws.for_volume(volume)
     if chapter is not None:
@@ -35,10 +38,24 @@ def status(chapter: int | None = None, volume: int | None = None) -> list:
     return states
 
 
+def _in_plan(ws: Workspace, chapter: int) -> bool:
+    """Есть ли бриф главы в выгрузках текущего тома; нет выгрузок — считаем, что есть (не ложная тревога, П-5)."""
+    from .. import exporter
+
+    try:
+        briefs = exporter.load_briefs(ws.exports)
+    except (FileNotFoundError, ValueError):
+        return True
+    return any(b.chapter == chapter and b.volume == ws.volume for b in briefs)
+
+
 def _status_detail(ws: Workspace, chapter: int, cfg=None) -> ChapterState:
     """Карточка главы: метрики вердикта, флаги, самоволки, следующий шаг."""
     st = ChapterState(ws, chapter)
     secho(f"Глава {chapter} · состояние «{st.state}» · черновик {st.draft}", bold=True)
+    if st.state == "не-начато" and not _in_plan(ws, chapter):
+        secho(f"⚠ Главы {chapter} нет в плане глав тома {ws.volume} (выгрузки/briefs.json) — проверьте номер "
+              "или заведите бриф в документе плана глав.", fg=colors.YELLOW)
     echo(
         f"Авто-повторов Э1: {st.data.get('авто_повторов', 0)}; итераций правок: {st.data.get('итераций_правок', 0)}"
     )
