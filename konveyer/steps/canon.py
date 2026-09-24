@@ -127,7 +127,7 @@ def rollback(chapter: int, to: str | None = None, yes: bool = False, confirm: Co
         raise StepError(f"откат возможен только назад: «{st.state}» → «{to}» не является откатом.")
     if st.state == "зафиксировано":
         # только git-revert коммита приёмки с пересчётом выгрузок и корпуса
-        sha = st.data.get("коммит_приёмки") or gitops.find_chapter_commit(lib, chapter)
+        sha = st.data.get("коммит_приёмки") or gitops.find_chapter_commit(lib, chapter, ws.volume)
         if not sha:
             raise StepError(f"не найден коммит приёмки главы {chapter} в библиотеке.")
         confirm_or_reject(yes, confirm, f"git revert {sha[:10]} (приёмка главы {chapter}) и пересчёт выгрузок? (y)")

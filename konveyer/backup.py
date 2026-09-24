@@ -199,7 +199,7 @@ class SplitPlan:
             chapters = ", ".join(str(c) for c in self.fixed_chapters)
             out.append(
                 f"5. состояние.yaml глав {chapters}: SHA коммита приёмки "
-                + ("будет найден заново по сообщению «[глава N]» в новой истории"
+                + ("будет найден заново по шаблонному сообщению приёмки в новой истории"
                    if self.with_history else
                    "будет снят (старая история остаётся в прежнем репозитории; откат этих глав git-revert'ом "
                    "после переезда невозможен — либо `--с-историей`, либо считайте их закрытыми)")
@@ -285,7 +285,7 @@ def _remap_fixed_chapters(ws: Workspace, plan: SplitPlan) -> list[str]:
     for n in plan.fixed_chapters:
         st = ChapterState(ws, n)
         old = st.data.get("коммит_приёмки")
-        new = gitops.find_chapter_commit(plan.target, n) if plan.with_history else None
+        new = gitops.find_chapter_commit(plan.target, n, ws.volume) if plan.with_history else None
         if new:
             st.data["коммит_приёмки"] = new
             notes.append(f"глава {n}: коммит приёмки {str(old)[:10]} → {new[:10]}")

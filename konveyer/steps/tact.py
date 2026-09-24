@@ -428,8 +428,8 @@ def canonize(
         )
     # Идемпотентность (4.1): если приёмка уже закоммичена, а состояние не успело смениться
     # (сбой между коммитом и записью состояние.yaml), повтор НЕ применяет пакет второй раз —
-    # он восстанавливает состояние по действующему коммиту «[глава N]».
-    existing = gitops.find_chapter_commit(lib, chapter)
+    # он восстанавливает состояние по действующему коммиту приёмки этой главы ЭТОГО тома.
+    existing = gitops.find_chapter_commit(lib, chapter, ws.volume)
     if existing:
         st.data["коммит_приёмки"] = existing
         st.transition("зафиксировано", "canonize --apply (восстановление по коммиту)")
@@ -450,10 +450,10 @@ def canonize(
 
 
 def _after_canonize(ws: Workspace, cfg: Config, lib: Path, chapter: int, commit: str) -> None:
-    """После приёмки (аудит 2, п. 28–29): тег версии канона `глава-N` (повторная приёмка после отката —
-    `глава-N-2`) и архив рабочей области, если в конфиг.yaml задан backup_dir. Ни то, ни другое не может
+    """После приёмки: тег версии канона (`глава-N`, том ≥ 2 — `томV-глава-N`; повторная приёмка после
+    отката — `…-2`) и архив рабочей области, если в конфиг.yaml задан backup_dir. Ни то, ни другое не может
     сорвать приёмку: она уже закоммичена и состояние сменено; сбой — предупреждение."""
-    name = gitops.tag_chapter(lib, chapter, commit)
+    name = gitops.tag_chapter(lib, chapter, commit, ws.volume)
     if name:
         echo(f"Тег канона: {name}")
     else:
