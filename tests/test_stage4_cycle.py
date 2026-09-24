@@ -237,6 +237,9 @@ def test_resolve_all_проверяет_решение(panel, ws):
     assert code == 400 and "решение" in data["error"]
     code, data = _req(port, "POST", "/api/chapter/2/resolve-all", {"decision": "канонизировать", "registry": "9.9"})
     assert code == 400 and "реестр" in data["error"]
+    # «отклонить» всем сразу нельзя: причина нужна по каждому флагу (FR-RV-2)
+    code, data = _req(port, "POST", "/api/chapter/2/resolve-all", {"decision": "отклонить"})
+    assert code == 400 and "вычеркнуть" in data["error"]
     assert len(review.unresolved_samovolki(ws, 2)) == 2
 
 

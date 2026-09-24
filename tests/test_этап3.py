@@ -217,6 +217,21 @@ def test_приёмка_принять_рекомендацию_флага(ws, l
     assert rs == {"F-001": "вычеркнуть", "F-002": "принять"}
 
 
+def test_приёмка_без_отчёта_дифф_контроля_недоступна(ws, library):
+    """FR-RV-4: состояние «дифф-контроль» без дифф.json (файл удалён руками) — приёмка отказывает, не пропускает."""
+    _to_review(ws, library, 1)
+    st = ChapterState(ws, 1)
+    review.save_edits(ws, 1, [])
+    shutil.copyfile(ws.draft_path(1, 1), ws.draft_path(1, 2))
+    st.set_draft(2)
+    st.transition("правки", "apply-edits")
+    tact.diff_check(1)
+    (ws.chapter_dir(1) / "дифф.json").unlink()
+    with pytest.raises(Exception, match="нет отчёта дифф-контроля"):
+        tact.accept(1, yes=True)
+    assert ChapterState(ws, 1).state == "дифф-контроль"
+
+
 def test_приёмка_отклонённый_флаг_логируется(ws, library):
     _to_review(ws, library, 1, [SAMOVOLKA, VIOLATION])
     with pytest.raises(Exception, match="причин"):
@@ -645,6 +660,35 @@ def test_методика_черновик_не_читается_окном(ws, 
     system, user = verifier2.build_prompt(ws, 1, 1)
     assert "Каширин нашёл записку" in user  # промпт Э2 действительно собран
     assert "ЧЕРНОВИК" not in user and "ЧЕРНОВИК" not in system  # FR-DR-5: Э2 читает только канон
+
+
+def test_методика_выключена_без_следов(ws, library):
+    """§7.10: `драматургия: выкл` при документе каркасов в библиотеке — ни секции окна, ни пункта чек-листа Э2,
+    ни строки в промпте Э2, ни находок линтера по каркасам (критерий приёмки 4)."""
+    from konveyer import lint
+
+    (library / "21_Каркасы_Том1.md").write_text(
+        "# Каркасы драматургии — Том 1\n## Методика: круг истории\n\n## Акты тома\n\n| Акт | Название | Главы | Части | Шаги |\n"
+        "|---|---|---|---|---|\n| 1 | «А» | 1–6 | I | 1–8 |\n\n## Круг тома\n\n**Суть:** том.\n\n1. **Ты** (гл. 1–6) — начало.\n",
+        encoding="utf-8")
+    man = manifest_mod.load(ws.root)
+    man.библиотека.append(manifest_mod.LibraryEntry(файл="21_Каркасы_Том1.md", тип="каркасы", том=1))
+    manifest_mod.save(ws.root, man)
+    exporter.run_export(library, ws.exports, ws.logs)
+    assert [f.code for f in lint.run_lint(library, ws.exports, ws.logs, use_cache=False).findings if f.code.startswith("КРУГ")]
+    man = manifest_mod.load(ws.root)
+    man.модули["драматургия"] = "выкл"
+    manifest_mod.save(ws.root, man)
+    exporter.run_export(library, ws.exports, ws.logs)
+    w = compiler.compile_window(ws, library, 1)[0].read_text(encoding="utf-8")
+    assert "Драматург" not in w and "Каркас" not in w and "круг" not in w.lower()
+    assert not any("драматург" in c.lower() or "каркас" in c.lower() for c in verifier2.checklists(ws))
+    ws.chapter_dir(1).mkdir(parents=True, exist_ok=True)
+    ws.draft_path(1, 1).write_text(DRAFT, encoding="utf-8")
+    system, user = verifier2.build_prompt(ws, 1, 1)
+    assert "каркас" not in user.lower() and "каркас" not in system.lower()
+    report = lint.run_lint(library, ws.exports, ws.logs, use_cache=False)
+    assert not [f.code for f in report.findings if f.code.startswith(("КРУГ", "АКТ", "ЧАСТЬ"))]
 
 
 def test_методика_своя_из_проекта(ws, library):

@@ -21,11 +21,13 @@ def _enclosing_functions(tree: ast.AST) -> dict[int, str]:
     return spans
 
 
-def test_в_верификаторе_нет_числовых_порогов():
-    """Критерий приёмки 6: все пороги Э1 — из norms.json. В сравнениях verifier1.py допустимы только 0 и 1
-    (индексы/пустота), остальные числа — только через _norm_value()."""
+def test_нормы_только_из_канона():
+    """Критерий приёмки 6 / FR-V1-2: все пороги Э1 — из norms.json. В сравнениях verifier1.py, metrics.py,
+    а также lint.py (проза против норм), compiler.py и verifier2.py допустимы только 0 и 1 (индексы/пустота);
+    остальные числа — только через _norm_value() либо технические константы, помеченные `# не порог`
+    (календарь, размер кэша, длина основы слова)."""
     offenders = []
-    for name in ("verifier1.py", "metrics.py"):
+    for name in ("verifier1.py", "metrics.py", "lint.py", "compiler.py", "verifier2.py"):
         src = (KONVEYER / name).read_text(encoding="utf-8")
         tree = ast.parse(src)
         lines = src.splitlines()

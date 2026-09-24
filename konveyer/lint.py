@@ -48,7 +48,7 @@ def parse_date(text: str) -> tuple[int, int] | None:
 
 def _months(text: str) -> set[int]:
     found = [MONTHS[w.lower()[:3]] for w in re.findall(r"[А-Яа-яЁё]{3,}", text) if w.lower()[:3] in MONTHS]
-    if len(found) >= 2 and found[0] <= found[-1]:
+    if len(found) >= 2 and found[0] <= found[-1]:  # не порог
         return set(range(found[0], found[-1] + 1))
     return set(found)
 
@@ -72,7 +72,7 @@ def _lines(path: Path | None) -> list[str]:
             _LINES_CACHE[key] = path.read_text(encoding="utf-8").splitlines()
         except OSError:
             _LINES_CACHE[key] = []
-        if len(_LINES_CACHE) > 500:
+        if len(_LINES_CACHE) > 500:  # не порог
             for old in list(_LINES_CACHE)[:250]:
                 _LINES_CACHE.pop(old, None)
     return _LINES_CACHE[key]
@@ -222,11 +222,11 @@ def check_chronology(ctx: LintContext) -> list[LintFinding]:
             continue
         mon, day = d
         file, line = ctx.brief_loc(b)
-        if not (1 <= mon <= 12 and 1 <= day <= 31):
+        if not (1 <= mon <= 12 and 1 <= day <= 31):  # не порог
             out.append(_f("ХРОН-1", "ошибка", file, line, f"гл. {b.chapter}: дата «{b.date}» вне календаря",
                           "исправьте дату главы в плане глав"))
             continue
-        if last is not None and d < last and not (last[0] == 12 and mon == 1):
+        if last is not None and d < last and not (last[0] == 12 and mon == 1):  # не порог
             out.append(_f("ХРОН-2", "ошибка", file, line,
                           f"гл. {b.chapter} датирована «{b.date}» — раньше гл. {last_ch} ({last[1]:02d}.{last[0]:02d}); "
                           "порядок глав нарушает хронологию тома", "переставьте главы или поправьте даты"))
@@ -280,7 +280,7 @@ _CAP_WORD_RE = re.compile(r"[А-ЯЁа-яё]{4,}")
 
 def _event_keys(event: str) -> set[str]:
     words = _CAP_WORD_RE.findall(event.replace("*", " "))
-    return {w.lower()[:7] for i, w in enumerate(words) if i and w[0].isupper() and len(w) >= 6}
+    return {w.lower()[:7] for i, w in enumerate(words) if i and w[0].isupper() and len(w) >= 6}  # не порог
 
 
 def _brief_text(b: Brief) -> str:
@@ -300,7 +300,7 @@ def check_chronicle_dates(ctx: LintContext) -> list[LintFinding]:
         day, month = int(m.group(1)), int(m.group(2))
         for key in sorted(_event_keys(ev.event)):
             hits = [ch for ch, text in texts.items() if key in text]
-            if not hits or len(hits) > 2:
+            if not hits or len(hits) > 2:  # не порог
                 continue
             for ch in hits:
                 d = parse_date(by_ch[ch].date)
@@ -843,7 +843,7 @@ _STEM_END_RE = re.compile(r"(?:ами|ями|ого|ому|ыми|ими|ой|е
 
 
 def _stems(text: str) -> set[str]:
-    return {s for w in re.findall(r"[а-яёa-z]{3,}", text.lower()) if len(s := _STEM_END_RE.sub("", w)) >= 3}
+    return {s for w in re.findall(r"[а-яёa-z]{3,}", text.lower()) if len(s := _STEM_END_RE.sub("", w)) >= 3}  # не порог
 
 
 def _prose(ctx: LintContext) -> list[tuple[int, Path, Brief | None]]:

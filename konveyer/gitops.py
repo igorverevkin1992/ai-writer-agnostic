@@ -1,4 +1,4 @@
-"""Git-операции над библиотекой канона (через subprocess, Д-8, сценарии Б/Г)."""
+"""Git-операции над библиотекой канона (через subprocess; коммиты делает система после подтверждения, авторство — автор, Д-17)."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def prefix(repo: Path) -> str:
 
 
 def commit_all(repo: Path, message: str, author: str | None = None) -> str | None:
-    """Атомарный коммит изменений ТОЛЬКО внутри папки библиотеки (5.1, FR-K2). Авторство — автор (Д-8).
+    """Атомарный коммит изменений ТОЛЬКО внутри папки библиотеки (FR-CN-2). Авторство — автор (Д-17).
     Возвращает SHA коммита; None — если коммитить было нечего."""
     _git(repo, "add", "-A", "--", ".")
     if not dirty(repo):
@@ -64,7 +64,7 @@ def check_norm_change_message(message: str) -> bool:
 
 
 def find_chapter_commit(repo: Path, chapter: int) -> str | None:
-    """Ищет ДЕЙСТВУЮЩИЙ коммит приёмки главы по шаблонному сообщению (FR-K2).
+    """Ищет ДЕЙСТВУЮЩИЙ коммит приёмки главы по шаблонному сообщению (FR-CN-2, FR-SC-3).
     Если самый свежий коммит по главе — её откат (`Revert "[глава N] …"`), приёмки нет (None):
     иначе повторное применение пакета «нашло бы» уже откачённую приёмку."""
     out = _git(repo, "log", "--format=%H %s", check=False)
@@ -110,7 +110,7 @@ def revert(repo: Path, commit: str, author: str | None = None) -> str:
             )
         args = ["commit", "--no-edit", "-m", f'Revert "{_git(repo, "log", "-1", "--format=%s", commit, check=False)}"']
         if author:
-            args += ["--author", author]  # авторство отката — автор (Д-8)
+            args += ["--author", author]  # авторство отката — автор (Д-17)
         _git(repo, *args)
     except BaseException:
         _git(repo, "revert", "--abort", check=False)

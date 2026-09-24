@@ -369,14 +369,16 @@ def diff_check(chapter: int, author_fix: bool = False, fragments: list[str] | No
 
 
 def accept(chapter: int, yes: bool = False, confirm: Confirm | None = None) -> None:
-    """Приёмка главы автором (FR-E4): только из «дифф-контроль: чисто», с явным подтверждением."""
+    """Приёмка главы автором (FR-RV-4): только из «дифф-контроль: чисто», с явным подтверждением."""
     ws, cfg, lib = _ctx()
     st = ChapterState(ws, chapter)
     st.require("дифф-контроль")
     report_path = ws.chapter_dir(chapter) / "дифф.json"
-    data = json.loads(report_path.read_text(encoding="utf-8")) if report_path.exists() else {}
+    if not report_path.exists():
+        raise StepError(f"нет отчёта дифф-контроля {ws.chapter_rel(chapter)}/дифф.json — выполните `konveyer diff-check {chapter}` (FR-RV-4).")
+    data = json.loads(report_path.read_text(encoding="utf-8"))
     if data.get("not_applied") or data.get("unauthorized"):
-        raise StepError("дифф-контроль не чист — приёмка недоступна (FR-E4).")
+        raise StepError("дифф-контроль не чист — приёмка недоступна (FR-RV-4).")
     unresolved = review_mod.unresolved_samovolki(ws, chapter)
     if unresolved:
         raise StepError(f"не решены самоволки: {', '.join(unresolved)} (решения.json).")
