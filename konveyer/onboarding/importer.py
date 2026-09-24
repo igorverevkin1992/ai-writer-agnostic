@@ -83,7 +83,12 @@ def load_index(ws: Workspace) -> list[RawEntry]:
     if not p.exists():
         return []
     data = json.loads(p.read_text(encoding="utf-8"))
-    return [RawEntry(**{k: v for k, v in d.items() if k in RawEntry.__dataclass_fields__}) for d in data]
+    entries = [RawEntry(**{k: v for k, v in d.items() if k in RawEntry.__dataclass_fields__}) for d in data]
+    for e in entries:  # старые индексы хранили путь относительно текущей папки — считаем его относительным корню проекта
+        outer = e.исходный_путь.split(ARCHIVE_SEP, 1)[0]
+        if outer and not Path(outer).is_absolute():
+            e.исходный_путь = str(ws.root / outer) + e.исходный_путь[len(outer):]
+    return entries
 
 
 def save_index(ws: Workspace, entries: list[RawEntry]) -> Path:

@@ -439,10 +439,13 @@ def model_layer(ws: Workspace, cfg, files: list[Path], types: dict[str, catalog.
         item = _pick_answer(data, path)
         if item:
             out[path.name] = item
+    sent = sum(len(_model_input(p, types)) for p in chosen if p.name in out)
     if left:
         note = (f"модельному слою отправлено {len(chosen)} из {len(files)} файлов (лимит onboarding_max_docs={limit}); "
                 f"не отправлены: {', '.join(p.name for p in left[:5])}{'…' if len(left) > 5 else ''}")
         reason = f"{reason}; {note}" if reason else note
+    if sent and not reason:
+        reason = f"архивариус разобрал {len(out)} файлов (~{sent // 1000} тыс. знаков запросов; повтор — из кэша)"
     return out, reason
 
 
