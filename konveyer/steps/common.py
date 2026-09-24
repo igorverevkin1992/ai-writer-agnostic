@@ -84,18 +84,20 @@ def _install_before_call(ws: Workspace, cfg: Config) -> None:
     from .. import accounting, adapters, pins
 
     def hook(role: str, role_key: str | None, mc, prompt_chars: int) -> None:
-        est = accounting.estimate_before(mc, prompt_chars)
-        label = f"«{role}»"
-        if est is not None:
-            echo(f"Оценка стоимости вызова {label}: ≈ {est:.3f} $ (по ценам конфига, промпт {prompt_chars} знаков).")
-        chapter = _current_chapter.get("n")
-        for w in accounting.warnings(ws, cfg, chapter, prompt_chars, mc):
-            secho(f"⚠ {w}", fg=colors.YELLOW)
-        if role_key in cfg.roles():
-            warning = pins.warn_if_changed(ws, cfg, (role_key,))
-            if warning:
-                secho(f"⚠ {warning}", fg=colors.YELLOW)
+        try:
+            est = accounting.estimate_before(mc, prompt_chars)
+            if est is not None:
+                echo(f"Оценка стоимости вызова «{role}»: ≈ {est:.3f} $ (по ценам конфига, промпт {prompt_chars} знаков).")
+            for w in accounting.warnings(ws, cfg, _current_chapter.get("n"), prompt_chars, mc):
+                secho(f"⚠ {w}", fg=colors.YELLOW)
+            if role_key in cfg.roles():
+                warning = pins.warn_if_changed(ws, cfg, (role_key,))
+                if warning:
+                    secho(f"⚠ {warning}", fg=colors.YELLOW)
+        except (OSError, ValueError) as e:  # диагностика перед вызовом не должна срывать сам вызов (П-5)
+            secho(f"⚠ Оценка перед вызовом «{role}» не удалась: {e}", fg=colors.YELLOW)
 
+    _current_chapter["n"] = None  # глава шага выставляется самим шагом после _ctx()
     adapters.before_call = hook
 
 
