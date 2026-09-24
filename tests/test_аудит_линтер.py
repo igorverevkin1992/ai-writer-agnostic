@@ -270,3 +270,85 @@ def test_акт1_подсказка_по_направлению_и_строка(
     _edit(doc, "| 2 | «Архив» | 3–3 | II | 5–8 |", "| 2 | «Архив» | 4–4 | II | 5–8 |")
     f = next(f for f in _lint(ws, library, 2).findings if f.code == "АКТ-1" and f.severity == "ошибка")
     assert "начинается с гл. 4, ожидалась гл. 3" in f.message and f.line == 9
+
+
+# ------------------------------------------------------------------ фокалы, досье, проза, индекс
+
+
+def test_фокал2_несколько_томов_в_статусе(ws, library):
+    assert lint._focal_volumes("Жива; фокальна т.1, т.3.") == {1, 3}
+    assert lint._focal_volumes("фокал: т.1 (гл. 1–9) и т.2") == {1, 2}
+    assert lint._focal_volumes("Фокален в т.2–3.") == {2, 3}
+    assert lint._focal_volumes("Жив.") is None and lint._focal_volumes("фокала не имеет") == set()
+    assert {1, 2, 40} <= lint._focal_volumes("Жив т.1–2; фокален с т.1.")
+    card = library / "Досье" / "Персонаж_Зоя.md"
+    _edit(card, "Жива т.1–2; фокальна с т.1.", "Жива; фокальна т.1, т.2.")
+    assert "ФОКАЛ-2" not in _codes(_lint(ws, library, 2))
+    _edit(card, "Жива; фокальна т.1, т.2.", "Жива; фокальна т.1, т.3.")
+    found = [f for f in _lint(ws, library, 2).findings if f.code == "ФОКАЛ-2"]
+    assert found and all(f.severity == "предупреждение" and "т.1, т.3" in f.message for f in found)
+
+
+def test_проза1_маркер_в_повествовательной_части_абзаца_с_репликой(ws, library):
+    prose = library / "Проза" / "Том1_Глава03.md"
+    _edit(prose, "Пронин пришёл к киоску", "— Ну и всё, — сказала Зоя и подумала, что сторож жив и прячется. Пронин пришёл к киоску")
+    found = [f for f in _lint(ws, library).findings if f.code == "ПРОЗА-1"]
+    assert found and found[0].line == 1 and "B-003" in found[0].message and found[0].file == "Проза/Том1_Глава03.md"
+    # маркер только внутри реплики персонажа — не знание фокала
+    _edit(prose, "— Ну и всё, — сказала Зоя и подумала, что сторож жив и прячется.", "— Сторож жив, — сказал Пронин.")
+    assert "ПРОЗА-1" not in _codes(_lint(ws, library))
+
+
+def test_досье5_номер_гаража_с_годом_не_возраст(ws, library):
+    card = library / "Досье" / "Персонаж_Каширин.md"
+    _edit(card, "Живёт один, привычки", "Пятнадцать лет в гараже №14 (1995 год — уже свой). Живёт один, привычки")
+    assert "ДОСЬЕ-5" not in _codes(_lint(ws, library))
+    _edit(card, "Пятнадцать лет в гараже", "Ему было 30 (1995). Пятнадцать лет в гараже")
+    f = next(f for f in _lint(ws, library).findings if f.code == "ДОСЬЕ-5")
+    assert "30 (1995" in f.message and "возраст 52" in f.message
+
+
+def test_досье6_по_обязательным_секциям_типа(ws, library):
+    card = library / "Досье" / "Персонаж_Лида.md"
+    text = card.read_text(encoding="utf-8")
+    card.write_text(text.split("## Речевой паспорт")[0] + "## Отношения\n\n| к кому | отношение |\n|---|---|\n| Каширин | опека |\n", encoding="utf-8")
+    found = [f for f in _lint(ws, library).findings if f.code == "ДОСЬЕ-6"]
+    assert [f.message.split(". Что")[0] for f in found] == ["Лида: у карточки нет обязательной секции «Речевой паспорт»"]
+    assert found[0].file == "Досье/Персонаж_Лида.md" and (library / found[0].file).exists()  # находка ведёт к файлу
+    assert "добавьте секцию «Речевой паспорт»" in found[0].message
+    # заголовок-синоним («Внешность» вместо «Физика») секцию закрывает
+    card2 = library / "Досье" / "Персонаж_Пронин.md"
+    _edit(card2, "## Физика", "## Внешность")
+    assert not [f for f in _lint(ws, library).findings if f.code == "ДОСЬЕ-6" and "Пронин" in f.message]
+    # проектный тип с другим набором секций
+    (ws.root / "типы").mkdir(exist_ok=True)
+    src = Path(lint.__file__).parent / "типы" / "персонажи.yaml"
+    (ws.root / "типы" / "персонажи.yaml").write_text(src.read_text(encoding="utf-8").replace(
+        'обязательные_секции: ["Профиль", "Физика", "Речевой паспорт", "Отношения"]', 'обязательные_секции: ["Профиль", "Биография"]'), encoding="utf-8")
+    found = [f for f in _lint(ws, library).findings if f.code == "ДОСЬЕ-6"]
+    assert len(found) == 5 and all("«Биография»" in f.message for f in found)
+
+
+def test_канон1_префикс_решений_из_журнала(ws, library):
+    journal = library / "36_Журнал_решений.md"
+    journal.write_text(journal.read_text(encoding="utf-8").replace("Р-", "D-"), encoding="utf-8")
+    index = library / "00_ИНДЕКС_БИБЛИОТЕКИ.md"
+    _edit(index, "| 36_Журнал_решений.md | журнал_решений |", "| 36_Журнал_решений.md | журнал_решений | D-001 … D-001 |")
+    (ws.root / "типы").mkdir(exist_ok=True)
+    src = Path(lint.__file__).parent / "типы" / "журнал_решений.yaml"
+    (ws.root / "типы" / "журнал_решений.yaml").write_text(src.read_text(encoding="utf-8").replace("Р-", "D-"), encoding="utf-8")
+    exporter.run_export(library, ws.exports, ws.logs)
+    assert exporter.load_decisions(ws.exports) and exporter.load_decisions(ws.exports)[0].decision_id.startswith("D-")
+    f = next(f for f in _lint(ws, library).findings if f.code == "КАНОН-1")
+    assert "дошёл до D-0" in f.message and "Р-" not in f.message
+
+
+def test_тайна4_документ_снимает_проверку_только_если_несёт_тайну(ws, library):
+    """Читатель узнаёт тайну в гл. 5 (фокал Каширин её не знает): документ главы 5 — рапорт без маркеров тайны,
+    поэтому ТАЙНА-4 остаётся; документ с маркером тайны — раскрытие через документ, находки нет."""
+    info = library / "2.2_Информрежим.md"
+    _edit(info, "| B-003 | сторож Гуляев жив и прячется | — | гл. 6 |", "| B-003 | сторож Гуляев жив и прячется | — | гл. 5 |")
+    assert "ТАЙНА-4" in _codes(_lint(ws, library))
+    _edit(library / PLAN, "- Документы: №1 (после главы): рапорт Пронина о закрытии дела",
+          "- Документы: №1 (после главы): письмо, из которого ясно, что сторож жив")
+    assert "ТАЙНА-4" not in _codes(_lint(ws, library))

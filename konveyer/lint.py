@@ -389,21 +389,32 @@ def check_weekdays(ctx: LintContext) -> list[LintFinding]:
 
 # ------------------------------------------------------------------ фокалы и досье
 
-_FOCAL_VOL_RE = re.compile(r"фокал\w*\s*(?:[:—-]\s*)?(?:с\s+)?т\.?\s*(\d+)(?:\s*[–-]\s*(\d+))?", re.IGNORECASE)
+_FOCAL_WORD_RE = re.compile(r"фокал\w*", re.IGNORECASE)
+_VOL_SPAN_RE = re.compile(r"(?<![а-яё\w])т\.?\s*(\d+)(?:\s*[–-]\s*(\d+))?", re.IGNORECASE)
+_FOCAL_OPEN_MAX = 99  # «фокален с т.1» — до конца серии
 
 
 def _focal_volumes(status: str) -> set[int] | None:
-    """Из «Статуса» карточки: тома, где персонаж может быть фокалом; None — не разобрано; пусто — никогда."""
+    """Из «Статуса» карточки: тома, где персонаж может быть фокалом — все «т.N» и диапазоны после слова «фокал»
+    до конца предложения («фокальна т.1, т.3», «фокал: т.1 (гл. 1–9) и т.2», «фокален с т.1»);
+    None — не разобрано (не проверяется); пусто — никогда."""
     if not status:
         return None
     if re.search(r"фокала не имеет|не фокален|без фокала|никогда не фокал", status, re.IGNORECASE):
         return set()
-    m = _FOCAL_VOL_RE.search(status)
+    m = _FOCAL_WORD_RE.search(status)
     if not m:
         return None
-    a = int(m.group(1))
-    z = int(m.group(2)) if m.group(2) else (99 if re.search(r"\bс\s+т", status) else a)
-    return set(range(a, z + 1))
+    clause = re.split(r"[.;](?!\s*\d)|\n", status[m.end():], 1)[0]
+    vols: set[int] = set()
+    for vm in _VOL_SPAN_RE.finditer(clause):
+        a, z = int(vm.group(1)), int(vm.group(2) or vm.group(1))
+        vols.update(range(a, z + 1) if z >= a else [a])
+    if not vols:
+        return None
+    if re.search(r"\bс\s+т", clause):
+        vols.update(range(max(vols), _FOCAL_OPEN_MAX + 1))
+    return vols
 
 
 @check("ФОКАЛ-1", "ФОКАЛ-2")
@@ -421,7 +432,7 @@ def check_focals(ctx: LintContext) -> list[LintFinding]:
         d = ctx.dossier_of(b.focal)
         vols = _focal_volumes(d.status) if d else None
         if vols is not None and b.volume not in vols:
-            out.append(_f("ФОКАЛ-2", "ошибка", file, line, f"гл. {b.chapter}: фокал «{b.focal}», но по карточке ({d.file}) он не "
+            out.append(_f("ФОКАЛ-2", "предупреждение", file, line, f"гл. {b.chapter}: фокал «{b.focal}», но по карточке ({d.file}) он не "
                           f"фокален в т.{b.volume} (разрешено: {', '.join('т.' + str(v) for v in sorted(vols)) or 'нигде'})",
                           "смените фокал главы или поправьте статус карточки"))
     return out
@@ -445,6 +456,16 @@ def check_brief_epistemics(ctx: LintContext) -> list[LintFinding]:
     return out
 
 
+def _document_reveals(b: Brief, markers: list[str]) -> bool:
+    """Раскрытие через документ-вставку главы: у главы есть документ и он несёт маркеры тайны (без маркеров —
+    считается, что несёт: проверить нечем, ложной находки не будет)."""
+    if not b.documents:
+        return False
+    if not markers:
+        return True
+    return marker_hit(" ".join(b.documents), markers) is not None
+
+
 @check("ТАЙНА-3", "ТАЙНА-4", "ТАЙНА-5")
 def check_secrets(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
@@ -459,7 +480,7 @@ def check_secrets(ctx: LintContext) -> list[LintFinding]:
                           "очищаться от неё в окне Писателя", "заполните колонку маркеров (основы слов через «;»)"))
         if ban.until_chapter:
             b = by_ch.get(ban.until_chapter)
-            if b and not b.documents and not ban.known_to(b.focal, ban.until_chapter):
+            if b and not _document_reveals(b, ban.markers) and not ban.known_to(b.focal, ban.until_chapter):
                 who = ", ".join(f"{n} (гл. {c})" if c else f"{n} (всегда)" for n, c in sorted(ban.known_by.items()))
                 out.append(_f("ТАЙНА-4", "ошибка", ctx.rel(path), line, f"{ban.ban_id}: читатель узнаёт тайну в гл. {ban.until_chapter}, "
                               f"но её фокал {b.focal} тайны не знает (знают: {who or 'никто'}) — раскрывать нечем",
@@ -507,12 +528,14 @@ def check_matrix(ctx: LintContext) -> list[LintFinding]:
         out.append(_f("МАТР-2", "ошибка" if f.subject in focal_lines else "предупреждение", ctx.rel(path), line,
                       f"{f.fact_id} ({f.subject}): узнаёт в гл. {f.from_chapter}, но это глава фокала {b.focal or '?'}, и "
                       f"{f.subject} не значится среди участников", "добавьте участника в план главы или пометьте источник «за кадром»"))
+    markers_of = {ban.ban_id: ban.markers for ban in ctx.infobans}
     for fid, rows in by_fact.items():
         reader = next((x for x in rows if x.subject in ctx.pseudo), None)
         if reader and reader.from_chapter and not DEDUCTION_RE.search(reader.note or ""):
             b = by_ch.get(reader.from_chapter)
             focal = next((x for x in rows if b and x.subject == b.focal), None)
-            if b and focal is not None and not b.documents and (focal.from_chapter is None or focal.from_chapter > reader.from_chapter):
+            if b and focal is not None and not _document_reveals(b, markers_of.get(fid, [])) \
+                    and (focal.from_chapter is None or focal.from_chapter > reader.from_chapter):
                 knows = "не знает его до конца тома" if focal.from_chapter is None else f"узнаёт только в гл. {focal.from_chapter}"
                 out.append(_f("МАТР-3", "предупреждение", ctx.rel(path), reader.line or ctx.line_of(path, fid),
                               f"{fid}: читатель узнаёт в гл. {reader.from_chapter}, а фокал этой главы ({b.focal}) {knows} — "
@@ -628,6 +651,38 @@ def _feature_values(text: str) -> dict[str, tuple[set[str], str]]:
     return out
 
 
+_HEADING_RE = re.compile(r"^#{2,6}\s*(.+?)\s*$")
+
+
+def _section_patterns(ctx: LintContext) -> list[tuple[str, re.Pattern]]:
+    """Обязательные секции карточки (тип «персонажи», `обязательные_секции`) с образцами заголовков из полей
+    извлечения того же типа («Физика» ↔ `[Фф]изик|[Вв]нешност`), иначе — по самому имени секции."""
+    spec = ctx.types.get("персонажи")
+    if spec is None:
+        return []
+    field_patterns: list[str] = []
+    for ext in spec.extractions:
+        for fmt in ext.get("форматы") or []:
+            for fspec in (fmt.get("поля") or {}).values():
+                pat = fspec.get("секция") if isinstance(fspec, dict) else fspec
+                if isinstance(pat, str) and pat:
+                    field_patterns.append(pat)
+    out: list[tuple[str, re.Pattern]] = []
+    for name in spec.required_sections:
+        pat = next((p for p in field_patterns if re.search(p, name)), None)
+        out.append((name, re.compile(pat or re.escape(name), re.IGNORECASE)))
+    return out
+
+
+def _physique_section(ctx: LintContext) -> str:
+    return next((name for name, rx in _section_patterns(ctx) if rx.search("Физика")), "")
+
+
+def _missing_sections(ctx: LintContext, d, path: Path | None) -> list[str]:
+    headings = [m.group(1) for line in _lines(path) if (m := _HEADING_RE.match(line.strip()))]
+    return [name for name, rx in _section_patterns(ctx) if not any(rx.search(h) for h in headings)]
+
+
 @check("ДОСЬЕ-1", "ДОСЬЕ-2", "ДОСЬЕ-3", "ДОСЬЕ-6")
 def check_dossiers(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
@@ -655,9 +710,10 @@ def check_dossiers(ctx: LintContext) -> list[LintFinding]:
                 out.append(_f("ДОСЬЕ-2", "заметка", d.file, ctx.line_of(path, f"[[{ref}]]") or head_line,
                               f"ссылка [[{ref}]] — такого персонажа нет ни среди карточек, ни среди известных имён",
                               "заведите карточку или исправьте ссылку"))
-        if not d.physique:
-            out.append(_f("ДОСЬЕ-6", "заметка", d.file, head_line, f"{d.name}: у карточки нет секции «Физика»: Писатель обязан выдумать внешность",
-                          "добавьте секцию «Физика»"))
+        for missing in _missing_sections(ctx, d, path):
+            out.append(_f("ДОСЬЕ-6", "заметка", d.file, head_line, f"{d.name}: у карточки нет обязательной секции «{missing}»"
+                          + (": Писатель выдумает то, чего в каноне нет" if not d.physique and missing == _physique_section(ctx) else ""),
+                          f"добавьте секцию «{missing}»"))
         card = _feature_values(" ".join([d.profile, d.physique, d.code]))
         for c in by_name.get(d.name, []):
             for feature, (values, _q) in _feature_values(c.event).items():
@@ -672,7 +728,8 @@ def check_dossiers(ctx: LintContext) -> list[LintFinding]:
 
 _DEATH_VOL_RE = re.compile(r"(?:гибнет|гибель|умирает|мёртв\w*|погибает)[^.;·|]{0,40}?т\.\s*(\d+)", re.I)
 _DEATH_EVENT_RE = re.compile(r"гибель|гибнут|смерть|умирает|погиб\w*", re.I)
-_AGE_ABS_RE = re.compile(r"(?<![\d.,–—-])(\d{2,3})(?:\s*[–-]\s*(\d{2,3}))?\s*(?:лет|года|год)?\s*(?:\(\s*(\d{4})|в\s+(\d{4}))")
+# «52 (1995)», «52 года в 1995»; не «№14 (1995 год)», «д.14 (1995)», «гл. 41 (1995)» — перед числом нет №/#/буквы/цифры
+_AGE_ABS_RE = re.compile(r"(?<![\d.,–—\-№#\w])(\d{2,3})(?:\s*[–-]\s*(\d{2,3}))?\s*(?:лет|года|год)?\s*(?:\(\s*(\d{4})|в\s+(\d{4}))")
 
 
 @check("ДОСЬЕ-4", "ДОСЬЕ-5")
@@ -925,17 +982,20 @@ def check_prose(ctx: LintContext) -> list[LintFinding]:
         lines = _lines(path)
         active = [ban for ban in ctx.infobans if ban.secret and ban.markers and not ban.known_to(b.focal, b.chapter)]
         rules = [r for r in ctx.stoplists if r.kind == "лексика" and verifier1._stoplist_applies(r, b)]
-        narration = set(textutils.narration_only("\n\n".join(lines)).splitlines())
         for i, line in enumerate(lines, start=1):
-            if line.strip() and line.strip() not in narration:
+            if not line.strip():
+                continue
+            # повествовательная часть строки: реплика до атрибуции — речь персонажа, не знание фокала
+            narration = textutils.narration_only(line)
+            if not narration.strip():
                 continue
             for ban in active:
-                hit = marker_hit(line, ban.markers)
+                hit = marker_hit(narration, ban.markers)
                 if hit:
                     out.append(_f("ПРОЗА-1", "предупреждение", ctx.rel(path), i, f"гл. {ch} (фокал {b.focal}): «{hit}» — маркер тайны "
                                   f"{ban.ban_id}, которой фокал ещё не знает", "проверьте фразу или знание фокала"))
             for r in rules:
-                found = verifier1._find_items(line, list(r.items))
+                found = verifier1._find_items(narration, list(r.items))
                 if found:
                     out.append(_f("ПРОЗА-2", "заметка", ctx.rel(path), i, f"гл. {ch}: стоп-лексика линии [{r.rule_id}]: {', '.join(found[:3])}",
                                   "замените слово или снимите правило"))
@@ -993,7 +1053,19 @@ def check_prose_names(ctx: LintContext) -> list[LintFinding]:
 
 # ------------------------------------------------------------------ вопросы автору (КАНОН-1)
 
-_INDEX_RANGE_RE = re.compile(r"Р-(\d+)\s*…\s*Р-(\d+)")
+_ID_RE = re.compile(r"^(\D*)(\d+)")
+
+
+def _decision_numbering(decisions) -> tuple[str, int, int] | None:
+    """(префикс, последний номер, ширина номера) по идентификаторам журнала («Р-012» → «Р-», 12, 3); формат
+    номера — из документа, не из движка (П-1)."""
+    parsed = [m for d in decisions if (m := _ID_RE.match(str(d.decision_id).strip()))]
+    if not parsed:
+        return None
+    prefix = parsed[0].group(1)
+    nums = [int(m.group(2)) for m in parsed]
+    width = max(len(m.group(2)) for m in parsed)
+    return prefix, max(nums), width
 
 
 @check("КАНОН-1")
@@ -1017,13 +1089,15 @@ def check_canon_questions(ctx: LintContext) -> list[LintFinding]:
                           f"{ev.event_id} датировано «{ev.date}», а гл. {ch}, где читатель его узнаёт, — «{b.date}»",
                           "согласуйте хронологию и план глав — решение за автором"))
     index = ctx.doc("индекс_библиотеки")
-    if index is not None and ctx.decisions:
-        last = max((int(re.sub(r"\D", "", d.decision_id) or 0) for d in ctx.decisions), default=0)
+    numbering = _decision_numbering(ctx.decisions) if index is not None else None
+    if numbering is not None:
+        prefix, last, width = numbering
+        range_re = re.compile(re.escape(prefix) + r"(\d+)\s*(?:…|\.\.\.|[–—-])\s*" + re.escape(prefix) + r"(\d+)")
         for i, line in enumerate(_lines(index), start=1):
-            rm = _INDEX_RANGE_RE.search(line)
+            rm = range_re.search(line)
             if rm and int(rm.group(2)) < last:
-                out.append(_f("КАНОН-1", "заметка", ctx.rel(index), i, f"индекс библиотеки обещает «{rm.group(0)}», а журнал решений дошёл до Р-{last:03d}",
-                              "обновите индекс"))
+                out.append(_f("КАНОН-1", "заметка", ctx.rel(index), i, f"индекс библиотеки обещает «{rm.group(0)}», а журнал решений дошёл "
+                              f"до {prefix}{last:0{width}d}", "обновите индекс"))
     # фокал открывается в разных томах: карточка против таблицы фокалов
     for d in ctx.dossiers:
         vols = _focal_volumes(d.status)

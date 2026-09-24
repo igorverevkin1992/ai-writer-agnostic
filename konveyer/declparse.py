@@ -162,10 +162,20 @@ def _record(row: dict[str, str], mapping: dict[str, str], columns: dict, fmt: di
     return rec
 
 
+def _rel_file(path: Path, ctx: ParseContext) -> str:
+    """Путь документа относительно библиотеки («Досье/Имя.md») — чтобы находки линтера и исправления вели к файлу."""
+    if ctx.library is not None:
+        try:
+            return path.resolve().relative_to(Path(ctx.library).resolve()).as_posix()
+        except ValueError:
+            pass
+    return path.name
+
+
 def _template(value: Any, ctx: ParseContext, path: Path, rec: dict | None = None) -> Any:
     if isinstance(value, str) and "{" in value:
         try:
-            return value.format(файл=path.name, том=ctx.volume, **(rec or {}))
+            return value.format(файл=_rel_file(path, ctx), том=ctx.volume, **(rec or {}))
         except (KeyError, IndexError):
             return value
     return value
