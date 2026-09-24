@@ -17,9 +17,12 @@ from ..paths import Workspace
 from .common import Confirm, _ctx, _ensure_dir, _is_git_url, colors, confirm_or_reject, echo, secho
 
 
-def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False, max_calls: int = 40) -> int:
+def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False, max_calls: int = 40,
+         max_cost_usd: float | None = None) -> int:
     """Проверка канона на противоречия и ошибки логики повествования (машинный слой; `llm` — модель).
-    Возвращает число ошибок канона последнего прогона (код возврата 1 при `--strict` ставит CLI);
+    Модельный слой ограничен лимитом вызовов `max_calls` и бюджетом `max_cost_usd` в долларах по ценам
+    конфига (FR-LT-3): оценка по фактическому размеру документов выше бюджета — отказ до первого вызова.
+    Возвращает число ошибок канона последнего прогона (код возврата 1 при `--строго` ставит CLI);
     `watch` — следить за библиотекой и перепроверять при каждом изменении (до Ctrl+C)."""
     from .. import lint as lint_mod
 
@@ -28,6 +31,13 @@ def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False,
         files = []
     if not isinstance(max_calls, int):
         max_calls = 40
+    if max_cost_usd is not None:
+        try:
+            max_cost_usd = float(max_cost_usd)
+        except (TypeError, ValueError) as e:
+            raise StepError(f"бюджет модельного слоя должен быть числом (долларов), получено: {max_cost_usd!r}") from e
+        if max_cost_usd < 0:
+            raise StepError("бюджет модельного слоя не может быть отрицательным")
     try:
         llm_docs = lint_mod.resolve_library_files(lib, files) if llm else []
     except ValueError as e:
@@ -46,11 +56,14 @@ def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False,
                     fg=colors.YELLOW,
                 )
             else:
-                est = lint_mod.estimate_llm_cost(cfg, len(llm_docs))
-                echo(f"Модельный слой: документов {len(llm_docs)}, вызовов ≤ {len(llm_docs)}"
-                     + (f", ≈ ${est:.2f}" if est is not None else ""))
+                docs_for_estimate = llm_docs or None  # пусто — весь канон, как и в run_lint_llm
+                est = lint_mod.estimate_llm_cost_docs(ws, cfg, lib, docs_for_estimate)
+                n_docs = len(llm_docs) if llm_docs else len(lint_mod._library_docs(lib))
+                echo(f"Модельный слой: документов {n_docs}, вызовов ≤ {n_docs}"
+                     + (f", ≈ ${est:.2f}" if est is not None else "")
+                     + (f", бюджет ${max_cost_usd:.2f}" if max_cost_usd is not None else ""))
                 try:
-                    extra, prompts = lint_mod.run_lint_llm(ws, cfg, lib, llm_docs, max_calls=max_calls)
+                    extra, prompts = lint_mod.run_lint_llm(ws, cfg, lib, llm_docs, max_calls=max_calls, max_cost_usd=max_cost_usd)
                 except ValueError as e:
                     raise StepError(str(e)) from e
                 report = lint_mod.merge_llm(report, extra, ws.logs)

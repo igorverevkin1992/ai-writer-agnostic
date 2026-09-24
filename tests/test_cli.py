@@ -103,3 +103,136 @@ def test_cli_ошибки_разбора_по_русски_код_1(ws, monkeypa
 def test_дашборд_строится(ws):
     path = dashboard.build_dashboard(ws)
     assert path.exists() and "КОНВЕЙЕР" in path.read_text(encoding="utf-8")
+
+
+# ------------------------------------------------------------------ русские имена опций, --да, справка без внутренних ссылок
+
+
+def _click_commands() -> list[tuple[str, object]]:
+    """(путь команды, click-команда) для всех команд и подкоманд, включая скрытые латинские синонимы."""
+    import typer.main as typer_main
+
+    root = typer_main.get_command(app)
+    out: list[tuple[str, object]] = []
+    for name, cmd in root.commands.items():
+        subs = getattr(cmd, "commands", None)
+        if subs:
+            out.extend((f"{name} {sub}", c) for sub, c in subs.items())
+        else:
+            out.append((name, cmd))
+    return out
+
+
+def test_cli_опции_по_русски():
+    """У каждой опции есть русское длинное имя (FR-CL-5) и описание; у аргументов — русский заполнитель.
+    `--объём` команды «проверка» не путается с `--том`: латинский синоним — `--words`, не `--volume`."""
+    for path, cmd in _click_commands():
+        for p in cmd.params:
+            names = list(p.opts) + list(p.secondary_opts)
+            if p.param_type_name == "option":
+                assert any(n.startswith("--") and not n.isascii() for n in names), (path, names)
+                assert (p.help or "").strip(), (path, names)
+            else:
+                assert p.metavar and not p.metavar.isascii(), (path, p.name, p.metavar)
+    check = dict(_click_commands())["проверка"]
+    words = next(p for p in check.params if "--объём" in p.opts)
+    assert "--words" in words.opts and "--volume" not in words.opts
+    assert any("--волюм" not in p.opts and "--том" in p.opts for p in dict(_click_commands())["статус"].params)
+
+
+def test_cli_флаг_да_у_каждой_команды_с_подтверждением():
+    """Каждая опасная команда (с подтверждением автора) принимает `--да` и синонимы `--yes`/`-y` (FR-CL-4, FR-CL-5)."""
+    import inspect
+
+    infos = list(app.registered_commands) + [i for g in app.registered_groups for i in g.typer_instance.registered_commands]
+    with_confirm = {info.name for info in infos if "confirm=" in inspect.getsource(inspect.unwrap(info.callback))}
+    assert {"принять", "канон", "каркас", "откат", "канон-коммит", "библиотека-отделить", "бэкап", "закрыть", "нормы", "онбординг"} <= with_confirm
+    for path, cmd in _click_commands():
+        name = path.split()[-1]
+        if name not in with_confirm:
+            continue
+        yes = next((p for p in cmd.params if p.name == "yes"), None)
+        assert yes is not None, path
+        assert {"--да", "--yes", "-y"} <= set(yes.opts), (path, yes.opts)
+        assert (yes.help or "").strip(), path
+
+
+INTERNAL_HELP_TOKENS = (
+    "аудит", "этап 3", "п. 27", "п. 28", "Р-0", "Д-8", "FR-K", "FR-E1", "FR-E3", "FR-E4", "FR-V1.", "FR-V2.", "FR-W1",
+    "FR-X1", "FR-C1", "FR-D1", "FR-D2", "FR-R1", "FR-R2", "FR-R3", "FR-O1", "FR-O2", "8 шагов", "четыре акта", "документ 2.1",
+    "3.5", "02 §6.1",
+)
+
+
+def test_cli_справка_без_внутренних_ссылок(monkeypatch):
+    """Справка для автора: без номеров внутренних аудитов и этапов разработки, без устаревших идентификаторов
+    требований и без констант эталонной серии (число шагов, актов, имя документа) — П-1, FR-CL-2."""
+    monkeypatch.setenv("COLUMNS", "200")
+    for args in _all_help_invocations():
+        out = _out(runner.invoke(app, args))
+        for tok in INTERNAL_HELP_TOKENS:
+            assert tok not in out, (args, tok)
+
+
+# ------------------------------------------------------------------ отбор, бюджет модельного слоя, решения онбординга, документация
+
+
+def test_cli_отбор_это_пакет_пере_теста(ws, monkeypatch):
+    """`konveyer отбор` (этап 8 жизненного цикла) собирает пакет сравнения моделей, как `пере-тест`."""
+    monkeypatch.chdir(ws.root)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    r = runner.invoke(app, ["отбор", "--глава", "1"])
+    assert r.exit_code == 0, _out(r)
+    packs = sorted((ws.root / "пере-тест").iterdir())
+    assert packs and (packs[-1] / "ПРОМПТ_раунд1.md").exists()
+    assert runner.invoke(app, ["select", "--справка"]).exit_code == 0
+
+
+def test_cli_линтер_бюджет_модельного_слоя(ws, monkeypatch):
+    """FR-LT-3: модельный слой ограничен лимитом вызовов и бюджетом — оценка по фактическому размеру документов
+    выше бюджета даёт отказ до первого вызова; бюджет печатается рядом с оценкой."""
+    monkeypatch.chdir(ws.root)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    (ws.root / "конфиг.yaml").write_text(
+        "library_dir: Библиотека\nlinter: {provider: anthropic, model: м, price_in_per_1m: 1000.0, price_out_per_1m: 1000.0}\n",
+        encoding="utf-8",
+    )
+    r = runner.invoke(app, ["линтер", "--модель", "--бюджет", "0.001", "--не-строго"])
+    out = _out(r)
+    assert r.exit_code == 1 and "выше бюджета" in out and "--бюджет" in out, out
+    assert not (ws.logs / "линтер_промпты").exists()  # отказ до первого вызова: промпты не готовились
+    r = runner.invoke(app, ["линтер", "--модель", "--бюджет", "-1"])
+    assert r.exit_code == 1 and "отрицательн" in _out(r)
+    r = runner.invoke(app, ["линтер", "--модель", "--бюджет", "1000", "--не-строго"])
+    out = _out(r)
+    assert r.exit_code == 0 and "бюджет $1000.00" in out and "≈ $" in out, out
+    assert (ws.logs / "линтер_промпты").exists()  # без ключа — ручной режим: промпты сохранены
+
+
+def test_cli_онбординг_решение_без_равно(ws, monkeypatch):
+    """`--решение` без «=» и для неизвестного файла — понятная ошибка по-русски, а не текст исключения Python."""
+    monkeypatch.chdir(ws.root)
+    r = runner.invoke(app, ["онбординг", "--применить", "--решение", "заметки.md", "-y"])
+    out = _out(r)
+    assert r.exit_code == 1 and "ОШИБКА: решение задаётся как файл=" in out and "unpack" not in out, out
+    r = runner.invoke(app, ["онбординг", "--применить", "--решение", "x=принять", "-y"])
+    out = _out(r)
+    assert r.exit_code == 1 and "ОШИБКА: файла «x» нет в предложении" in out, out
+
+
+def test_документация_совпадает_с_каталогом(tmp_path, monkeypatch):
+    """NFR-10: docs/ сгенерированы из каталога типов и реестра метрик — изменение YAML без перегенерации не пройдёт."""
+    from pathlib import Path
+
+    from konveyer import catalog, metrics
+
+    repo = Path(__file__).resolve().parent.parent
+    types, modules = catalog.load_types(None), catalog.load_modules(None)
+    assert catalog.documentation(types, modules) == (repo / "docs" / "Соглашения_типов.md").read_text(encoding="utf-8")
+    assert metrics.documentation() == (repo / "docs" / "Реестр_метрик.md").read_text(encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    r = runner.invoke(app, ["типы", "--документация", "--куда", str(tmp_path / "д")])
+    assert r.exit_code == 0 and (tmp_path / "д" / "Соглашения_типов.md").exists() and (tmp_path / "д" / "Реестр_метрик.md").exists()
+    assert (tmp_path / "д" / "Реестр_метрик.md").read_text(encoding="utf-8") == metrics.documentation()

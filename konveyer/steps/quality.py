@@ -1,5 +1,5 @@
-"""Качество и регрессия: check (Э1 по произвольному файлу), circles (круги истории, Р-020),
-regress (золотые тесты, FR-R2), add_golden (FR-R1)."""
+"""Качество и регрессия: check (Э1 по произвольному файлу), circles (каркасы драматургии, FR-DR-*),
+regress (золотые тесты, FR-RG-2), add_golden (FR-RG-1)."""
 
 from __future__ import annotations
 
@@ -57,8 +57,9 @@ def circles(
     scope: str = "всё", chapter: int | None = None, redo: bool = False, to_canon: bool = False,
     yes: bool = False, confirm: Confirm | None = None,
 ) -> dict | None:
-    """Круги истории (8 шагов) — каркас драматургии (Р-020): книга → четыре акта → главы; черновики в драматургия/.
-    `to_canon` — внести черновики в документ 2.1 библиотеки и закоммитить (Д-8). Возвращает результат прогона."""
+    """Каркасы драматургии по методике проекта (FR-DR-1…FR-DR-6): том → акты → главы; шаги — по методике уровня;
+    черновики аналитика в драматургия/. `to_canon` — внести черновики в документ каркасов тома (тип «каркасы»)
+    и закоммитить по подтверждению автора (FR-DR-4). Возвращает результат прогона."""
     from .. import circles as circles_mod
 
     ws, cfg, lib = _ctx()
@@ -66,16 +67,16 @@ def circles(
     if to_canon:
         n = len(circles_mod.drafts(ws))
         if not n:
-            raise StepError("черновиков кругов нет — сначала `konveyer circles`.")
+            raise StepError("черновиков каркасов нет — сначала `konveyer каркас`.")
         confirm_or_reject(
             yes, confirm,
-            f"Внести {n} круг(ов) в {circles_mod.canon_doc_name(ws.volume)} библиотеки и закоммитить? (Д-8) (y)",
+            f"Внести {n} каркас(ов) в {circles_mod.canon_doc_name(ws.volume)} библиотеки и закоммитить? (y)",
         )
         try:
             path, commit = circles_mod.commit_to_canon(ws, cfg, lib)
         except RuntimeError as e:
             raise StepError(str(e)) from e
-        secho(f"Круги внесены в канон: {path}. Коммит: {commit}", fg=colors.GREEN)
+        secho(f"Каркасы внесены в канон: {path}. Коммит: {commit}", fg=colors.GREEN)
         echo("Окна глав теперь содержат секцию «Драматургия»; пересоберите начатые главы (`konveyer compile N`).")
         return None
     result = circles_mod.run(ws, cfg, scope, chapter, only_missing=not redo, library=lib)

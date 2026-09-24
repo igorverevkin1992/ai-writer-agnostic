@@ -68,8 +68,8 @@ def compile(chapter: int) -> Path:  # noqa: A001 — имя команды `konv
     secho(f"Окно собрано: {path} (~{size} символов)", fg=colors.GREEN)
     if breakdown.get("драматургия", 0) and "в канон ещё не внесён" in path.read_text(encoding="utf-8"):
         secho(
-            f"⚠ Каркас драматургии главы {chapter} в канон не внесён (Р-020): `konveyer circles` → "
-            "`konveyer circles --в-канон`, затем пересоберите окно.",
+            f"⚠ Каркас драматургии главы {chapter} в канон не внесён (FR-DR-4): `konveyer каркас` → "
+            "`konveyer каркас --в-канон`, затем пересоберите окно.",
             fg=colors.YELLOW,
         )
     if (ws.chapter_dir(chapter) / "window_size_флаг.md").exists() and size > cfg.window_soft_limit_chars:

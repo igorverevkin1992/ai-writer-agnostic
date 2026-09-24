@@ -196,6 +196,7 @@ PARITY = {
     "rollback": "rollback", "regress": "regress", "canon-commit": "canon-commit", "backup": "backup-archive",
     "пере-тест": "retest", "импорт": "import", "онбординг": "onboarding", "учёт": "accounting", "том": "volume-close",
     "retest": "retest", "import": "import", "onboarding": "onboarding", "accounting": "accounting", "volume": "volume-close",
+    "отбор": "retest", "select": "retest",  # отборочный тест Писателя (этап 8) = пакет пере-теста
 }
 
 

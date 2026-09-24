@@ -25,16 +25,35 @@ def import_materials(source: str) -> importer.ImportReport:
     return rep
 
 
+DECISION_FORMAT = "файл=принять|тип:<имя>|сырьё|отклонить|разбить"
+
+
+def apply_decisions(decisions: list[str] | None, ws=None) -> list[propose.Proposal]:
+    """Решения автора из командной строки (`--решение файл=решение`, FR-ON-12) — в предложение.json.
+    Один разбор для `онбординг` и `онбординг --применить`: неверный формат или неизвестный файл —
+    `ValueError` с подсказкой, а не трейсбек Python."""
+    if ws is None:
+        ws = _ctx()[0]
+    out: list[propose.Proposal] = []
+    for d in decisions or []:
+        if "=" not in d:
+            raise ValueError(f"решение задаётся как {DECISION_FORMAT}, получено: «{d}»")
+        f, dec = d.split("=", 1)
+        if not f.strip() or not dec.strip():
+            raise ValueError(f"решение задаётся как {DECISION_FORMAT}, получено: «{d}»")
+        try:
+            out.append(propose.set_decision(ws, f.strip(), dec.strip()))
+        except KeyError as e:
+            raise ValueError(e.args[0] if e.args else str(e)) from e
+    return out
+
+
 def propose_types(use_model: bool = False, decisions: list[str] | None = None) -> tuple[list[propose.Proposal], str]:
     """`konveyer онбординг`: предложение по сырью; `--решение файл=решение` — решения автора (FR-ON-12)."""
     ws, cfg, lib = _ctx()
     proposals, note = propose.build(ws, cfg=cfg, use_model=use_model)
     pj, pm = propose.save(ws, proposals, note)
-    for d in decisions or []:
-        if "=" not in d:
-            raise ValueError(f"решение задаётся как файл=решение, получено: «{d}»")
-        f, dec = d.split("=", 1)
-        propose.set_decision(ws, f.strip(), dec.strip())
+    apply_decisions(decisions, ws)
     proposals = propose.load(ws)
     secho(f"Предложение: {len(proposals)} файлов → {pm.relative_to(ws.root)} ({note})", fg=colors.GREEN)
     for p in proposals:
@@ -44,7 +63,7 @@ def propose_types(use_model: bool = False, decisions: list[str] | None = None) -
             secho(f"    ? {q}", fg=colors.YELLOW)
     rp = report.save(ws, lib)
     echo(f"Отчёт готовности: {rp.relative_to(ws.root)}. Решения — в предложение.json (поле «решение») или "
-         f"`konveyer онбординг --решение <файл>=<тип:имя|принять|сырьё|отклонить|разбить>`; затем `--применить`.")
+         f"`konveyer онбординг --решение {DECISION_FORMAT}`; затем `--применить`.")
     return proposals, note
 
 

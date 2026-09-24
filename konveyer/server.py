@@ -48,7 +48,7 @@ COMMANDS = {
     "snapshot", "calibrate", "doctor",
 }
 
-# допустимые уровни кругов истории (Р-020) и виды промптов ручного режима
+# допустимые уровни каркасов драматургии (FR-DR-3) и виды промптов ручного режима
 CIRCLE_SCOPES = ("книга", "акт", "глава")
 PROMPT_KINDS = ("verify2", "edits")
 
@@ -935,7 +935,9 @@ class PanelAPI:
             "canonize-apply": lambda: _job(tact.canonize, chapter, apply=True, yes=True),
             # без --strict: ошибки канона — находки в отчёте, а не «ошибка» задачи
             "lint": lambda: _job(canon.lint, llm=False, files=[], watch=False, max_calls=40),
-            "lint-llm": lambda: _job(canon.lint, llm=True, files=list(params.get("files") or []), watch=False, max_calls=40),
+            # лимит вызовов и бюджет модельного слоя (FR-LT-3) — из параметров задачи, умолчания как у CLI
+            "lint-llm": lambda: _job(canon.lint, llm=True, files=list(params.get("files") or []), watch=False,
+                                     max_calls=int(params.get("max_calls") or 40), max_cost_usd=params.get("budget")),
             # подтверждение автор дал диалогом в панели (Д-8); сообщение — из поля панели
             "canon-commit": lambda: _job(canon.canon_commit, message=str(params.get("message") or "правка канона из панели"), yes=True),
             # этап 6 (FR-PN-2/7): онбординг и обзорные команды теми же функциями ядра, что и CLI
