@@ -479,18 +479,58 @@ def test_повторный_импорт_конфликт(proj):
     propose.save(ws, props, note)
     res = apply_mod.apply(ws, Config(), lib, author_confirmed=True)
     assert res.updated == ["23_План_глав_Том1.md"] and "Рассвет" in doc.read_text(encoding="utf-8")
-    # 2) правка автора в каноне + новая правка в источнике → конфликт, канон не тронут
+    # 2) правка автора в каноне и правка в источнике в РАЗНЫХ строках → построчное слияние, обе правки на месте
     canon_edit = doc.read_text(encoding="utf-8").replace("Анна приезжает", "Анна приезжает поездом")
     doc.write_text(canon_edit, encoding="utf-8")
     gitops.commit_all(lib, "правка автора")
-    (src / "план глав.md").write_text(PLAN.replace("Утро", "Закат"), encoding="utf-8")
+    (src / "план глав.md").write_text(PLAN.replace("Утро", "Рассвет").replace("Объём: 300", "Объём: 350"), encoding="utf-8")
+    importer.import_path(ws, src)
+    props, note = propose.build(ws)
+    propose.save(ws, props, note)
+    res = apply_mod.apply(ws, Config(), lib, author_confirmed=True)
+    merged = doc.read_text(encoding="utf-8")
+    assert res.updated == ["23_План_глав_Том1.md"] and not res.conflicts
+    assert "Анна приезжает поездом" in merged and "Объём: 350" in merged and "<<<<<<<" not in merged
+    assert normalize.source_of(merged) and normalize.source_of(merged).startswith("сырьё/оригиналы/план глав~")
+    # 3) обе стороны правят ОДНУ строку → конфликт, канон не тронут, в файле конфликта — слияние с маркерами
+    canon_edit = merged.replace("Рассвет", "Рассвет и туман")
+    doc.write_text(canon_edit, encoding="utf-8")
+    gitops.commit_all(lib, "правка автора 2")
+    (src / "план глав.md").write_text(PLAN.replace("Утро", "Закат").replace("Объём: 300", "Объём: 350"), encoding="utf-8")
     importer.import_path(ws, src)
     props, note = propose.build(ws)
     propose.save(ws, props, note)
     res = apply_mod.apply(ws, Config(), lib, author_confirmed=True)
     assert len(res.conflicts) == 1 and doc.read_text(encoding="utf-8") == canon_edit
     conflict = (ws.root / res.conflicts[0]).read_text(encoding="utf-8")
-    assert "Закат" in conflict and "поездом" in conflict and "Прежнее извлечение" in conflict
+    assert "Закат" in conflict and "туман" in conflict and "Прежнее извлечение" in conflict
+    assert apply_mod.CONFLICT_A in conflict and apply_mod.CONFLICT_B in conflict and "=источник" in conflict
+    # повтор без решения — тот же конфликт, а не потеря данных; решение «источник» снимает его
+    newest = next(p for p in props if p.файл.startswith("план глав~") and p.имя_документа == "23_План_глав_Том1.md" and p.обновление)
+    res = apply_mod.apply(ws, Config(), lib, author_confirmed=True)
+    assert len(res.conflicts) == 1
+    propose.set_decision(ws, newest.файл, "источник")
+    res = apply_mod.apply(ws, Config(), lib, author_confirmed=True)
+    assert res.updated == ["23_План_глав_Том1.md"] and "Закат" in doc.read_text(encoding="utf-8") and not res.conflicts
+    raw = {e.файл: e for e in importer.load_index(ws)}
+    assert raw[newest.файл].статус == "в_каноне" and raw[newest.файл].документ_канона == "23_План_глав_Том1.md"
+    assert sum(1 for e in raw.values() if e.статус == "в_каноне" and e.документ_канона == "23_План_глав_Том1.md") == 1
+    # 4) решение «канон»: правка автора остаётся, новая версия считается внесённой, конфликт не повторяется
+    canon_edit = doc.read_text(encoding="utf-8").replace("Закат", "Закат над депо")
+    doc.write_text(canon_edit, encoding="utf-8")
+    gitops.commit_all(lib, "правка автора 3")
+    (src / "план глав.md").write_text(PLAN.replace("Утро", "Ночь").replace("Объём: 300", "Объём: 350"), encoding="utf-8")
+    importer.import_path(ws, src)
+    props, note = propose.build(ws)
+    propose.save(ws, props, note)
+    newest = next(p for p in props if p.обновление)
+    res = apply_mod.apply(ws, Config(), lib, author_confirmed=True)
+    assert len(res.conflicts) == 1
+    propose.set_decision(ws, newest.файл, "канон")
+    res = apply_mod.apply(ws, Config(), lib, author_confirmed=True)
+    assert doc.read_text(encoding="utf-8") == canon_edit and res.updated == ["23_План_глав_Том1.md"] and not res.conflicts
+    with pytest.raises(apply_mod.OnboardingError):  # применять больше нечего — конфликт не возвращается
+        apply_mod.apply(ws, Config(), lib, author_confirmed=True)
     # FR-ON-22: источник исчез — только пометка
     (src / "стиль.md").unlink()
     importer.import_path(ws, src)

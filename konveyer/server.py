@@ -549,7 +549,15 @@ class PanelAPI:
 
         with self.jobs.exclusive():
             pr = propose.set_decision(self.ws, file, decision)
-        return {"ok": True, "файл": pr.файл, "решение": pr.решение, "тип": pr.тип}
+        return {"ok": True, "файл": pr.файл, "решение": pr.решение, "тип": pr.тип, "колонки": pr.колонки}
+
+    def onboarding_manual_answer(self, file: str, answer: str) -> dict:
+        """Ответ Архивариуса вставкой (FR-RL-3): кладётся в кэш модельного слоя под ключом промпта файла."""
+        from .onboarding import propose
+
+        with self.jobs.exclusive():
+            item = propose.manual_answer(self.ws, file, answer)
+        return {"ok": True, "файл": file, "тип": item.get("тип"), "уверенность": item.get("уверенность")}
 
     def journals(self) -> dict:
         from . import accounting
@@ -940,7 +948,7 @@ class PanelAPI:
             "canon-commit": lambda: _job(canon.canon_commit, message=str(params.get("message") or "правка канона из панели"), yes=True),
             # этап 6 (FR-PN-2/7): онбординг и обзорные команды теми же функциями ядра, что и CLI
             "import": lambda: _job(onboarding_steps.import_materials, str(params.get("path") or "")),
-            "onboarding": lambda: _job(onboarding_steps.propose_types, use_model=bool(params.get("model")), decisions=None),
+            "onboarding": lambda: _job(onboarding_steps.propose_types, use_model=bool(params.get("model")) if "model" in params else None, decisions=None),
             "onboarding-apply": lambda: _job(onboarding_steps.apply_onboarding, True, None, not bool(params.get("no_commit"))),
             "accounting": lambda: _job(overview.accounting, params.get("volume")),
             "retest": lambda: _job(canon.retest, chapter=int(params.get("chapter") or 1), fix=bool(params.get("fix"))),
@@ -960,7 +968,8 @@ class PanelAPI:
 PANEL_ACTIONS = {
     "state", "chapter", "draft", "diff", "window", "prompt", "find", "circles", "lint", "canon", "log", "job",
     "project", "onboarding", "journals", "regression", "resolve", "resolve-all", "edits", "canon-batch", "canon-doc",
-    "lint-fix", "circles-manual", "manual-draft", "manual-flags", "accept", "rollback", "onboarding-decision", "job-cancel",
+    "lint-fix", "circles-manual", "manual-draft", "manual-flags", "accept", "rollback", "onboarding-decision",
+    "onboarding-manual-answer", "job-cancel",
 }
 
 
@@ -1170,6 +1179,8 @@ def make_handler(api: PanelAPI):
                     return self._json({"job": api.jobs.cancel()})
                 if path == "/api/onboarding/decision":
                     return self._json(api.onboarding_decision(str(body.get("file", "")), str(body.get("decision", ""))))
+                if path == "/api/onboarding/manual-answer":
+                    return self._json(api.onboarding_manual_answer(str(body.get("file", "")), str(body.get("answer", ""))))
                 m = re.fullmatch(r"/api/chapter/(\d+)/resolve-all", path)
                 if m:
                     return self._json(api.resolve_all(int(m.group(1)), body.get("decision", ""), body.get("registry")))

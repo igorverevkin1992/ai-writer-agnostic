@@ -285,6 +285,28 @@ def _import_one(ws: Workspace, f: _Found, entries: list[RawEntry], report: Impor
             previous.причина = f"заменён новой версией {name} (не был применён)"
 
 
+def add_extraction(ws: Workspace, entries: list[RawEntry], parent: RawEntry, text: str, kind: str) -> RawEntry:
+    """Производное сырьё из уже импортированного файла (остаток после разбиения, FR-ON-9): своя запись в индексе
+    и файл в сырьё/извлечено; оригинал у него общий с родителем."""
+    taken = {e.файл for e in entries}
+    stem, suffix = Path(parent.файл).stem, ".md"
+    name = f"{stem}~{kind}{suffix}"
+    n = 2
+    while name in taken:
+        name = f"{stem}~{kind}~{n}{suffix}"
+        n += 1
+    (raw_dir(ws) / "извлечено").mkdir(parents=True, exist_ok=True)
+    (raw_dir(ws) / "извлечено" / name).write_text(text, encoding="utf-8")
+    entry = RawEntry(файл=name, исходный_путь=f"{parent.исходный_путь}#{kind}", хэш=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                     формат=".md", извлечено_в=f"сырьё/извлечено/{name}", дата_импорта=parent.дата_импорта,
+                     качество={"таблиц": 0, "таблиц_распознано": 0, "подозрительных": 0, "оценка": "чисто",
+                               "подозрительные_места": [], "заметки": []},
+                     причина=f"{kind} после разбиения «{parent.файл}» — разделы без типа", хэш_извлечения=None)
+    entry.хэш_извлечения = entry.хэш
+    entries.append(entry)
+    return entry
+
+
 def import_path(ws: Workspace, source: Path, *, now: str | None = None) -> ImportReport:
     """Импорт файла, папки или .zip в сырьё проекта. Идемпотентен по хэшу (FR-ON-5). Индекс сохраняется и при сбое
     на одном из файлов (уже скопированные оригиналы не остаются сиротами)."""
@@ -310,7 +332,7 @@ def import_path(ws: Workspace, source: Path, *, now: str | None = None) -> Impor
         shutil.rmtree(tmp, ignore_errors=True)
         # FR-ON-22: источник исчез — только пометка; файлы из архивов проверяются по самому архиву
         for e in entries:
-            outer = e.исходный_путь.split(ARCHIVE_SEP, 1)[0]
+            outer = e.исходный_путь.split(ARCHIVE_SEP, 1)[0].split("#", 1)[0]
             e.источник_исчез = bool(outer) and not Path(outer).exists()
         report.index_path = save_index(ws, entries)
     return report

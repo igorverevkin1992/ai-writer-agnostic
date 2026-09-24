@@ -600,8 +600,12 @@ def cmd_import(source: str = typer.Argument(..., help="Файл, папка ил
 @_friendly
 def cmd_onboarding(
     apply: bool = typer.Option(False, "--применить", "--apply", help="Применить решения: документы в библиотеку, манифест, коммит."),
-    model: bool = typer.Option(False, "--модель", "--model", help="Подключить модельный слой (роль «архивариус»)."),
-    decision: list[str] = typer.Option(None, "--решение", "-р", help="Решение автора: файл=принять|тип:<имя>|сырьё|отклонить|разбить."),
+    model: bool | None = typer.Option(None, "--модель/--без-модели", "--model/--no-model",
+                                      help="Модельный слой (роль «архивариус»); по умолчанию — из конфига (onboarding_model_layer)."),
+    decision: list[str] = typer.Option(None, "--решение", "-р",
+                                       help="Решение автора: файл=принять|тип:<имя>|сырьё|отклонить|разбить|склеить:<файл>|"
+                                            "колонка:<поле>=<заголовок>|источник|канон."),
+    answer: list[str] = typer.Option(None, "--ответ", help="Ответ Архивариуса, полученный вручную: файл_сырья=путь_к_ответу (FR-RL-3)."),
     yes: bool = typer.Option(False, "--yes", "-y", "--да", help="Подтверждение без вопроса."),
     no_commit: bool = typer.Option(False, "--без-коммита", help="Записать документы без git-коммита."),
 ) -> None:
@@ -610,14 +614,16 @@ def cmd_onboarding(
         if apply:
             if decision:
                 for d in decision:
+                    if "=" not in d:
+                        raise ValueError(f"решение задаётся как файл=решение, получено: «{d}»")
                     f, dec = d.split("=", 1)
                     from .onboarding import propose as _propose
 
                     _propose.set_decision(_ctx()[0], f.strip(), dec.strip())
             onboarding_steps.apply_onboarding(yes, confirm=lambda q: typer.confirm(q), commit=not no_commit)
         else:
-            onboarding_steps.propose_types(use_model=model, decisions=decision)
-    except (ValueError, KeyError, RuntimeError, PermissionError) as e:
+            onboarding_steps.propose_types(use_model=model, decisions=decision, answers=answer)
+    except (ValueError, KeyError, RuntimeError, PermissionError, FileNotFoundError) as e:
         _fail(str(e))
 
 

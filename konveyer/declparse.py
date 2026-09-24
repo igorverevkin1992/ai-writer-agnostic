@@ -108,16 +108,18 @@ def convert(value: str, kind: str | None) -> Any:
 # ------------------------------------------------------------------ колонки
 
 def _synonyms(name: str, spec: Any, overrides: dict) -> list[str]:
+    """Заголовки, под которыми ищется колонка: переопределения манифеста, объявленные синонимы и — последним —
+    само имя поля: нормализованный онбордингом документ носит колонки с именами полей типа и обязан читаться (Д-6)."""
     syn: list[str] = []
     if name in overrides and overrides[name]:
         ov = overrides[name]
         syn += [ov] if isinstance(ov, str) else list(ov)
     if isinstance(spec, dict):
-        syn += list(spec.get("синонимы") or [name])
+        syn += list(spec.get("синонимы") or [])
     elif isinstance(spec, str):
         syn += [spec]
-    else:
-        syn += [name]
+    if name not in syn:
+        syn.append(name)
     return syn
 
 
