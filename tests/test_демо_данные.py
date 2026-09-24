@@ -50,3 +50,15 @@ def test_журнал_демо_без_разрывов_нумерации():
     journal = next(e for e in man.библиотека if e.тип == "журнал_решений")
     ids = [int(m) for m in re.findall(r"^## Р-(\d+)", (LIBRARY / journal.файл).read_text(encoding="utf-8"), flags=re.M)]
     assert ids == list(range(1, len(ids) + 1)), ids
+
+
+def test_стоп_лист_линии_не_подсказывает_тайну(ws, library):
+    """FR-WN-4/FR-C3: правило «Зоя: не употреблять — отец; папа» совпадает с маркером тайны B-001 («отец Зои»);
+    фокалу, который тайны не знает (гл. 1, Каширин), оно не показывается, знающему (гл. 4, Зоя) — показывается."""
+    from konveyer import compiler
+
+    hidden = compiler.compile_window(ws, library, 1)[0].read_text(encoding="utf-8")
+    assert "[Л-4]" not in hidden and "отец" not in hidden.lower() and "папа" not in hidden.lower()
+    assert "[Л-2]" in hidden  # остальные правила линии Зои — как были
+    shown = compiler.compile_window(ws, library, 4)[0].read_text(encoding="utf-8")
+    assert "[Л-4] линия «Зоя»: не употреблять — отец; папа" in shown

@@ -150,14 +150,29 @@ def _focalization_laws(exports_dir: Path) -> str:
     return "\n\n".join(n.laws for n in exporter.load_narration(exports_dir) if n.laws)
 
 
-def _line_rules(stoplists: list[StopRule], participants: list[str], year: int | None) -> list[dict]:
-    """Правила линий только участников сцены + лексика года главы (FR-C1, FR-V1.5)."""
+def _hints_secret(items: list[str], low_markers: list[str]) -> bool:
+    """Элемент стоп-листа совпадает со словом маркера тайны: слово входит в маркер или маркер — в слово."""
+    for it in items:
+        low = it.lower().strip()
+        if low and any(low in m or m in low for m in low_markers):
+            return True
+    return False
+
+
+def _line_rules(stoplists: list[StopRule], participants: list[str], year: int | None, markers: list[str] = ()) -> list[dict]:
+    """Правила линий только участников сцены + лексика года главы (FR-C1, FR-V1.5).
+    `markers` — маркеры тайн, которых фокал не знает: правило линии, чей стоп-лист совпадает с таким маркером,
+    само подсказывает содержание тайны («не употреблять — отец»), поэтому в окно не идёт целиком (FR-C3, FR-WN-4);
+    Э1 проверяет стоп-лексику по выгрузке, а не по окну, так что запрет остаётся в силе."""
     result = []
+    low_markers = [m.lower() for m in markers if m]
     for rule in sorted(stoplists, key=lambda r: (r.scope, r.rule_id)):
         if rule.kind != "лексика":  # усилители и прозаические запреты линий выводятся отдельно
             continue
         applies = rule.applies_to
         if "focal" in applies and applies["focal"] not in participants:
+            continue
+        if low_markers and _hints_secret(rule.items, low_markers):
             continue
         if "year" in applies and year is not None:
             y = applies["year"]
@@ -537,7 +552,7 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
         norms={k: v for k, v in norms.items() if k in WINDOW_NORM_IDS},
         style_sections=_style_sections(library, root),
         focalization_laws=_focalization_laws(exports_dir),
-        line_rules=_line_rules(stoplists, participants, brief.year),
+        line_rules=_line_rules(stoplists, participants, brief.year, markers),
         dossiers=scene_dossiers,
         known_facts=known,
         not_knows=not_knows,
