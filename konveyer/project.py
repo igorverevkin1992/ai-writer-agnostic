@@ -293,9 +293,9 @@ def readiness(root: Path, library: Path) -> list[Check]:
         out.append(Check(False, f"модуль «{mod}» включён, но нет документов: {', '.join(absent)}",
                          "добавьте документ типа или выключите модуль в проект.yaml"))
     # методики: неизвестная, не поддерживающая уровень, несколько на уровне, уровень «серия» (FR-DR-3, П-5)
-    from . import methodics
+    from . import circles, methodics
 
-    for problem in methodics.problems(man, root):
+    for problem in methodics.problems(man, root, circles.MATERIAL_SECTIONS):
         out.append(Check(None, f"методики: {problem}", "поправьте блок «методики» в проект.yaml"))
     # документы вне карты
     unmapped = manifest_mod.unmapped(man, library)

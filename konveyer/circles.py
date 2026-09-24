@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -125,10 +126,35 @@ def window_intro(ws: Workspace, frame: dict) -> str:
     ).strip()
 
 
+def _level_methodics(ws: Workspace) -> list[methodics.Methodic]:
+    """Методики уровней глава → акт → том без повторов (одна и та же методика на нескольких уровнях — один раз);
+    уровень с ошибкой манифеста пропускается (П-5)."""
+    out: list[methodics.Methodic] = []
+    for scope in ("глава", "акт", "книга"):
+        try:
+            m = methodic_for(ws, scope)
+        except ValueError:
+            continue
+        if all(x.name != m.name for x in out):
+            out.append(m)
+    return out
+
+
 def e2_text(ws: Workspace) -> str:
-    """Текст проверки драматургии для Э2 — из `в_э2.md` методики главы."""
-    m, _ = _chapter_methodic(ws)
-    return m.e2_text.strip() if m is not None else ""
+    """Текст проверки драматургии для Э2 — из `в_э2.md` методик уровней (глава, акт, том), каждая один раз."""
+    return " ".join(t for m in _level_methodics(ws) if (t := m.e2_text.strip()))
+
+
+def arcs_intro(ws: Workspace) -> str:
+    """Вводный абзац секции арок окна — из `в_окно.j2` методики вида «арки», выбранной для уровня акта;
+    иначе пусто (шаблон окна подставляет свой текст)."""
+    try:
+        m = methodic_for(ws, "акт")
+    except ValueError:
+        return ""
+    if m.result_kind != "арки" or not m.window_template.strip():
+        return ""
+    return Environment().from_string(m.window_template).render(step_names=m.step_names()).strip()
 
 
 def frame_lines_for(ws: Workspace, frame: dict, with_weak_spot: bool = False) -> list[str]:
@@ -148,6 +174,40 @@ def _dir(ws: Workspace) -> Path:
 
 
 # ------------------------------------------------------------ модель каркаса
+
+
+def is_arcs_draft(data: dict) -> bool:
+    return isinstance(data, dict) and "rows" in data and "steps" not in data
+
+
+def arcs_from_answer(data: dict, act: int | None = None) -> list[Arc]:
+    """Ответ методики вида «арки» ({"rows": [{character, act, lie, want, need, position, visible}]}) → строки арок;
+    акт строки — из ответа либо ключ цели."""
+    rows = data.get("rows", [])
+    if not isinstance(rows, list):
+        raise ValueError("в ответе поле «rows» должно быть списком строк арок")
+    out: list[Arc] = []
+    for i, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            raise ValueError(f"строка {i} ответа — не объект")
+        name = str(row.get("character", "") or "").strip()
+        if not name:
+            raise ValueError(f"строка {i}: нет имени персонажа (character)")
+        raw_act = row.get("act", act if act is not None else data.get("key"))
+        try:
+            act_n = int(raw_act)
+        except (TypeError, ValueError):
+            raise ValueError(f"строка {i} ({name}): акт «{raw_act}» — не число") from None
+        out.append(Arc(character=name, act=act_n, **{k: str(row.get(k, "") or "").strip() for k in ("lie", "want", "need", "position", "visible")}))
+    return out
+
+
+def validate_draft(data: dict) -> None:
+    """Черновик (ответ модели + scope/key) разбирается либо как шаги, либо как арки — иначе ValueError."""
+    if is_arcs_draft(data):
+        arcs_from_answer(data, data.get("key"))
+    else:
+        to_model(data)
 
 
 def to_model(data: dict, step_names: list[str] | None = None) -> StoryCircle:
@@ -193,15 +253,24 @@ def broken_drafts(ws: Workspace) -> list[str]:
             data = json.loads(p.read_text(encoding="utf-8"))
             if not isinstance(data, dict):
                 raise ValueError("не объект")
-            to_model(data)
+            validate_draft(data)
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             bad.append(f"{p.name}: {e}")
     return bad
 
 
 def drafts(ws: Workspace) -> list[StoryCircle]:
-    """Черновики каркасов рабочей области (драматургия/*.json)."""
-    return [to_model(c, _step_names_of(ws, str(c.get("scope", "глава")))) for c in list_circles(ws)]
+    """Черновики каркасов из шагов (драматургия/*.json); черновики арок — `arc_drafts`."""
+    return [to_model(c, _step_names_of(ws, str(c.get("scope", "глава")))) for c in list_circles(ws) if not is_arcs_draft(c)]
+
+
+def arc_drafts(ws: Workspace) -> list[Arc]:
+    """Черновики методики вида «арки»: строки персонаж × акт из драматургия/акт_N.json."""
+    out: list[Arc] = []
+    for c in list_circles(ws):
+        if is_arcs_draft(c):
+            out.extend(arcs_from_answer(c, c.get("key")))
+    return out
 
 
 def canon_circles(ws: Workspace) -> list[StoryCircle]:
@@ -344,67 +413,174 @@ def _outer_frame(ws: Workspace, scope: str, key: int | None) -> list[str]:
     return []
 
 
-def build_material(ws: Workspace, scope: str, key: int | None = None, library: Path | None = None) -> tuple[str, str]:
-    """(заголовок, материал) для каркаса: книга / акт N / глава N (FR-DR-6)."""
-    ex = ws.exports
-    briefs = exporter.load_briefs(ex)
-    bans = exporter.load_infobans(ex)
-    arcs = exporter.load_arcs(ex)
-    secrets = [
-        f"- {b.text} (читатель узнаёт: {'гл. ' + str(b.until_chapter) if b.until_chapter else 'не в этом томе'})"
-        for b in bans if b.secret
-    ]
-    outer = _outer_frame(ws, scope, key)
-    outer_block = ["## Каркас уровня выше (каркас строится ВНУТРИ этих шагов)", *outer, ""] if outer else []
-    if scope == "книга":
-        parts = exporter.load_parts(ex)
-        parts_lines = [f"- Часть {p['part']} «{p['title']}» — {p['period']} (гл. {p['from_chapter']}–{p['to_chapter']})" for p in parts]
-        acts_lines = [
-            f"- Акт {a.act} «{a.title}» — гл. {a.from_chapter}–{a.to_chapter}" + (f": шаги {a.steps}" if a.steps else "")
-            for a in act_list(ws)
-        ]
-        theme = cycle_theme(ws)
-        theme_block = ["## Тема серии", theme, ""] if theme else []
-        arcs_block = ["## Арки тома (ложь / желание / потребность — внутренний инструмент автора)",
-                      *arcs_rows(arcs), ""] if arcs else []
-        material = "\n".join(
-            [*theme_block, "## Акты тома (шаги каркаса тома должны ложиться на эти границы)", *acts_lines, "",
-             "## Части тома", *parts_lines, "", *arcs_block,
-             "## Главы тома (события плана с участниками сцен)", *_chapter_rows(briefs), "",
-             "## Реестр тайн (режим читателя)", *secrets]
-        )
-        return "Книга (том целиком)", material
-    if scope == "акт":
-        act = next((a for a in act_list(ws) if a.act == key), None)
-        if act is None:
+# Секции материала аналитика (FR-DR-1 «требуемый материал», FR-DR-6): состав по умолчанию для уровня;
+# методика может задать свой список ключом `материал:` (список или словарь уровень → список).
+DEFAULT_MATERIAL: dict[str, list[str]] = {
+    "том": ["тема", "акты", "части", "арки", "главы", "тайны"],
+    "акт": ["каркас_выше", "акт", "главы", "арки", "тайны"],
+    "глава": ["каркас_выше", "глава", "сцены", "биты", "знание", "закладки"],
+}
+MATERIAL_SECTIONS = ("тема", "акты", "части", "арки", "главы", "тайны", "каркас_выше", "акт", "глава", "сцены", "биты",
+                     "знание", "закладки", "континуити", "хроника", "хронология")
+
+
+class _Material:
+    """Поставщики секций материала: каждая секция — список строк (пусто — секция не выводится)."""
+
+    def __init__(self, ws: Workspace, scope: str, key: int | None):
+        self.ws, self.scope, self.key = ws, scope, key
+        ex = ws.exports
+        self.briefs = exporter.load_briefs(ex)
+        self.bans = exporter.load_infobans(ex)
+        self.arcs = exporter.load_arcs(ex)
+        self.act = next((a for a in act_list(ws) if a.act == key), None) if scope == "акт" else None
+        if scope == "акт" and self.act is None:
             raise FileNotFoundError(f"акта {key} нет в таблице актов")
-        lo, hi = act.from_chapter, act.to_chapter
-        head = [f"## Акт {act.act} «{act.title}» — гл. {lo}–{hi}" + (f" (части {act.parts})" if act.parts else "")]
-        if act.steps:
-            head.append(f"Шаги каркаса тома, за которые отвечает акт: {act.steps}. Каркас акта раскрывает именно их.")
-        act_arcs = arcs_rows(arcs, act.act)
-        arcs_block = [f"## Арки акта {act.act} (ложь / желание / потребность — внутренний инструмент автора)",
-                      *act_arcs, ""] if act_arcs else []
-        material = "\n".join(
-            [*outer_block, *head, *_chapter_rows(briefs, lo, hi), "", *arcs_block,
-             "## Тайны, раскрываемые читателю в этом акте",
-             *[s for b, s in zip([b for b in bans if b.secret], secrets, strict=True) if b.until_chapter and lo <= b.until_chapter <= hi]]
-        )
-        return f"Акт {act.act} «{act.title}»", material
-    if scope == "глава":
-        brief = exporter.load_brief(ex, key)
-        matrix = exporter.load_matrix(ex)
-        known = [f"- [{f.fact_id}] {f.fact}" for f in matrix
-                 if f.subject == brief.focal and f.from_chapter is not None and f.from_chapter <= key]
+        self.brief = exporter.load_brief(ex, key) if scope == "глава" else None
+        self.lo, self.hi = self._bounds()
+
+    def _bounds(self) -> tuple[int | None, int | None]:
+        if self.scope == "акт":
+            return self.act.from_chapter, self.act.to_chapter
+        if self.scope == "глава":
+            return self.key, self.key
+        return None, None
+
+    def title(self) -> str:
+        if self.scope == "книга":
+            return "Книга (том целиком)"
+        if self.scope == "акт":
+            return f"Акт {self.act.act} «{self.act.title}»"
+        return f"Глава {self.key}"
+
+    def _secret_line(self, b) -> str:
+        return f"- {b.text} (читатель узнаёт: {'гл. ' + str(b.until_chapter) if b.until_chapter else 'не в этом томе'})"
+
+    # --- секции
+    def тема(self) -> list[str]:
+        theme = cycle_theme(self.ws)
+        return ["## Тема серии", theme, ""] if theme else []
+
+    def акты(self) -> list[str]:
+        acts = act_list(self.ws)
+        return ["## Акты тома (шаги каркаса тома должны ложиться на эти границы)",
+                *[f"- Акт {a.act} «{a.title}» — гл. {a.from_chapter}–{a.to_chapter}" + (f": шаги {a.steps}" if a.steps else "") for a in acts],
+                ""] if acts else []
+
+    def части(self) -> list[str]:
+        parts = exporter.load_parts(self.ws.exports)
+        return ["## Части тома", *[f"- Часть {p['part']} «{p['title']}» — {p['period']} (гл. {p['from_chapter']}–{p['to_chapter']})" for p in parts],
+                ""] if parts else []
+
+    def арки(self) -> list[str]:
+        if self.scope == "акт":
+            rows = arcs_rows(self.arcs, self.act.act)
+            return [f"## Арки акта {self.act.act} (ложь / желание / потребность — внутренний инструмент автора)", *rows, ""] if rows else []
+        if self.scope == "глава":
+            act = next((a for a in act_list(self.ws) if a.from_chapter <= self.key <= a.to_chapter), None)
+            rows = arcs_rows(self.arcs, act.act) if act else []
+            return [f"## Арки акта {act.act}", *rows, ""] if rows else []
+        rows = arcs_rows(self.arcs)
+        return ["## Арки тома (ложь / желание / потребность — внутренний инструмент автора)", *rows, ""] if rows else []
+
+    def главы(self) -> list[str]:
+        head = "## Главы тома (события плана с участниками сцен)" if self.scope == "книга" else "## Главы (события плана с участниками сцен)"
+        rows = _chapter_rows(self.briefs, self.lo, self.hi)
+        return [head, *rows, ""] if rows else []
+
+    def тайны(self) -> list[str]:
+        secrets = [b for b in self.bans if b.secret]
+        if self.scope == "акт":
+            secrets = [b for b in secrets if b.until_chapter and self.lo <= b.until_chapter <= self.hi]
+            head = "## Тайны, раскрываемые читателю в этом акте"
+        elif self.scope == "глава":
+            secrets = [b for b in secrets if b.until_chapter == self.key]
+            head = "## Тайны, раскрываемые читателю в этой главе"
+        else:
+            head = "## Реестр тайн (режим читателя)"
+        return [head, *[self._secret_line(b) for b in secrets], ""] if secrets or self.scope == "книга" else []
+
+    def каркас_выше(self) -> list[str]:
+        outer = _outer_frame(self.ws, self.scope, self.key)
+        return ["## Каркас уровня выше (каркас строится ВНУТРИ этих шагов)", *outer, ""] if outer else []
+
+    def акт(self) -> list[str]:
+        if self.act is None:
+            return []
+        head = [f"## Акт {self.act.act} «{self.act.title}» — гл. {self.lo}–{self.hi}" + (f" (части {self.act.parts})" if self.act.parts else "")]
+        if self.act.steps:
+            head.append(f"Шаги каркаса тома, за которые отвечает акт: {self.act.steps}. Каркас акта раскрывает именно их.")
+        return head
+
+    def глава(self) -> list[str]:
+        return [f"## Глава {self.key} · {self.brief.date} · фокал {self.brief.focal}"] if self.brief else []
+
+    def сцены(self) -> list[str]:
+        return ["### Сцены", *[f"- {x}" for x in self.brief.scenes]] if self.brief else []
+
+    def биты(self) -> list[str]:
+        return ["### Биты", *[f"- {x}" for x in self.brief.beats]] if self.brief else []
+
+    def знание(self) -> list[str]:
+        if not self.brief:
+            return []
+        matrix = exporter.load_matrix(self.ws.exports)
+        return ["### Что знает фокал", *[f"- [{f.fact_id}] {f.fact}" for f in matrix
+                                         if f.subject == self.brief.focal and f.from_chapter is not None and f.from_chapter <= self.key]]
+
+    def закладки(self) -> list[str]:
+        if not self.brief:
+            return []
         from . import compiler
 
-        plants = [f"- [{p.plant_id}] {p.what}" for p in compiler.chapter_plants(ex, brief)]
-        material = "\n".join(
-            [*outer_block, f"## Глава {key} · {brief.date} · фокал {brief.focal}", "### Сцены", *[f"- {s}" for s in brief.scenes],
-             "### Биты", *[f"- {b}" for b in brief.beats], "### Что знает фокал", *known, "### Закладки главы", *plants]
-        )
-        return f"Глава {key}", material
-    raise ValueError(f"неизвестный охват: {scope}")
+        return ["### Закладки главы", *[f"- [{p.plant_id}] {p.what}" for p in compiler.chapter_plants(self.ws.exports, self.brief)]]
+
+    def континуити(self) -> list[str]:
+        try:
+            events = exporter.load_continuity(self.ws.exports)
+        except FileNotFoundError:
+            return []
+        rows = []
+        for e in events:
+            chs = [int(x) for x in re.findall(r"\d+", e.chapters or "")]
+            if self.lo is not None and chs and not any(self.lo <= c <= self.hi for c in chs):
+                continue
+            rows.append(f"- {e.event}" + (f" ({e.date})" if e.date else ""))
+        return ["## Континуити (закреплённые детали)", *rows, ""] if rows else []
+
+    def хроника(self) -> list[str]:
+        events = exporter.load_chronicle(self.ws.exports)
+        return ["## Хроника эпохи", *[f"- {e.date}: {e.event}" for e in events], ""] if events else []
+
+    def хронология(self) -> list[str]:
+        events = [e for e in exporter.load_chronology(self.ws.exports) if not e.volume or e.volume == self.ws.volume]
+        return ["## Хронология фабулы", *[f"- {e.event_id} · {e.date} · {e.event}" for e in events], ""] if events else []
+
+
+def material_sections(ws: Workspace, scope: str) -> list[str]:
+    """Состав материала для охвата: из методики уровня (`материал:`) либо по умолчанию."""
+    level = LEVEL_OF.get(scope, scope)
+    try:
+        wanted = methodic_for(ws, scope).material_for(level)
+    except ValueError:
+        wanted = None
+    wanted = wanted or DEFAULT_MATERIAL[level]
+    unknown = [w for w in wanted if w not in MATERIAL_SECTIONS]
+    if unknown:
+        raise ValueError(f"методика запрашивает неизвестный материал {unknown}; доступно: {', '.join(MATERIAL_SECTIONS)}")
+    return wanted
+
+
+def build_material(ws: Workspace, scope: str, key: int | None = None, library: Path | None = None) -> tuple[str, str]:
+    """(заголовок, материал) для каркаса: книга / акт N / глава N — из секций, которые запросила методика (FR-DR-1),
+    иначе состав по умолчанию (FR-DR-6: тема серии, события с участниками, арки, реестры уровня)."""
+    if scope not in LEVEL_OF:
+        raise ValueError(f"неизвестный охват: {scope}")
+    src = _Material(ws, scope, key)
+    lines: list[str] = []
+    for name in material_sections(ws, scope):
+        lines.extend(getattr(src, name)())
+    return src.title(), "\n".join(lines).rstrip("\n")
 
 
 # ---------------------------------------------------------------- прогон
@@ -437,6 +613,12 @@ def render_md(circle: dict) -> str:
     lines = [f"# Каркас · {circle.get('title', '')}", ""]
     if circle.get("summary"):
         lines += [f"**Суть:** {circle['summary']}", ""]
+    if is_arcs_draft(circle):
+        try:
+            rows = arcs_from_answer(circle, circle.get("key"))
+        except ValueError:
+            rows = []
+        lines += [*arcs_rows(rows), ""]
     for st in circle.get("steps", []):
         lines.append(f"## {st.get('n')}. {st.get('name')}" + (f" ({st['chapters']})" if st.get("chapters") else ""))
         lines.append(st.get("text", ""))
@@ -486,7 +668,7 @@ def run(ws: Workspace, cfg: Config, scope: str, chapter: int | None = None, only
         try:
             circle = llmjson.extract_json(raw, dict)
             circle.setdefault("title", title)
-            to_model(circle)  # проверка формы ответа до записи черновика
+            validate_draft({**circle, "scope": sc, "key": key})  # проверка формы ответа до записи черновика
             done.append(str(save_circle(ws, sc, key, circle)))
         except (ValueError, TypeError) as e:
             # битый ответ по одной цели: сырой ответ сохраняется, промпт остаётся для повтора, прогон продолжается (П-5)
@@ -500,6 +682,7 @@ def run(ws: Workspace, cfg: Config, scope: str, chapter: int | None = None, only
 def accept_manual(ws: Workspace, scope: str, key: int | None, raw: str) -> Path:
     circle = llmjson.extract_json(raw, dict)
     circle.setdefault("title", build_material(ws, scope, key)[0])
+    validate_draft({**circle, "scope": scope, "key": key})
     return save_circle(ws, scope, key, circle)
 
 
@@ -512,7 +695,7 @@ def list_circles(ws: Workspace) -> list[dict]:
             data = json.loads(p.read_text(encoding="utf-8"))
             if not isinstance(data, dict):
                 raise ValueError("не объект")
-            to_model(data)
+            validate_draft(data)
         except (json.JSONDecodeError, ValueError, TypeError):
             continue
         out.append(data)
@@ -529,6 +712,22 @@ def render_canon_doc(circles: list[StoryCircle], acts: list[Act], volume: int = 
     return dramaturgy_doc.render_doc(circles, acts, volume, method_name=m.title, heading=m.heading)
 
 
+def canon_arcs(ws: Workspace) -> list[Arc]:
+    try:
+        return exporter.load_arcs(ws.exports)
+    except FileNotFoundError:
+        return []
+
+
+def _arc_key(a: Arc) -> tuple[str, int]:
+    return a.character, a.act
+
+
+def _arc_fields(a: Arc) -> tuple:
+    """Поля строки арки для сравнения черновика с каноном: пустая ячейка и прочерк — одно и то же."""
+    return tuple("" if v.strip() in ("", "—", "–", "-") else v.strip() for v in (a.lie, a.want, a.need, a.position, a.visible))
+
+
 def canon_status(ws: Workspace) -> dict[str, str]:
     canon = {(c.scope, c.key): c for c in canon_circles(ws)}
     status: dict[str, str] = {}
@@ -541,41 +740,81 @@ def canon_status(ws: Workspace) -> dict[str, str]:
             status[_file_stem(d.scope, d.key)] = "в каноне"
         else:
             status[_file_stem(d.scope, d.key)] = "отличается от канона"
+    arcs = {_arc_key(a): a for a in canon_arcs(ws)}
+    for c in list_circles(ws):
+        if not is_arcs_draft(c):
+            continue
+        rows = arcs_from_answer(c, c.get("key"))
+        stem = _file_stem(str(c.get("scope", "акт")), c.get("key"))
+        if not rows or all(_arc_key(r) not in arcs for r in rows):
+            status[stem] = "не в каноне"
+        elif all(_arc_key(r) in arcs and _arc_fields(arcs[_arc_key(r)]) == _arc_fields(r) for r in rows):
+            status[stem] = "в каноне"
+        else:
+            status[stem] = "отличается от канона"
     return status
 
 
+def arcs_doc_name(volume: int = 1, root: Path | None = None) -> str:
+    """Имя документа арок тома — из каталога типов (`арки.имя_по_умолчанию`)."""
+    spec = catalog.load_types(root).get("арки")
+    pattern = spec.default_name if spec and spec.default_name else "22_Арки_Том{том}.md"
+    return pattern.format(том=int(volume))
+
+
 def commit_to_canon(ws: Workspace, cfg: Config, library: Path) -> tuple[Path, str]:
-    """Вносит черновики каркасов в документ каркасов библиотеки (только по подтверждению автора, FR-DR-4)."""
+    """Вносит черновики в канон одной сменой канона (только по подтверждению автора, FR-DR-4): каркасы из шагов —
+    в документ каркасов, строки арок (методика вида «арки») — в документ арок тома; строка персонаж × акт заменяет
+    прежнюю, остальные строки документа сохраняются. Возвращает (документ каркасов или арок, коммит)."""
     new = drafts(ws)
-    if not new:
+    new_arcs = arc_drafts(ws)
+    if not new and not new_arcs:
         raise RuntimeError("черновиков каркасов нет — сначала постройте их (`konveyer каркас`).")
-    merged = {(c.scope, c.key): c for c in canon_circles(ws)}
-    for c in new:
-        merged[(c.scope, c.key)] = c
-    acts = act_list(ws)
-    existing = exporter.docs_of_type(library, "каркасы", ws.volume, ws.root)
-    path = existing[0] if existing else library / canon_doc_name(ws.volume, ws.root)
-    text = render_canon_doc(list(merged.values()), acts, ws.volume, ws)
-    message = f"[каркасы] внесено каркасов: {len(new)} (драматургия тома {ws.volume})"
+    writes: list[tuple[Path, str, str]] = []  # (путь, текст, тип)
+    if new:
+        merged = {(c.scope, c.key): c for c in canon_circles(ws)}
+        for c in new:
+            merged[(c.scope, c.key)] = c
+        existing = exporter.docs_of_type(library, "каркасы", ws.volume, ws.root)
+        path = existing[0] if existing else library / canon_doc_name(ws.volume, ws.root)
+        writes.append((path, render_canon_doc(list(merged.values()), act_list(ws), ws.volume, ws), "каркасы"))
+    if new_arcs:
+        rows = {_arc_key(a): a for a in canon_arcs(ws)}
+        for a in new_arcs:
+            rows[_arc_key(a)] = a
+        existing = exporter.docs_of_type(library, "арки", ws.volume, ws.root)
+        path = existing[0] if existing else library / arcs_doc_name(ws.volume, ws.root)
+        try:
+            method_name = methodic_for(ws, "акт").title
+        except ValueError:
+            method_name = "арки персонажей"
+        writes.append((path, dramaturgy_doc.render_arcs_doc(list(rows.values()), ws.volume, method_name=method_name), "арки"))
+    parts = ([f"каркасов: {len(new)}"] if new else []) + ([f"арок: {len(new_arcs)}"] if new_arcs else [])
+    message = f"[каркасы] внесено {', '.join(parts)} (драматургия тома {ws.volume})"
+
+    def write_all() -> None:
+        for path, text, _ in writes:
+            guard.write_text(path, text)
+
     result = canonchange.canon_change(
-        ws, cfg, library, lambda: guard.write_text(path, text), message,
-        commit=True, author_confirmed=True, action="внесение каркасов",
+        ws, cfg, library, write_all, message, commit=True, author_confirmed=True, action="внесение каркасов",
     )
-    if not existing:
-        _register_in_manifest(ws, library, path)
+    for path, _, kind in writes:
+        _register_in_manifest(ws, library, path, kind)
+    main_path = writes[0][0]
     if result.commit:
-        return path, result.commit
+        return main_path, result.commit
     if not gitops.is_repo(library):
-        return path, "(библиотека не под git — коммит пропущен, настройте git!)"
-    return path, "(изменений в каноне нет)"
+        return main_path, "(библиотека не под git — коммит пропущен, настройте git!)"
+    return main_path, "(изменений в каноне нет)"
 
 
-def _register_in_manifest(ws: Workspace, library: Path, path: Path) -> None:
-    """Новый документ каркасов — в карту библиотеки манифеста (если манифест есть на диске)."""
+def _register_in_manifest(ws: Workspace, library: Path, path: Path, kind: str = "каркасы") -> None:
+    """Новый документ каркасов/арок — в карту библиотеки манифеста (если манифест есть на диске)."""
     man = manifest_mod.load(ws.root)
     if man is None:
         return
     rel = path.relative_to(library).as_posix()
     if man.entry_for(rel) is None:
-        man.библиотека.append(manifest_mod.LibraryEntry(файл=rel, тип="каркасы", том=ws.volume))
+        man.библиотека.append(manifest_mod.LibraryEntry(файл=rel, тип=kind, том=ws.volume))
         manifest_mod.save(ws.root, man)

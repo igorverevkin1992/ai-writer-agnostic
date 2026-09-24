@@ -19,6 +19,7 @@ import yaml
 from . import manifest as manifest_mod
 
 LEVELS = ("серия", "том", "акт", "глава")
+RESULT_KINDS = ("шаги", "арки")
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,15 @@ class Methodic:
     folder: Path
     raw: dict = field(default_factory=dict)
     unset_note: str = ""                # пометка Писателю о незаданном необязательном шаге главы ({n}, {name})
+    result_kind: str = "шаги"           # «шаги» — каркас из шагов (документ каркасов); «арки» — строки арок (документ арок)
+    material: dict[str, list[str]] = field(default_factory=dict)  # уровень → секции материала аналитика (FR-DR-1)
+
+    def material_for(self, level: str) -> list[str] | None:
+        """Секции материала для уровня (`материал:` в методика.yaml — список для всех уровней или словарь по уровням);
+        None — состав по умолчанию (`circles.DEFAULT_MATERIAL`)."""
+        if not self.material:
+            return None
+        return list(self.material.get(level) or self.material.get("*") or []) or None
 
     def step_names(self) -> list[str]:
         return [s.name for s in self.steps]
@@ -78,6 +88,13 @@ def _load_one(folder: Path, override: Path | None = None) -> Methodic:
         else:
             steps.append(Step(i, str(st), ""))
     required = {k: [int(x) for x in v] for k, v in (data.get("обязательность") or {}).items() if isinstance(v, list)}
+    raw_material = data.get("материал")
+    if isinstance(raw_material, dict):
+        material = {str(k): [str(x) for x in (v or [])] for k, v in raw_material.items()}
+    elif isinstance(raw_material, list):
+        material = {"*": [str(x) for x in raw_material]}
+    else:
+        material = {}
 
     def text(name: str) -> str:
         if override is not None and (override / name).exists():
@@ -91,6 +108,7 @@ def _load_one(folder: Path, override: Path | None = None) -> Methodic:
         heading=str(data.get("заголовок_документа", "Каркас")), prompt=text("промпт.md"),
         schema=json.loads(schema_text) if schema_text.strip() else {}, window_template=text("в_окно.j2"),
         e2_text=text("в_э2.md"), folder=folder, raw=data, unset_note=str(data.get("незаданный_шаг", "") or ""),
+        result_kind=str(data.get("вид_результата", "шаги") or "шаги"), material=material,
     )
 
 
@@ -136,7 +154,8 @@ def empty_from_manifest(manifest: manifest_mod.Manifest, base: Methodic, level: 
     return Methodic(**{**base.__dict__, "steps": tuple(Step(i, str(st)) for i, st in enumerate(steps, start=1))})
 
 
-def problems(manifest: manifest_mod.Manifest, project_root: Path | None = None) -> list[str]:
+def problems(manifest: manifest_mod.Manifest, project_root: Path | None = None,
+             material_sections: tuple[str, ...] | None = None) -> list[str]:
     """Расхождения манифеста с методиками — для доктора (П-5: с пометкой, а не молча): неизвестная методика,
     методика, не поддерживающая уровень, несколько методик на уровне, уровень «серия» (в этой версии каркас
     серии не строится)."""
@@ -159,4 +178,11 @@ def problems(manifest: manifest_mod.Manifest, project_root: Path | None = None) 
         if len(names) > 1:
             out.append(f"на уровне «{level}» задано несколько методик ({', '.join(names)}): применяется первая — «{names[0]}», "
                        "остальные не участвуют в окне, Э2 и линтере")
+    for m in all_m.values():
+        if m.result_kind not in RESULT_KINDS:
+            out.append(f"методика «{m.name}»: неизвестный вид результата «{m.result_kind}» (допустимо: {', '.join(RESULT_KINDS)})")
+        if material_sections is not None:
+            unknown = sorted({x for names_ in m.material.values() for x in names_ if x not in material_sections})
+            if unknown:
+                out.append(f"методика «{m.name}»: неизвестный материал {unknown} (доступно: {', '.join(material_sections)})")
     return out

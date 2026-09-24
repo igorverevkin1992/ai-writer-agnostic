@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .mdparse import MarkupError
 from .names import chapter_range
-from .schemas import Act, CircleStep, StoryCircle
+from .schemas import Act, Arc, CircleStep, StoryCircle
 
 # слово заголовка — любое одно слово методики (не «Акты»: таблица актов — не каркас)
 HEAD_RE = re.compile(r"^##\s*(?!Акты\b)(?P<word>[^\s#|]+)\s+(?P<kind>тома|акта\s+(?P<act>[^\s«(]+)|главы\s+(?P<chapter>\d+))\b(?P<tail>.*)$",
@@ -144,3 +144,25 @@ def render_doc(circles: list[StoryCircle], acts: list[Act], volume: int, *, meth
             lines.append(f"**Слабое место:** {c.weak_spot}")
         lines.append("")
     return "\n".join(lines).rstrip("\n") + "\n"
+
+
+ARC_COLUMNS = ("Персонаж", "Акт", "Ложь", "Желание", "Потребность", "Где на арке", "Что видно снаружи")
+
+
+def render_arcs_doc(arcs: list[Arc], volume: int, *, method_name: str = "арки персонажей") -> str:
+    """Документ арок тома (тип «арки») из строк персонаж × акт — в разметке, которую читает экспорт."""
+    dash = lambda v: v or "—"  # noqa: E731
+    lines = [
+        f"# Арки персонажей — Том {volume}",
+        f"## Методика: {method_name}",
+        "",
+        "Документ генерируется конвейером из черновиков `драматургия/` по подтверждению автора и правится автором как любой "
+        "документ канона. Писателю выводится только «Что видно снаружи»; ложь / желание / потребность / положение — "
+        "внутренний инструмент автора и аналитика.",
+        "",
+        "| " + " | ".join(ARC_COLUMNS) + " |",
+        "|" + "---|" * len(ARC_COLUMNS),
+    ]
+    for a in sorted(arcs, key=lambda a: (a.act, a.character)):
+        lines.append(f"| {a.character} | {a.act} | {dash(a.lie)} | {dash(a.want)} | {dash(a.need)} | {dash(a.position)} | {dash(a.visible)} |")
+    return "\n".join(lines) + "\n"

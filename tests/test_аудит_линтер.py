@@ -519,3 +519,135 @@ def test_каркасы_битый_ответ_не_прерывает_прого
     (ws2.root / "драматургия" / "акт_9.json").write_text('{"scope": "акт", "key": 9, "steps": "нет"}', encoding="utf-8")
     assert len(circles.drafts(ws2)) == 5 and "акт_9" not in circles.canon_status(ws2)
     assert circles.broken_drafts(ws2) == ["акт_9.json: в ответе поле «steps» должно быть списком шагов"]
+
+
+# ------------------------------------------------------------------ методики: данные комплекта, материал, арки
+
+
+def _init_git(lib: Path) -> None:
+    import subprocess
+
+    for args in (["init"], ["config", "user.email", "t@t"], ["config", "user.name", "t"], ["add", "-A"], ["commit", "-q", "-m", "init"]):
+        subprocess.run(["git", "-C", str(lib), *args], check=True, capture_output=True)
+
+
+def test_схемы_и_промпты_методик_комплекта():
+    from konveyer import methodics
+
+    for m in methodics.load_all().values():
+        if m.result_kind == "арки":
+            assert "rows" in m.schema and "steps" not in m.schema
+            continue
+        step = (m.schema.get("steps") or [{}])[0]
+        if m.steps:
+            assert step.get("name") in m.step_names(), (m.name, step)
+        if m.name != "круг_хармона":
+            assert "круг" not in str(m.schema.get("title", "")).lower(), m.name
+        assert "в материале не задано" in m.prompt and ("{{ required" in m.prompt or not m.required), m.name
+    scene = methodics.load_all()["сцена_сиквел"]
+    assert "сц." in scene.schema["steps"][0]["chapters"]
+
+
+def test_демо_арки_заполнены_и_видны_в_окне(ws, library):
+    from konveyer import compiler, project
+    from konveyer.config import set_volume
+
+    assert not [c for c in project.readiness(ws.root, library) if "⚠ заполнить" in c.label]
+    exporter.run_export(library, ws.exports, ws.logs, 2)
+    set_volume(ws, 2)
+    w = compiler.compile_window(type(ws)(ws.root, 2), library, 3)[0].read_text(encoding="utf-8")
+    assert "## Что видно снаружи (арки участников)" in w and "- Зоя: молчит там, где раньше шутила" in w
+
+
+def test_материал_аналитика_по_запросу_методики(ws, library):
+    from konveyer import circles, methodics
+
+    folder = ws.root / "методики" / "своя"
+    folder.mkdir(parents=True)
+    (folder / "методика.yaml").write_text(
+        "методика: своя\nназвание: Своя\nуровни: [том, акт, глава]\nшаги:\n  - {n: 1, имя: Завязка}\n"
+        "материал:\n  том: [тема, континуити, хроника]\n  глава: [глава, континуити]\n", encoding="utf-8")
+    man = manifest_mod.load(ws.root)
+    man.методики.том = man.методики.акт = man.методики.глава = "своя"
+    manifest_mod.save(ws.root, man)
+    _, book = circles.build_material(ws, "книга")
+    assert "## Континуити" in book and "## Хроника эпохи" in book and "Каширин: шрам на левой брови (т.1 гл.1)" in book
+    assert "## Акты тома" not in book and "## Главы тома" not in book and "Реестр тайн" not in book
+    assert ("## Тема серии" in book) == bool(circles.cycle_theme(ws))
+    _, ch = circles.build_material(ws, "глава", 1)
+    assert ch.startswith("## Глава 1 ·") and "### Сцены" not in ch and "Каширин: шрам на левой брови" in ch
+    assert "### Закладки" not in ch
+    # акт — состав по умолчанию (в методике не задан)
+    exporter.run_export(library, ws.exports, ws.logs, 2)
+    _, act = circles.build_material(type(ws)(ws.root, 2), "акт", 1)
+    assert "## Акт 1 «Письмо»" in act and "## Арки акта 1" in act and act.startswith("## Каркас уровня выше")
+    # неизвестная секция — понятная ошибка и предупреждение доктора
+    (folder / "методика.yaml").write_text(
+        "методика: своя\nназвание: Своя\nуровни: [том]\nшаги:\n  - {n: 1, имя: Завязка}\nматериал: [тема, погода]\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="неизвестный материал"):
+        circles.build_material(ws, "книга")
+    assert any("«погода»" in p or "погода" in p for p in methodics.problems(man, ws.root, circles.MATERIAL_SECTIONS))
+    # без ключа — прежний состав по умолчанию
+    man.методики = manifest_mod.Methodics()
+    manifest_mod.save(ws.root, man)
+    _, book = circles.build_material(ws, "книга")
+    assert "## Акты тома" in book and "## Главы тома" in book and "## Реестр тайн" in book
+
+
+def test_методика_арки_исполняема_черновик_канон_окно_э2(ws, library, monkeypatch):
+    """Методика «арки» на уровне акта: ответ-таблица → черновик → статус → документ арок тома через canon_change,
+    строка персонаж × акт заменяет прежнюю; окно берёт вводный текст арок из методики, Э2 — её текст проверки."""
+    import json
+
+    from konveyer import adapters, circles, compiler, verifier2
+    from konveyer.config import Config, set_volume
+
+    _init_git(library)
+    man = manifest_mod.load(ws.root)
+    man.методики.акт = "арки"
+    manifest_mod.save(ws.root, man)
+    exporter.run_export(library, ws.exports, ws.logs, 2)
+    set_volume(ws, 2)
+    ws2 = type(ws)(ws.root, 2)
+    assert circles.methodic_for(ws2, "акт").result_kind == "арки"
+    system = circles._template(ws2, "акт")
+    assert "rows" in system and "«Ложь»" in system
+    _, material = circles.build_material(ws2, "акт", 2)
+    assert "## Арки акта 2" in material and "## Континуити" in material
+
+    def fake(system, user, mc, api, logs_dir, *, role, chapter=None):
+        act = 1 if "Акт 1" in user else 2
+        return json.dumps({"title": f"Арки акта {act}", "rows": [
+            {"character": "Каширин", "act": act, "lie": "ЛОЖЬ-К", "want": "ж", "need": "п", "position": "начало", "visible": "ВИДНО-К"},
+            {"character": "Лида", "act": act, "lie": "—", "want": "—", "need": "—", "position": "—", "visible": "хлопочет громче обычного"},
+        ]}, ensure_ascii=False)
+
+    monkeypatch.setattr(adapters, "call_anthropic", fake)
+    result = circles.run(ws2, Config(), "акты")
+    assert len(result["готово"]) == 2 and not result["сбои"]
+    md = (ws2.root / "драматургия" / "акт_1.md").read_text(encoding="utf-8")
+    assert "| Каширин | 1 | ЛОЖЬ-К |" in md
+    # Каширин есть в обоих актах канона, Лиды нет нигде → оба черновика «отличаются»
+    assert circles.canon_status(ws2) == {"акт_1": "отличается от канона", "акт_2": "отличается от канона"}
+    assert circles.drafts(ws2) == [] and len(circles.arc_drafts(ws2)) == 4
+    path, commit = circles.commit_to_canon(ws2, Config(), library)
+    assert path.name == "22_Арки_Том2.md" and len(commit) >= 7
+    text = path.read_text(encoding="utf-8")
+    assert "| Каширин | 1 | ЛОЖЬ-К |" in text and "| Зоя | 1 |" in text  # своя строка заменена, чужая сохранена
+    assert "| Лида | 2 |" in text and "## Методика: Арки персонажей" in text
+    arcs = {(a.character, a.act): a for a in exporter.load_arcs(ws2.exports)}
+    assert arcs[("Каширин", 1)].visible == "ВИДНО-К" and arcs[("Зоя", 2)].visible == "молчит там, где раньше шутила"
+    assert circles.canon_status(ws2) == {"акт_1": "в каноне", "акт_2": "в каноне"}
+    # окно главы 1 (акт 1, участники Каширин и Лида): вводный текст из методики арок, только «что видно снаружи»
+    w = compiler.compile_window(ws2, library, 1)[0].read_text(encoding="utf-8")
+    assert "Как участники сцены выглядят со стороны" in w and "- Каширин: ВИДНО-К" in w and "ЛОЖЬ-К" not in w
+    assert (Path(circles.__file__).parent / "методики" / "арки" / "в_окно.j2").read_text(encoding="utf-8").strip() in w
+    # Э2: текст проверки арок присоединён к драматургии
+    ws2.chapter_dir(1).mkdir(parents=True, exist_ok=True)
+    ws2.draft_path(1, 1).write_text("Текст.\n", encoding="utf-8")
+    system, _user = verifier2.build_prompt(ws2, 1, 1)
+    assert "внутренний путь (ложь/желание/потребность) в тексте не проговаривается" in system
+    # ручной приём ответа-таблицы и битая таблица
+    circles.accept_manual(ws2, "акт", 2, '{"rows": [{"character": "Зоя", "act": 2, "visible": "тише"}]}')
+    with pytest.raises(ValueError, match="не число"):
+        circles.accept_manual(ws2, "акт", 2, '{"rows": [{"character": "Зоя", "act": "два"}]}')
