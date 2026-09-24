@@ -21,7 +21,7 @@ _CH_RANGE_RE = re.compile(r"гл(?:ав[аы]?)?\.?\s*([\d\s,–\-]+)", re.IGNOR
 _RANGE_ITEM_RE = re.compile(r"(\d+)\s*[–-]\s*(\d+)|(\d+)")
 
 # падежные окончания имён: «Иванову», «Петровым», «Асю» (основа «Ас»), «Игорем» (основа «Игор»),
-# «Андрея» (основа «Андре»), «куратору отдела»
+# «Андрея» (основа «Андре»), «куратору отдела»; фамильные суффиксы («Иванов» ≠ «Иван») окончаниями не считаются
 _NAME_ENDINGS = "ами|ями|ой|ей|ом|ем|ым|им|ою|ею|ах|ях|ью|а|я|у|ю|е|и|ы|ь|й"
 _SHORT_STEM = 4  # основа короче — только полная форма имени или основа с непустым окончанием («Над» ≠ «Надя»)
 
@@ -99,8 +99,9 @@ def name_pattern(name: str, *, strict_case: bool = True) -> re.Pattern:
     first, *rest = name.split()
     stem = _stem(first)
     lead = stem[0]
-    # имя с заглавной требует заглавную в тексте; имя-роль со строчной («куратор») находится в обоих регистрах
-    head = (re.escape(lead) if lead.isupper() and strict_case
+    # имя с заглавной требует заглавную в тексте; имя-роль со строчной («куратор») и имя из нескольких слов
+    # («Куратор отдела» — второе слово само отсекает случайные совпадения) находятся в обоих регистрах
+    head = (re.escape(lead) if lead.isupper() and strict_case and not rest
             else f"[{re.escape(lead.lower())}{re.escape(lead.upper())}]")
     head += f"(?i:{re.escape(stem[1:])})" if len(stem) > 1 else ""
     if len(stem) < _SHORT_STEM and stem != first:
@@ -118,7 +119,7 @@ def _name_matches(text: str, known_names: set[str], pseudo: set[str] = frozenset
     единственное полное имя с таким началом; `pseudo` — субъекты, не являющиеся персонажами (например «Читатель»
     из эпистемики)."""
     out: list[tuple[str, re.Match]] = []
-    for n in known_names:
+    for n in sorted(known_names):
         if n in pseudo or not n.strip():
             continue
         found = list(name_pattern(n).finditer(text))
@@ -173,10 +174,13 @@ def normalize_name(raw: str, known_names: set[str]) -> str:
     («Мария Петровна» без досье остаётся «Мария Петровна»)."""
     raw = raw.strip()
     word = raw.split()[0] if raw else ""
-    for name in sorted(known_names, key=len, reverse=True):
+    if raw in known_names:
+        return raw
+    ordered = sorted(known_names, key=lambda n: (-len(n), n))  # детерминированно при равной длине (П-6)
+    for name in ordered:
         if name.strip() and name_pattern(name, strict_case=False).match(raw):
             return name
-    for name in sorted(known_names, key=len, reverse=True):
+    for name in ordered:
         first = name.split()[0]
         if " " in name and name_pattern(first, strict_case=False).match(word) \
                 and sum(1 for o in known_names if o.split()[0] == first) == 1:

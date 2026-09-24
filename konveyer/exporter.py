@@ -210,12 +210,15 @@ def _acts_of(data: dict, path: Path, line: int, errors: list[MarkupError]) -> li
 
 
 def _validate(records: list[dict], schema_name: str, path: Path, errors: list[MarkupError],
-              ctx: declparse.ParseContext | None = None) -> list[tuple[dict, BaseModel]]:
+              ctx: declparse.ParseContext | None = None, key_field: str = "") -> list[tuple[dict, BaseModel]]:
     """Записи → (исходная запись, модель схемы); запись, не прошедшая схему, — ошибка с файлом и строкой;
-    поле, которого в схеме нет (опечатка в `запись:` типа проекта), — тоже ошибка, а не молчаливая потеря."""
+    поле, которого в схеме нет (опечатка в `запись:` типа проекта), — тоже ошибка, а не молчаливая потеря.
+    `key_field` — поле-ключ словарной выгрузки (`результат: словарь:id`): оно в схему не входит."""
     model = _schema_model(schema_name, ctx)
     out: list[tuple[dict, BaseModel]] = []
     known_fields = set(model.model_fields) | {getattr(f, "alias", None) for f in model.model_fields.values()}
+    if key_field:
+        known_fields.add(key_field)
     strict = model.model_config.get("extra") != "allow"
     for rec in records:
         line = int(rec.get("_строка") or 0) or 1
@@ -338,7 +341,8 @@ def collect(library: Path, volume: int = 1, root: Path | None = None, *, require
             doc_vol = entry.том if entry and entry.том else (doc_volume(doc) or volume)
             ctx = declparse.ParseContext(volume=doc_vol, overrides=_overrides(entry), project_root=root, library=library,
                                          sections=dict(entry.секции or {}) if entry else {},
-                                         params={"known_names": col.known_names, "exports": col.data, "pseudo": col.pseudo})
+                                         params={"known_names": col.known_names, "exports": col.data, "pseudo": col.pseudo,
+                                                 "тип": spec.raw})
             for ext in spec.extractions:
                 ctx.extraction = str(ext.get("имя", ""))
                 formats = list(ext.get("форматы") or [])
@@ -362,6 +366,7 @@ def collect(library: Path, volume: int = 1, root: Path | None = None, *, require
                 if not export:
                     continue
                 result = str(ext.get("результат", "список"))
+                key_field = result.split(":", 1)[1] if result.startswith("словарь:") else ""
                 if result.startswith("значения:"):
                     field = result.split(":", 1)[1]
                     values = [r.get(field) for r in records] if isinstance(records, list) else []
@@ -374,15 +379,15 @@ def collect(library: Path, volume: int = 1, root: Path | None = None, *, require
                 else:
                     try:
                         pairs = _validate(list(records) if isinstance(records, list) else [], str(ext.get("схема", "")),
-                                          doc, doc_errors, ctx)
+                                          doc, doc_errors, ctx, key_field)
                     except ValueError as e:
                         sink.append(MarkupError(doc, 1, str(e)))
                         continue
                 sink.extend(doc_errors)
                 for _, m in pairs:
                     _stamp_file(m, doc.relative_to(library).as_posix())
-                if result.startswith("словарь:"):
-                    key = result.split(":", 1)[1]
+                if key_field:
+                    key = key_field
                     keyed: dict[str, Any] = {}
                     for rec, m in pairs:
                         k = str(rec.get(key, rec.get("_ключ", getattr(m, key, ""))))
@@ -468,8 +473,8 @@ def _postprocess(col: Collected, volume: int, library: Path, root: Path, types: 
     background_words = [str(w).lower() for w in (vis_rules.get("фон") or [])]
     for e in d["chronology.json"]:
         vis = e.visibility or ""
-        e.volumes = names.volumes_listed(vis)
-        e.chapters = names.chapters_listed(vis)
+        e.volumes = sorted(set(names.volumes_listed(vis)))
+        e.chapters = sorted(set(names.chapters_listed(vis)))
         if e.year is None:
             ym = re.search(r"(1[6-9]\d\d|20\d\d)", e.event_id + " " + e.date)
             e.year = int(ym.group(1)) if ym else None

@@ -180,6 +180,23 @@ def parse_number(value: str) -> float | None:
     return float(m.group()) if m else None
 
 
+def split_list(text: str, separators: str = ";") -> list[str]:
+    """«а; б (в; г), д» → [«а», «б (в; г)», «д»] при separators=";,": разделители внутри скобок не делят."""
+    items, depth, buf = [], 0, []
+    for ch in text:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        if ch in separators and depth == 0:
+            items.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    items.append("".join(buf))
+    return [it.strip() for it in items if it.strip()]
+
+
 def _key_re(key: str) -> re.Pattern:
     """«- Ключ: …» без учёта регистра и «ё/е»: «Объём» находит и «Объем», «НЕ знает» — «Не знает»."""
     escaped = "".join("[её]" if ch in "её" else re.escape(ch) for ch in key.strip())
@@ -198,7 +215,7 @@ def parse_list_items(body: str, key: str, separators: str = ";") -> list[str]:
             continue
         inline = m.group(1).strip()
         if inline:
-            items.extend(x.strip() for x in re.split(f"[{re.escape(separators)}]", inline) if x.strip())
+            items.extend(split_list(inline, separators))
         for sub in lines[i + 1 :]:
             sm = re.match(r"^\s+[-*]\s+(.*)$", sub)
             if sm:

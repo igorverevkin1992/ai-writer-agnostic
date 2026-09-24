@@ -23,7 +23,7 @@ def test_выгрузки_созданы_и_валидны(ws):
     assert b1.participants == ["Зоя"]  # фокал в участники не входит
     # корпус нормализован из Проза/
     corpus_files = sorted(f.name for f in ws.corpus.glob("*.txt"))
-    assert corpus_files == ["Том1_Глава03.txt", "Том1_Глава04_МАКЕТ.txt"]
+    assert corpus_files == ["Том1_Глава03.txt"]  # макет — не принятая глава, в корпус не входит (FR-V1-1)
 
 
 def test_идемпотентность(ws, library):

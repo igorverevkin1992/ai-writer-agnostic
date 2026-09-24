@@ -137,8 +137,8 @@ CONVERTERS: dict[str, Callable[[str], Any]] = {
     "число": conv_number,
     "целое": conv_int,
     "глава": conv_chapter,
-    "список": lambda s: [x.strip() for x in s.split(";") if x.strip()],
-    "список_запятая": lambda s: [x.strip() for x in re.split(r"[;,]", s) if x.strip()],
+    "список": lambda s: mdparse.split_list(s, ";"),
+    "список_запятая": lambda s: mdparse.split_list(s, ";,"),
     "место": conv_place,
     "места": conv_places,
     "годы": conv_years,
@@ -190,35 +190,44 @@ def _override_list(value: Any) -> list[str]:
 
 
 def _spec_synonyms(name: str, spec: Any) -> list[str]:
+    """Синонимы колонки по порядку предпочтения; каноническое имя поля — последний синоним (заголовки каркаса
+    стартового комплекта — это имена полей каталога)."""
     if isinstance(spec, dict):
-        return [str(s) for s in (spec.get("синонимы") or [name])]
-    if isinstance(spec, str):
-        return [spec]
-    return [name]
+        syn = [str(s) for s in (spec.get("синонимы") or [])]
+    elif isinstance(spec, str):
+        syn = [spec]
+    else:
+        syn = []
+    return list(dict.fromkeys([*syn, name]))
 
 
 def _synonyms(name: str, spec: Any, overrides: dict) -> list[str]:
     return _override_list(overrides.get(name)) + _spec_synonyms(name, spec)
 
 
+def _hit_level(header: str, synonym: str) -> int | None:
+    """Строгость совпадения заголовка с синонимом: 0 — точное, 1 — с начала слова («том» ↔ «Том 2»),
+    2 — подстрока внутри слова (только для синонимов длиннее трёх букв: «том» не находит «Автомат»)."""
+    if header == synonym:
+        return 0
+    if re.search(rf"(?<![\w]){re.escape(synonym)}", header):
+        return 1
+    if len(synonym) > 3 and synonym in header:
+        return 2
+    return None
+
+
 def _header_hits(headers: list[str], synonyms: list[str]) -> list[str]:
-    """Заголовки, подходящие под синонимы, по убыванию строгости: точное совпадение, совпадение с начала слова,
-    подстрока внутри слова (только для синонимов длиннее трёх букв: «том» не находит «Автомат»).
-    Возвращает заголовки лучшего найденного уровня (в порядке таблицы)."""
+    """Заголовки, подходящие под синонимы: сначала точные совпадения, затем с начала слова, затем подстрока;
+    на одном уровне строгости синонимы — по порядку предпочтения (первый подошедший решает). Возвращает
+    заголовки, подошедшие под выбранный синоним (в порядке таблицы); их больше одного — колонка неоднозначна."""
     folded = [(h, mdparse.fold(h)) for h in headers]
     syns = [mdparse.fold(s) for s in synonyms if s.strip()]
-    levels: list[list[str]] = [[], [], []]
-    for h, hf in folded:
+    for level in (0, 1, 2):
         for s in syns:
-            if hf == s:
-                levels[0].append(h)
-            elif re.search(rf"(?<![\w]){re.escape(s)}", hf):
-                levels[1].append(h)
-            elif len(s) > 3 and s in hf:
-                levels[2].append(h)
-    for level in levels:
-        if level:
-            return list(dict.fromkeys(level))
+            hits = [h for h, hf in folded if _hit_level(hf, s) == level]
+            if hits:
+                return hits
     return []
 
 
@@ -385,10 +394,11 @@ DEFAULT_CELL_RULES: dict[str, Any] = {"всегда|с начала|пролог
 _REGEX_MARKERS = ("\\", "(", "^", "$", "?", "+", "{")
 
 
-def _compile_cell_rule(pattern: str) -> re.Pattern:
+def _compile_cell_rule(pattern: str, anchored: bool) -> re.Pattern:
     """Образец правила ячейки: явный регэксп (есть `\\`, `(`, `^`…) — как есть (поиск по ячейке); иначе простая
-    запись: `|` — варианты, `.` необязательна, пробелы свободны, `N` — число, хвост в `[…]` — пояснение;
-    ищется с начала слова («с гл. 5» подходит под «гл.N»)."""
+    запись: `|` — варианты, `.` необязательна, пробелы свободны, `N` — число, хвост в `[…]` — пояснение.
+    `anchored` — образец должен стоять в начале ячейки («всегда (с пролога)», «— (см. факт 3)»); иначе ищется
+    с начала любого слова («с гл. 5» подходит под «гл.N»)."""
     if any(ch in pattern for ch in _REGEX_MARKERS):
         return re.compile(pattern, re.IGNORECASE)
     plain = re.sub(r"\[.*\]\s*$", "", pattern)
@@ -408,17 +418,19 @@ def _compile_cell_rule(pattern: str) -> re.Pattern:
             else:
                 parts.append(re.escape(ch))
         alts.append("".join(parts))
-    return re.compile(r"(?<![\w])(?:" + "|".join(alts) + ")", re.IGNORECASE)
+    head = r"^\s*" if anchored else r"(?<![\w])"
+    return re.compile(head + "(?:" + "|".join(alts) + ")", re.IGNORECASE)
 
 
 def compile_cell_rules(rules: dict | None) -> list[tuple[re.Pattern, Any]]:
     """Правила `ячейка_знания` типа: {образец: значение}. Значение: число — глава-константа («всегда» → 0);
-    null — субъект не знает; "N" — глава из числа в ячейке; "пометка" — не знает, текст ячейки в пометку."""
+    null — субъект не знает; "N" — глава из числа в ячейке (ищется по всей ячейке); "пометка" — не знает, текст
+    ячейки в пометку. Образцы констант и «не знает» должны стоять в начале ячейки."""
     out: list[tuple[re.Pattern, Any]] = []
     for pat, val in (rules or {}).items():
         if val == "частичное_знание":
             continue
-        out.append((_compile_cell_rule(str(pat)), val))
+        out.append((_compile_cell_rule(str(pat), anchored=str(val).strip() != "N"), val))
     return out
 
 
@@ -441,7 +453,7 @@ def _knowledge_cell(clean: str, rules: list[tuple[re.Pattern, Any]]) -> tuple[in
         if not m:
             continue
         if val is None:
-            return None, ""
+            return None, ("" if not clean[m.end():].strip() else clean)  # «— (см. факт 3)»: пояснение остаётся
         if isinstance(val, (int, float)) and not isinstance(val, bool):
             return int(val), ""
         sval = str(val).strip()
@@ -460,13 +472,16 @@ def _knowledge_cell(clean: str, rules: list[tuple[re.Pattern, Any]]) -> tuple[in
 
 def fmt_wide_table(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] | None:
     """Широкая таблица: первая колонка-ключ («Факт»), номер («#»), остальные — субъекты (FR-DT-1). Строки и ячейки
-    с заглушкой «⚠ заполнить» пропускаются; ячейки читаются по правилам `ячейка_знания` (и
-    `ячейка_знания_псевдосубъекта` для субъектов вроде «Читатель»)."""
+    с заглушкой «⚠ заполнить» пропускаются; ячейки читаются по правилам `ячейка_знания` формата и
+    `ячейка_знания_псевдосубъекта` (в формате или на верхнем уровне типа — так профиль переопределяет их без
+    копирования извлечения) для субъектов из `псевдосубъекты` типа (например «Читатель»)."""
     key_syn = [mdparse.fold(s) for s in _synonyms("ключ", fmt.get("ключ") or {"синонимы": ["факт", "событие"]}, ctx.overrides)]
     num_syn = [mdparse.fold(s) for s in _synonyms("номер", fmt.get("номер") or {"синонимы": ["#", "№"]}, ctx.overrides)]
     min_cols = int(fmt.get("минимум_колонок", 4) or 4)
     rules = compile_cell_rules(fmt.get("ячейка_знания") or DEFAULT_CELL_RULES)
-    pseudo_rules = compile_cell_rules(fmt.get("ячейка_знания_псевдосубъекта")) + rules
+    type_raw: dict = ctx.params.get("тип") or {}
+    pseudo_rules = compile_cell_rules(fmt.get("ячейка_знания_псевдосубъекта")
+                                      or type_raw.get("ячейка_знания_псевдосубъекта")) + rules
     marker = partial_marker(fmt.get("ячейка_знания"))
     exclude = {mdparse.fold(s) for s in (fmt.get("исключить_колонки") or [])}
     id_prefix = str(fmt.get("префикс_id", "М-"))
