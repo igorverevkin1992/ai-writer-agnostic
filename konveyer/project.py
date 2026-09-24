@@ -292,6 +292,22 @@ def readiness(root: Path, library: Path) -> list[Check]:
     for mod, absent in man.missing_types(library, types, modules, None).items():
         out.append(Check(False, f"модуль «{mod}» включён, но нет документов: {', '.join(absent)}",
                          "добавьте документ типа или выключите модуль в проект.yaml"))
+    # дубли: у типа с множественностью «один»/«по_тому» два документа (обычно каркас комплекта рядом с документом онбординга)
+    for name, spec in sorted(types.items()):
+        if spec.multiplicity not in ("один", "по_тому"):
+            continue
+        groups: dict[int | None, list[Path]] = {}
+        for p in man.docs(library, name, None, types):
+            groups.setdefault(manifest_mod.doc_volume(p) if spec.per_volume else None, []).append(p)
+        for vol, paths in sorted(groups.items(), key=lambda kv: (kv[0] is None, kv[0] or 0)):
+            if len(paths) < 2:
+                continue
+            rel = [p.relative_to(library).as_posix() for p in paths]
+            blank = [r for r, p in zip(rel, paths, strict=True) if "⚠ заполнить" in p.read_text(encoding="utf-8", errors="replace")]
+            where = f" тома {vol}" if vol is not None else ""
+            out.append(Check(False, f"тип «{name}»{where} представлен дважды: {', '.join(rel)}",
+                             (f"удалите незаполненный каркас: {', '.join(blank)}" if blank else "оставьте один документ этого типа")
+                             + " (проект с готовыми материалами создавайте с --без-комплекта)"))
     # документы вне карты
     unmapped = manifest_mod.unmapped(man, library)
     if unmapped:

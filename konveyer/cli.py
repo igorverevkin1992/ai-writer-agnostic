@@ -16,7 +16,7 @@ from pathlib import Path
 
 import typer
 
-from . import cancel, steps
+from . import cancel, локаль, steps
 from .steps import canon, edits as edits_mod, onboarding as onboarding_steps, overview, quality, setup, tact, volume as volume_steps
 from .steps.common import NEXT_STEP as NEXT_STEP  # noqa: F401 — совместимость: `from konveyer.cli import NEXT_STEP`
 from .steps.common import _chapter_flags_summary as _chapter_flags_summary  # noqa: F401
@@ -25,11 +25,14 @@ from .steps.common import _print_variants as _print_variants, _print_verdict as 
 from .steps.common import _sha256 as _sha256  # noqa: F401
 from .steps.canon import _compile_window_to as _compile_window_to  # noqa: F401
 
+локаль.localize_typer()  # подпись --help и ошибки разбора аргументов — по-русски (NFR-7)
+
 app = typer.Typer(
     name="konveyer",
     help="КОНВЕЙЕР — производственный такт главы (ТЗ v1.0).",
     no_args_is_help=True,
     pretty_exceptions_enable=False,
+    add_completion=False,  # автодополнение оболочки печатает английскую справку; авторам оно не нужно
 )
 
 
