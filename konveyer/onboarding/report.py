@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .. import catalog, manifest as manifest_mod, project
 from ..paths import Workspace
-from . import importer, propose
+from . import importer, normalize, propose
 
 REPORT = "отчёт.md"
 
@@ -17,6 +17,17 @@ def records_in(path: Path, spec: catalog.TypeSpec, root: Path, volume: int) -> i
         return "—"
     pv = propose.preview(path, spec, root, {}, volume)
     return pv.records if not pv.error else f"0 (⚠ {pv.error[:60]})"
+
+
+def _quality(e: importer.RawEntry) -> str:
+    """Оценка извлечения для отчёта (FR-ON-3): чисто / с потерями (N подозрительных: первые места) / плохо."""
+    q = e.качество or {}
+    verdict = q.get("оценка", "—")
+    if verdict == "чисто" or not q:
+        return verdict
+    places = q.get("подозрительные_места") or []
+    detail = f"{q.get('подозрительных', len(places))} подозрительных" + (": " + "; ".join(places[:2]) if places else "")
+    return f"{verdict} ({detail})"
 
 
 def build(ws: Workspace, library: Path) -> str:
@@ -29,31 +40,36 @@ def build(ws: Workspace, library: Path) -> str:
     lines = ["# Отчёт онбординга", ""]
 
     # 1. что распознано
-    lines += ["## 1. Что распознано", "", "| Файл сырья | Тип | Документ канона | Строк прочитано машиной |", "|---|---|---|---|"]
+    lines += ["## 1. Что распознано", "",
+              "| Файл сырья | Тип | Документ канона | Строк прочитано машиной | Качество извлечения |", "|---|---|---|---|---|"]
     n_canon = 0
     for e in entries:
         if e.статус != "в_каноне" or not e.документ_канона:
             continue
         n_canon += 1
-        spec = types.get(e.тип or "")
-        path = library / e.документ_канона
-        count = records_in(path, spec, root, volume) if spec and path.exists() else "—"
-        lines.append(f"| {e.файл} | {e.тип or '—'} | {e.документ_канона} | {count} |")
+        docs = e.документы_канона or [e.документ_канона]
+        counts = []
+        for d in docs:
+            path = library / d
+            entry = man.entry_for(d)
+            spec = types.get(entry.тип if entry is not None else (e.тип or ""))
+            counts.append(str(records_in(path, spec, root, volume)) if spec and path.exists() else "—")
+        extra = " · ⚠ источник исчез" if e.источник_исчез else ""
+        lines.append(f"| {e.файл}{extra} | {e.тип or '—'} | {', '.join(docs)} | {', '.join(counts)} | {_quality(e)} |")
     if n_canon == 0:
-        lines.append("| — | — | — | пока ни один документ не внесён |")
+        lines.append("| — | — | — | пока ни один документ не внесён | — |")
 
     # 2. что осталось сырьём
     lines += ["", "## 2. Что осталось сырьём", ""]
     props = {p.файл: p for p in propose.load(ws)}
-    left = [e for e in entries if e.статус != "в_каноне"]
+    left = [e for e in entries if e.статус not in ("в_каноне", "заменён")]
+    replaced = [e for e in entries if e.статус == "заменён"]
     if not left:
         lines.append("Всё сырьё разложено по библиотеке.")
     for e in left:
         pr = props.get(e.файл)
         if e.статус == "отклонено":
             reason = "отклонён автором"
-        elif e.статус == "заменён":
-            reason = e.причина or "заменён новой версией источника"
         elif not e.извлечено_в:
             reason = f"нет извлечения: {e.причина or e.формат}"
         elif pr and pr.решение == "сырьё":
@@ -65,7 +81,11 @@ def build(ws: Workspace, library: Path) -> str:
         else:
             reason = "не классифицирован — выполните `konveyer онбординг`"
         extra = " · источник исчез" if e.источник_исчез else ""
-        lines.append(f"- {e.файл} — {reason}{extra}")
+        quality = f" · качество: {_quality(e)}" if e.извлечено_в and (e.качество or {}).get("оценка", "чисто") != "чисто" else ""
+        lines.append(f"- {e.файл} — {reason}{quality}{extra}")
+    if replaced:
+        lines += ["", "Заменены новой версией источника (в отчёте не участвуют): "
+                  + "; ".join(f"{e.файл} — {e.причина or 'заменён'}" for e in replaced)]
 
     # 3. чего не хватает по модулям
     lines += ["", "## 3. Чего не хватает по модулям", "", "| Модуль | Требуемые типы | Вердикт |", "|---|---|---|"]
@@ -94,14 +114,23 @@ def build(ws: Workspace, library: Path) -> str:
     no_extract = [e for e in left if not e.извлечено_в and e.статус != "отклонено"]
     if no_extract:
         steps.append(f"Конвертировать в .md/.docx и повторно импортировать: {', '.join(e.файл for e in no_extract[:5])}.")
+    bad = [e for e in entries if e.извлечено_в and e.статус != "отклонено" and (e.качество or {}).get("оценка") == "плохо"]
+    if bad:  # FR-ON-3: «плохо» — конвертировать вручную и повторить импорт
+        steps.append(f"Извлечение «плохо» (таблицы или строки потеряны) — конвертировать в .docx/.md вручную и повторить импорт: "
+                     f"{', '.join(e.файл for e in bad[:5])}.")
+    pending = [e for e in entries if e.статус == "в_каноне" and e.документ_канона and library.is_dir()
+               and (library / e.документ_канона).exists()
+               and normalize.decisions_pending((library / e.документ_канона).read_text(encoding="utf-8", errors="replace"))]
+    if pending:
+        steps.append(f"Снять пометки «⚠ решение автора» в документах: {', '.join(e.документ_канона for e in pending[:5])}.")
     checks = project.readiness(root, library) if library.is_dir() else []
     for c in checks:
         if c.ok is not True and c.hint:
             steps.append(f"{c.label} → {c.hint}")
-    steps.append("`konveyer doctor` — проверить готовность; `konveyer export` — пересобрать выгрузки.")
+    steps.append("`konveyer доктор` — проверить готовность; `konveyer экспорт` — пересобрать выгрузки.")
     if any(not man.docs(library, "проза", None, types) for _ in [0]) if library.is_dir() else True:
         steps.append("Есть готовая проза — `konveyer импорт <папка>` и тип «проза»: нормы калибруются по ней (`konveyer нормы --калибровать`).")
-    steps.append("Первый такт: `konveyer compile 1` → `konveyer write 1`.")
+    steps.append("Первый такт: `konveyer собрать 1` → `konveyer написать 1`.")
     lines += [f"{i}. {s}" for i, s in enumerate(steps[:7], start=1)]
     return "\n".join(lines) + "\n"
 

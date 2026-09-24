@@ -19,7 +19,10 @@ dependencies = [
 # точные версии проверенной установки — requirements.lock, порядок обновления — ЗАПУСК.md, шаг 7.
 llm = ["google-genai>=1.0,<3", "anthropic>=0.40,<2"]
 docx = ["python-docx>=1.1"]   # рукопись тома в .docx (`konveyer volume close`); без неё — только .md
-dev = ["pytest>=7.4", "ruff>=0.5"]
+# онбординг (раздел 5): извлечение из .docx/.xlsx/.pdf; без библиотек формат регистрируется «без извлечения» с причиной
+onboarding = ["python-docx>=1.1", "openpyxl>=3.1", "pypdf>=4"]
+# тесты форматов онбординга (test_импорт_форматы) нуждаются в этих библиотеках — они входят в dev (§14.3.8, CI на трёх ОС)
+dev = ["pytest>=7.4", "ruff>=0.5", "python-docx>=1.1", "openpyxl>=3.1", "pypdf>=4"]
 
 [project.scripts]
 konveyer = "konveyer.cli:app"

@@ -30,6 +30,7 @@ class Quality:
     tables_total: int = 0
     tables_ok: int = 0
     suspicious: list[str] = field(default_factory=list)   # что именно подозрительно (файл:строка — описание)
+    notes: list[str] = field(default_factory=list)        # информационные заметки без потерь (перекодировка и т. п.)
 
     @property
     def verdict(self) -> str:
@@ -43,7 +44,7 @@ class Quality:
     def as_dict(self) -> dict:
         return {"таблиц": self.tables_total, "таблиц_распознано": self.tables_ok,
                 "подозрительных": len(self.suspicious), "оценка": self.verdict,
-                "подозрительные_места": self.suspicious[:50]}
+                "подозрительные_места": self.suspicious[:50], "заметки": self.notes[:20]}
 
 
 @dataclass
@@ -111,7 +112,7 @@ def _from_text(path: Path) -> Extraction:
         try:
             text = raw.decode(enc)
             if enc == "cp1251":
-                q.suspicious.append(f"{path.name}: файл был не в UTF-8 (cp1251) — перекодирован")
+                q.notes.append(f"{path.name}: файл был не в UTF-8 (cp1251) — перекодирован без потерь")
             break
         except UnicodeDecodeError:
             continue
@@ -141,7 +142,8 @@ def _from_docx(path: Path) -> Extraction:
     body = d.element.body
     tables = {t._tbl: t for t in d.tables}
     paras = {p._p: p for p in d.paragraphs}
-    list_counter = 0
+    numbering = _docx_numbering(d)
+    counters: dict[tuple[str, str], int] = {}
     for child in body.iterchildren():
         if child.tag == qn("w:p"):
             p = paras.get(child)
@@ -150,13 +152,15 @@ def _from_docx(path: Path) -> Extraction:
             text = _docx_runs(p)
             style = (p.style.name if p.style is not None else "") or ""
             m = re.match(r"(?:Heading|Заголовок)\s*(\d)", style, re.I)
+            num_pr = child.find(".//" + qn("w:numPr"))
             if style.lower() == "title" or style == "Название":
                 out.append(f"# {text}\n")
             elif m:
                 out.append("#" * min(6, int(m.group(1))) + f" {text}\n")
-            elif "List" in style or "Список" in style or child.find(".//" + qn("w:numPr")) is not None:
-                list_counter += 1
-                out.append(f"- {text}")
+            elif "List" in style or "Список" in style or num_pr is not None:
+                # нумерованный список сохраняет порядок частей (FR-ON-2): «1.», маркированный — «-»
+                marker = _docx_list_marker(num_pr, style, numbering, counters)
+                out.append(f"{marker} {text}")
             elif text.strip():
                 out.append(text + "\n")
             else:
@@ -167,24 +171,29 @@ def _from_docx(path: Path) -> Extraction:
                 continue
             q.tables_total += 1
             rows: list[list[str]] = []
-            widths = set()
+            merged = False
             for r in t.rows:
-                cells = [c.text for c in r.cells]
-                # объединённые ячейки повторяются подряд — схлопываем дубли
-                dedup: list[str] = []
-                for c in cells:
-                    if not dedup or dedup[-1] != c:
-                        dedup.append(c)
+                cells: list[str] = []
+                prev_tc = None
+                for c in r.cells:
+                    # объединённая по горизонтали ячейка — один и тот же `_tc` на несколько колонок сетки:
+                    # значение пишется один раз, остальные колонки остаются пустыми — ширина строки не плывёт
+                    if prev_tc is not None and c._tc is prev_tc:
+                        cells.append("")
+                        merged = True
                     else:
-                        continue
-                widths.add(len(dedup))
-                rows.append(dedup)
-            if len(widths) > 1:
-                q.suspicious.append(f"{path.name}: таблица с объединёнными ячейками — колонки могли потеряться")
-            else:
-                q.tables_ok += 1
+                        cells.append(c.text)
+                    prev_tc = c._tc
+                rows.append(cells)
+            q.tables_ok += 1
+            if merged:
+                q.suspicious.append(f"{path.name}: таблица с объединёнными ячейками — проверьте заголовки колонок")
             out.append("\n" + md_table(rows))
-    # комментарии рецензентов — сносками в конце
+    # сноски и комментарии рецензентов — в конце документа
+    footnotes = _docx_footnotes(path)
+    if footnotes:
+        out.append("\n## Сноски\n")
+        out += [f"[^{n}]: {t}" for n, t in footnotes]
     comments = _docx_comments(path)
     if comments:
         out.append("\n## Комментарии из документа\n")
@@ -194,35 +203,103 @@ def _from_docx(path: Path) -> Extraction:
     return Extraction(text, q, "", ".docx")
 
 
+def _docx_numbering(d) -> dict[tuple[str, str], str]:
+    """{(numId, ilvl): numFmt} из word/numbering.xml — чтобы отличить нумерованный список от маркированного."""
+    from docx.oxml.ns import qn  # type: ignore
+
+    out: dict[tuple[str, str], str] = {}
+    try:
+        el = d.part.numbering_part.element
+    except (AttributeError, KeyError, NotImplementedError):
+        return out
+    abstract: dict[str, dict[str, str]] = {}
+    for a in el.findall(qn("w:abstractNum")):
+        levels = {}
+        for lvl in a.findall(qn("w:lvl")):
+            fmt = lvl.find(qn("w:numFmt"))
+            levels[lvl.get(qn("w:ilvl"), "0")] = fmt.get(qn("w:val"), "") if fmt is not None else ""
+        abstract[a.get(qn("w:abstractNumId"), "")] = levels
+    for num in el.findall(qn("w:num")):
+        ref = num.find(qn("w:abstractNumId"))
+        levels = abstract.get(ref.get(qn("w:val"), "") if ref is not None else "", {})
+        for ilvl, fmt in levels.items():
+            out[(num.get(qn("w:numId"), ""), ilvl)] = fmt
+    return out
+
+
+def _docx_list_marker(num_pr, style: str, numbering: dict[tuple[str, str], str], counters: dict[tuple[str, str], int]) -> str:
+    from docx.oxml.ns import qn  # type: ignore
+
+    key = ("", "0")
+    fmt = ""
+    if num_pr is not None:
+        num_id = num_pr.find(qn("w:numId"))
+        ilvl = num_pr.find(qn("w:ilvl"))
+        key = (num_id.get(qn("w:val"), "") if num_id is not None else "", ilvl.get(qn("w:val"), "0") if ilvl is not None else "0")
+        fmt = numbering.get(key, "")
+    numbered = (fmt and fmt != "bullet") or (not fmt and re.search(r"number|нумер", style, re.I) is not None)
+    if not numbered:
+        return "-"
+    counters[key] = counters.get(key, 0) + 1
+    return f"{counters[key]}."
+
+
 def _docx_runs(p) -> str:
+    """Текст абзаца по всем `w:r`, включая runs внутри гиперссылок (их нет в `p.runs`); ссылки на сноски — `[^n]`."""
+    from docx.oxml.ns import qn  # type: ignore
+    from docx.text.run import Run  # type: ignore
+
     parts: list[str] = []
-    for r in p.runs:
-        t = r.text
-        if not t:
-            continue
-        if r.bold and t.strip():
-            t = f"**{t.strip()}**" if not t.startswith(" ") else f" **{t.strip()}**"
-        elif r.italic and t.strip():
-            t = f"*{t.strip()}*"
-        parts.append(t)
+    for el in p._p.iter():
+        if el.tag == qn("w:r"):
+            r = Run(el, p)
+            t = r.text
+            ref = el.find(qn("w:footnoteReference"))
+            if ref is not None:
+                t += f"[^{ref.get(qn('w:id'), '')}]"
+            if not t:
+                continue
+            if r.bold and t.strip():
+                t = f"**{t.strip()}**" if not t.startswith(" ") else f" **{t.strip()}**"
+            elif r.italic and t.strip():
+                t = f"*{t.strip()}*"
+            parts.append(t)
     return "".join(parts).strip() or p.text.strip()
 
 
-def _docx_comments(path: Path) -> list[str]:
+def _docx_part_xml(path: Path, member: str) -> str:
     import zipfile
 
     try:
         with zipfile.ZipFile(path) as z:
-            if "word/comments.xml" not in z.namelist():
-                return []
-            xml = z.read("word/comments.xml").decode("utf-8", errors="replace")
-    except (zipfile.BadZipFile, KeyError):
-        return []
+            if member not in z.namelist():
+                return ""
+            return z.read(member).decode("utf-8", errors="replace")
+    except (zipfile.BadZipFile, KeyError, OSError):
+        return ""
+
+
+def _docx_comments(path: Path) -> list[str]:
+    xml = _docx_part_xml(path, "word/comments.xml")
     out = []
     for m in re.finditer(r"<w:comment\b.*?</w:comment>", xml, re.S):
         text = " ".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", m.group(0), re.S)).strip()
         if text:
             out.append(html.unescape(text))
+    return out
+
+
+def _docx_footnotes(path: Path) -> list[tuple[str, str]]:
+    """[(id, текст)] из word/footnotes.xml без служебных разделителей (id −1 и 0)."""
+    xml = _docx_part_xml(path, "word/footnotes.xml")
+    out = []
+    for m in re.finditer(r"<w:footnote\b([^>]*)>(.*?)</w:footnote>", xml, re.S):
+        fid = re.search(r'w:id="(-?\d+)"', m.group(1))
+        if fid is None or int(fid.group(1)) <= 0:
+            continue
+        text = " ".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", m.group(2), re.S)).strip()
+        if text:
+            out.append((fid.group(1), html.unescape(text)))
     return out
 
 
@@ -254,6 +331,21 @@ def _from_pdf(path: Path) -> Extraction:
     return Extraction("\n".join(lines).strip() + "\n", q, "", ".pdf")
 
 
+CSV_DELIMITERS = ",;\t|"
+
+
+def _sniff_delimiter(text: str, default: str) -> str:
+    """Разделитель CSV: Excel в русской локали пишет «;», выгрузки — табуляцию; по расширению — только запасной вариант."""
+    head = text[:4096]
+    try:
+        return csv.Sniffer().sniff(head, delimiters=CSV_DELIMITERS).delimiter
+    except csv.Error:
+        first = head.splitlines()[0] if head.splitlines() else ""
+        counts = {d: first.count(d) for d in CSV_DELIMITERS}
+        best = max(counts, key=counts.get)
+        return best if counts[best] > counts.get(default, 0) else default
+
+
 def _from_csv(path: Path, delimiter: str) -> Extraction:
     q = Quality()
     raw = path.read_bytes()
@@ -261,7 +353,8 @@ def _from_csv(path: Path, delimiter: str) -> Extraction:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
         text = raw.decode("cp1251", errors="replace")
-        q.suspicious.append(f"{path.name}: кодировка не UTF-8 — перекодирован из cp1251")
+        q.notes.append(f"{path.name}: кодировка не UTF-8 — перекодирован из cp1251")
+    delimiter = _sniff_delimiter(text, delimiter)
     rows = list(csv.reader(io.StringIO(text), delimiter=delimiter))
     q.tables_total = 1
     widths = {len(r) for r in rows if r}
@@ -269,6 +362,9 @@ def _from_csv(path: Path, delimiter: str) -> Extraction:
         q.tables_ok = 1
     else:
         q.suspicious.append(f"{path.name}: разное число колонок в строках ({min(widths)}–{max(widths)})")
+    if rows and len(rows[0]) == 1 and any(d in rows[0][0] for d in CSV_DELIMITERS if d != delimiter):
+        q.tables_ok = 0
+        q.suspicious.append(f"{path.name}: одна колонка, но в шапке есть разделители — разделитель не распознан")
     return Extraction(f"# {path.stem}\n\n" + md_table(rows), q, "", path.suffix)
 
 
@@ -278,22 +374,26 @@ def _from_xlsx(path: Path) -> Extraction:
     except ImportError:
         return Extraction(None, Quality(), "нужна библиотека openpyxl (pip install openpyxl) или сохраните лист как .csv", ".xlsx")
     q = Quality()
-    wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
-    out = [f"# {path.stem}\n"]
-    for ws in wb.worksheets:
-        rows = [[("" if v is None else str(v)) for v in r] for r in ws.iter_rows(values_only=True)]
-        rows = [r for r in rows if any(c.strip() for c in r)]
-        if not rows:
-            continue
-        # обрезаем пустые хвостовые колонки
-        width = max(len([c for c in r if c.strip()]) and max(i + 1 for i, c in enumerate(r) if c.strip()) for r in rows)
-        rows = [r[:width] for r in rows]
-        q.tables_total += 1
-        if any(ws.merged_cells.ranges) if hasattr(ws, "merged_cells") else False:
-            q.suspicious.append(f"{path.name}/{ws.title}: объединённые ячейки — колонки могли потеряться")
-        else:
+    # не read_only: у ReadOnlyWorksheet нет merged_cells, а книга должна закрываться (иначе оригинал заперт на Windows)
+    wb = openpyxl.load_workbook(str(path), data_only=True)
+    try:
+        out = [f"# {path.stem}\n"]
+        for ws in wb.worksheets:
+            rows = [[("" if v is None else str(v)) for v in r] for r in ws.iter_rows(values_only=True)]
+            rows = [r for r in rows if any(c.strip() for c in r)]
+            if not rows:
+                continue
+            # обрезаем пустые хвостовые колонки
+            width = max(len([c for c in r if c.strip()]) and max(i + 1 for i, c in enumerate(r) if c.strip()) for r in rows)
+            rows = [r[:width] for r in rows]
+            q.tables_total += 1
             q.tables_ok += 1
-        out.append(f"\n## {ws.title}\n\n" + md_table(rows))
+            if ws.merged_cells.ranges:
+                q.suspicious.append(f"{path.name}/{ws.title}: объединённые ячейки ({len(ws.merged_cells.ranges)}) — "
+                                    "значение стоит в первой ячейке диапазона, проверьте заголовки")
+            out.append(f"\n## {ws.title}\n\n" + md_table(rows))
+    finally:
+        wb.close()
     return Extraction("\n".join(out).strip() + "\n", q, "", ".xlsx")
 
 
@@ -361,10 +461,19 @@ def _from_structured(path: Path) -> Extraction:
     """JSON/YAML: список словарей → таблица; словарь → секции «ключ: значение»; иначе — код."""
     q = Quality()
     text = path.read_text(encoding="utf-8", errors="replace")
-    try:
-        data = json.loads(text) if path.suffix == ".json" else yaml.safe_load(text)
-    except (ValueError, yaml.YAMLError) as e:
-        return Extraction(None, q, f"файл не разобран как {path.suffix[1:].upper()}: {e}", path.suffix)
+    is_json = path.suffix.lower() == ".json"
+    parsers = [json.loads, yaml.safe_load] if is_json else [yaml.safe_load, json.loads]
+    data = None
+    first_error: Exception | None = None
+    for parse in parsers:  # JSON с табуляцией не проходит как YAML и наоборот — пробуем оба разбора
+        try:
+            data = parse(text)
+            first_error = None
+            break
+        except (ValueError, yaml.YAMLError) as e:
+            first_error = first_error or e
+    if first_error is not None:
+        return Extraction(None, q, f"файл не разобран как {path.suffix[1:].upper()}: {first_error}", path.suffix)
     out = [f"# {path.stem}\n"]
 
     def emit(value, level: int) -> None:
@@ -447,9 +556,7 @@ def _from_rtf(path: Path) -> Extraction:
 # ------------------------------------------------------------------ вход
 
 
-def extract(path: Path) -> Extraction:
-    """Извлечение по расширению; неподдерживаемый формат — сырьё без извлечения (FR-ON-1)."""
-    suffix = path.suffix.lower()
+def _by_suffix(path: Path, suffix: str) -> Extraction | None:
     if suffix in TEXT_LIKE:
         return _from_text(path)
     if suffix == ".docx":
@@ -468,4 +575,24 @@ def extract(path: Path) -> Extraction:
         return _from_structured(path)
     if suffix == ".rtf":
         return _from_rtf(path)
-    return Extraction(None, Quality(), f"формат {suffix or '(без расширения)'} не поддерживается: сохраните как .md/.docx/.xlsx", suffix)
+    return None
+
+
+def extract(path: Path) -> Extraction:
+    """Извлечение по расширению; неподдерживаемый формат — сырьё без извлечения (FR-ON-1).
+    Повреждённый файл (битый .docx/.xlsx, обрезанный архив) — тоже «без извлечения» с причиной, а не сбой импорта:
+    каждый файл получает запись в индексе либо с извлечением, либо с явной причиной отказа (5.8, приёмка 1)."""
+    suffix = path.suffix.lower()
+    if suffix in SUPPORTED and path.stat().st_size == 0:
+        return Extraction(None, Quality(), "файл пуст (0 байт) — извлекать нечего", suffix)
+    try:
+        result = _by_suffix(path, suffix)
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except Exception as e:  # noqa: BLE001 — библиотека формата упала на повреждённом файле: причина, не сбой импорта
+        detail = str(e).replace(str(path), path.name).replace(str(path.parent), "…")[:120]  # без абсолютных путей (FR-SC-9)
+        return Extraction(None, Quality(), f"файл не прочитан ({type(e).__name__}: {detail}) — "
+                                           "конвертируйте его в .md/.docx и повторите импорт", suffix)
+    if result is None:
+        return Extraction(None, Quality(), f"формат {suffix or '(без расширения)'} не поддерживается: сохраните как .md/.docx/.xlsx", suffix)
+    return result
