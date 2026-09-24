@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import lang as lang_mod
+from . import lang as lang_mod, textutils
 from .schemas import Brief, CheckResult, Norm, StopRule
 
 MAX_QUOTES = 10
@@ -36,7 +36,7 @@ class MetricContext:
     corpus_dir: Path | None = None
     own_stem: str | None = None
     extra_abbr: Path | None = None
-    part_range: tuple[int, int] | None = None
+    documents: list[str] | None = None   # документы-вставки главы (реестр + бриф); None — только из брифа
     # производные (считаются один раз)
     text: str = ""
     sentences: list[str] = field(default_factory=list)
@@ -46,6 +46,8 @@ class MetricContext:
 
     def __post_init__(self) -> None:
         L = self.language
+        if self.documents is None:
+            self.documents = list(self.brief.documents)
         self.text = strip_markdown(L.strip_document_inserts(self.raw))
         self.sentences = L.split_sentences(self.text, self.extra_abbr)
         self.lengths = [len(L.words(s)) for s in self.sentences if L.words(s)]
@@ -70,11 +72,9 @@ class MetricContext:
         return quote_sentences(self.sentences, items, self.language)
 
 
-def strip_markdown(text: str) -> str:
-    text = re.sub(r"^#{1,6}\s+.*$", "", text, flags=re.M)
-    text = re.sub(r"^\s*-{3,}\s*$", "", text, flags=re.M)
-    text = re.sub(r"[*_`]{1,3}", "", text)
-    return text
+strip_markdown = textutils.strip_markdown
+ttr = textutils.ttr
+rolling_ttr = textutils.rolling_ttr
 
 
 # ------------------------------------------------------------------ общие помощники
@@ -142,17 +142,32 @@ def corridor(norm: Norm) -> str:
     return ", ".join(parts) + (f" {norm.unit}" if norm.unit else "")
 
 
-def stoplist_applies(rule: StopRule, brief: Brief) -> bool:
-    applies = rule.applies_to
-    if "focal" in applies:
-        return applies["focal"] == brief.focal
-    if "year" in applies and brief.year is not None:
-        y = applies["year"]
-        if "before" in y:
-            return brief.year < y["before"]
-        if "from" in y:
-            return y["from"] <= brief.year <= y.get("to", 9999)
+def year_applies(applies: dict, year: int | None) -> bool:
+    """Ограничение правила годом («до 1999», «1990–1999»); год главы неизвестен — правило действует."""
+    if "year" not in applies or year is None:
+        return True
+    y = applies["year"]
+    if "before" in y:
+        return year < y["before"]
+    if "from" in y:
+        return y["from"] <= year <= y.get("to", 9999)
     return True
+
+
+def volume_applies(applies: dict, volume: int | None) -> bool:
+    """Ограничение правила томом («2», «1–2», «с 3»); том главы неизвестен — правило действует (FR-V1-4)."""
+    if "volume" not in applies or volume is None:
+        return True
+    v = applies["volume"]
+    return v.get("from", 0) <= volume <= v.get("to", 10**6)
+
+
+def stoplist_applies(rule: StopRule, brief: Brief) -> bool:
+    """Правило действует для главы: линия фокала, год и том главы (FR-V1-4)."""
+    applies = rule.applies_to
+    if "focal" in applies and applies["focal"] != brief.focal:
+        return False
+    return year_applies(applies, brief.year) and volume_applies(applies, brief.volume)
 
 
 def find_items(text: str, items: list[str], language: lang_mod.Language | None = None) -> list[str]:
@@ -173,15 +188,13 @@ def quote_sentences(sentences: list[str], items: set[str], language: lang_mod.La
     return out
 
 
-def corpus_scope(corpus_dir: Path, volume: int, part_range: tuple[int, int] | None) -> list[Path]:
-    """Файлы корпуса для TTR-окна: том брифа и, если известна часть, её главы; файлы без номера — не отсеиваются."""
+def corpus_scope(corpus_dir: Path, volume: int) -> list[Path]:
+    """Файлы корпуса для TTR-окна: главы тома брифа; файлы без номера тома — не отсеиваются."""
     files: list[Path] = []
     for f in sorted(corpus_dir.glob("*.txt"), key=lambda p: p.name):
         m = _CORPUS_STEM_RE.search(f.stem)
-        if m is not None:
-            vol, ch = int(m.group(1)), int(m.group(2))
-            if vol != volume or (part_range and not part_range[0] <= ch <= part_range[1]):
-                continue
+        if m is not None and int(m.group(1)) != volume:
+            continue
         files.append(f)
     return files
 
@@ -205,22 +218,6 @@ def matching_runs(text_tokens: list[str], target_ngrams: set[tuple], n: int) -> 
 def strip_prose_tail(window: str) -> str:
     """Хвост прозы предыдущей главы в окне — цитата канона, не промпт: из проверки утечки исключается (FR-WN-5)."""
     return _TAIL_BLOCK_RE.sub("", window)
-
-
-def ttr(tokens: list[str]) -> float:
-    if not tokens:
-        return 0.0
-    return len({t.lower() for t in tokens}) / len(tokens)
-
-
-def rolling_ttr(tokens: list[str], window: int) -> list[tuple[int, float]]:
-    result: list[tuple[int, float]] = []
-    if window <= 0 or len(tokens) < window:
-        return result
-    step = max(1, window // 10)
-    for end in range(window, len(tokens) + 1, step):
-        result.append((end, ttr(tokens[end - window: end])))
-    return result
 
 
 # ------------------------------------------------------------------ реестр
@@ -477,7 +474,7 @@ def m_ttr(ctx: MetricContext) -> list[CheckResult]:
     part_tokens: list[str] = []
     scope_files: list[str] = []
     if ctx.corpus_dir is not None and ctx.corpus_dir.exists():
-        for f in corpus_scope(ctx.corpus_dir, ctx.brief.volume, None):
+        for f in corpus_scope(ctx.corpus_dir, ctx.brief.volume):
             if ctx.own_stem and f.stem == ctx.own_stem:
                 continue
             scope_files.append(f.stem)
@@ -524,16 +521,16 @@ def m_para(ctx: MetricContext) -> list[CheckResult]:
                    note=f"однострочных абзацев: {single} из {len(ctx.paragraphs)} (приём, не норма)")
 
 
-@metric("документ_вставка", "V1.11_документ_вставка", "документ-вставка из брифа оформлен блоком «→ ДОКУМЕНТ … ← КОНЕЦ ДОКУМЕНТА»",
-        "да/нет", needs=("бриф",))
+@metric("документ_вставка", "V1.11_документ_вставка", "документ-вставка главы (реестр документов или бриф) оформлен блоком "
+        "«→ ДОКУМЕНТ … ← КОНЕЦ ДОКУМЕНТА»", "да/нет", needs=("бриф",))
 def m_document(ctx: MetricContext) -> list[CheckResult]:
-    if not ctx.brief.documents:
+    if not ctx.documents:
         return []
     L = ctx.language
     has = L.has_document_insert(ctx.raw)
     return [CheckResult(check_id="V1.11_документ_вставка", status="PASS" if has else "BRAK",
                         threshold=f"блок `{L.doc_start}` … `{L.doc_end}`", actual="есть" if has else "нет",
-                        rule_source="бриф главы (реестр документов)", note="; ".join(ctx.brief.documents)[:200])]
+                        rule_source="реестр документов / бриф главы", note="; ".join(ctx.documents)[:200])]
 
 
 # ------------------------------------------------------------------ прогон и документация

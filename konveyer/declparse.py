@@ -70,6 +70,21 @@ def conv_scope(text: str) -> dict:
     return {"focal": v} if v and v.lower() not in {"все", "всем", "любой"} else {"all": True}
 
 
+def conv_volumes(text: str) -> dict:
+    """Тома действия правила: «2» → {"volume": {"from": 2, "to": 2}}; «1–2» → from/to; «с 3» → from; пусто/«все» → {}."""
+    v = text.strip().lower()
+    m = re.fullmatch(r"(?:т\.?\s*|том\s*|тома\s*)?(\d+)\s*[–-]\s*(?:т\.?\s*|том\s*)?(\d+)", v)
+    if m:
+        return {"volume": {"from": int(m.group(1)), "to": int(m.group(2))}}
+    m = re.fullmatch(r"(?:с|от)\s*(?:т\.?\s*|тома?\s*)?(\d+)", v)
+    if m:
+        return {"volume": {"from": int(m.group(1))}}
+    m = re.fullmatch(r"(?:т\.?\s*|тома?\s*)?(\d+)", v)
+    if m:
+        return {"volume": {"from": int(m.group(1)), "to": int(m.group(1))}}
+    return {}
+
+
 CONVERTERS: dict[str, Callable[[str], Any]] = {
     "строка": lambda s: s.strip(),
     "число": parse_number,
@@ -81,6 +96,7 @@ CONVERTERS: dict[str, Callable[[str], Any]] = {
     "места": conv_places,
     "годы": conv_years,
     "фокал": conv_scope,
+    "тома": conv_volumes,
     "действие": lambda s: "запрет" if "запрет" in s.lower() else "флаг",
     "да_нет": lambda s: s.strip().lower() in {"да", "вкл", "✓", "yes", "true"},
     "пусто_как_none": lambda s: (None if s.strip() in EMPTY else s.strip()),
@@ -178,7 +194,14 @@ def _apply_mapping(rec: dict, fmt: dict, ctx: ParseContext, path: Path) -> dict:
         return rec
     out: dict = {}
     for target, source in mapping.items():
-        if isinstance(source, str) and source in rec:
+        if isinstance(source, list):
+            # несколько полей-словарей в одно поле схемы (`applies_to: [годы, тома]`) — слияние
+            merged: dict = {}
+            for name in source:
+                if isinstance(rec.get(name), dict):
+                    merged.update(rec[name])
+            out[target] = merged
+        elif isinstance(source, str) and source in rec:
             out[target] = rec[source]
         else:
             out[target] = _template(source, ctx, path, rec)

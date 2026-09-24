@@ -14,7 +14,7 @@ from importlib import resources
 from jinja2 import Environment
 from pydantic import ValidationError
 
-from . import adapters, catalog, circles, compiler, exporter, guard, llmjson, manifest as manifest_mod, mdparse
+from . import adapters, catalog, circles, compiler, exporter, guard, llmjson, manifest as manifest_mod, mdparse, metrics
 from .config import Config
 from .paths import Workspace
 from .schemas import Flag
@@ -129,15 +129,17 @@ def build_prompt(ws: Workspace, chapter: int, draft: int, cfg: Config | None = N
         "- (каркас в канон не внесён — проверка драматургии ограничивается собственным движением главы)"
     ]
     participants = sorted(set([brief.focal, *brief.participants]) - {""})
+    def rule_for_scene(r) -> bool:
+        return (("focal" not in r.applies_to or r.applies_to["focal"] in participants)
+                and metrics.volume_applies(r.applies_to, brief.volume))
+
     line_rules = [
         f"- [{r.rule_id}] {r.applies_to.get('focal', 'все линии')}: {'; '.join(sorted(r.items))} ({r.action})"
-        for r in stoplists
-        if r.kind == "лексика" and r.scope == "0.3" and ("focal" not in r.applies_to or r.applies_to["focal"] in participants)
+        for r in stoplists if r.kind == "лексика" and r.scope == "0.3" and rule_for_scene(r)
     ]
     prose_rules = [
         f"- [{r.rule_id}] {r.applies_to.get('focal', 'все линии')}: {item}"
-        for r in stoplists
-        if r.kind == "проза" and ("focal" not in r.applies_to or r.applies_to["focal"] in participants)
+        for r in stoplists if r.kind == "проза" and rule_for_scene(r)
         for item in r.items
     ]
     dossier_slice: list[str] = []

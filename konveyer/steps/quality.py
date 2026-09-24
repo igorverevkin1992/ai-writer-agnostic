@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .. import exporter, guard, regression as regression_mod, verifier1
 from ..errors import StepError, StepExit
+from ..mdparse import MarkupError
 from ..schemas import GoldenTest
 from .common import Confirm, _ctx, _print_verdict, colors, confirm_or_reject, echo, secho
 
@@ -19,29 +20,13 @@ def check(
     ws, cfg, lib = _ctx()
     from ..schemas import Brief
 
-    own = None
-    part_range = None
     if chapter is not None:
+        # тот же контекст, что у такта: окно главы, корпус без самой главы, язык и словарь проекта
         brief = exporter.load_brief(ws.exports, chapter)
-        window_path = ws.window_path(chapter)
-        window = window_path.read_text(encoding="utf-8") if window_path.exists() else ""
-        # принятая глава уже лежит в корпусе — не сравнивать текст с самим собой (аудит 3.4)
-        own = exporter.find_corpus_file(ws.corpus, chapter, brief.volume)
-        part_range = verifier1.part_range_for(ws.exports, chapter)
+        checks = verifier1.analyze_text(ws, chapter, file.read_text(encoding="utf-8"))
     else:
         brief = Brief(chapter=0, focal=focal, year=year, volume_words=volume_words)
-        window = ""
-    checks = verifier1.analyze(
-        file.read_text(encoding="utf-8"),
-        window,
-        brief,
-        exporter.load_norms(ws.exports),
-        exporter.load_stoplists(ws.exports),
-        corpus_dir=ws.corpus,
-        own_stem=own.stem if own else None,
-        extra_abbr=ws.root / "сокращения.txt",
-        part_range=part_range,
-    )
+        checks = verifier1.analyze_text(ws, 0, file.read_text(encoding="utf-8"), brief=brief, window_raw="")
     from ..schemas import Verdict
 
     _print_verdict(Verdict(chapter=brief.chapter, draft=0, checks=checks))
@@ -92,8 +77,12 @@ def circles(
 
 
 def regress(llm: bool = False) -> dict:
-    """Прогон регрессионного корпуса золотых тестов (FR-R2). Красная регрессия — `StepExit(1)`."""
+    """Прогон регрессионного корпуса золотых тестов (FR-RG-2). Красная регрессия — `StepExit(1)`."""
     ws, cfg, lib = _ctx()
+    try:  # выгрузки пересобираются, как перед сборкой окна: регрессия на свежем проекте не падает без norms.json
+        exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
+    except MarkupError as e:
+        secho(f"⚠ выгрузки не пересобраны: {e}", fg=colors.YELLOW)
     report = regression_mod.run_regression(ws, llm=llm, cfg=cfg)
     if not report["всего"]:
         secho(
@@ -129,14 +118,18 @@ def regress(llm: bool = False) -> dict:
 
 def add_golden(
     test_id: str, fragment_file: Path, expect: list[str] | None = None, focal: str = "", year: int | None = None,
-    echelon: str = "Э1",
+    echelon: str = "Э1", chapter: int | None = None, window_file: Path | None = None, use_corpus: bool = False,
+    volume_words: int | None = None,
 ) -> Path:
-    """Добавить золотой тест из пойманной автором ошибки (FR-R1). Возвращает путь теста."""
+    """Добавить золотой тест из пойманной автором ошибки одной командой (FR-RG-1). Срез контекста: `chapter` берёт
+    бриф главы (фокал, год, том, объём, «НЕ знает») и её окно из папки главы; `window_file` — своё окно (утечка окна);
+    `use_corpus` — прогон против корпуса (межглавные повторы); `volume_words` — объём брифа. Возвращает путь теста."""
     ws, cfg, lib = _ctx()
     test = GoldenTest(
         test_id=test_id,
         fragment=fragment_file.read_text(encoding="utf-8"),
-        context_slice={"focal": focal, "year": year},
+        context_slice=regression_mod.context_slice(ws, focal=focal, year=year, chapter=chapter, window_file=window_file,
+                                                   use_corpus=use_corpus, volume_words=volume_words),
         expected_flags=list(expect or []),
         echelon=echelon,  # type: ignore[arg-type]
     )

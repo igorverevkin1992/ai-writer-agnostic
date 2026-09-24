@@ -498,12 +498,17 @@ def cmd_add_golden(
     test_id: str,
     fragment_file: Path,
     expect: list[str] = typer.Option([], "--expect", help="Ожидаемый флаг (check_id), можно несколько раз."),
-    focal: str = typer.Option("", "--focal"),
-    year: int | None = typer.Option(None, "--year"),
-    echelon: str = typer.Option("Э1", "--echelon"),
+    focal: str = typer.Option("", "--focal", "--фокал"),
+    year: int | None = typer.Option(None, "--year", "--год"),
+    echelon: str = typer.Option("Э1", "--echelon", "--эшелон"),
+    chapter: int | None = typer.Option(None, "--глава", "--chapter", help="Взять срез контекста из брифа и окна главы N."),
+    window_file: Path | None = typer.Option(None, "--окно", "--window", help="Файл окна для проверки утечки окна."),
+    use_corpus: bool = typer.Option(False, "--корпус", "--corpus", help="Проверять против корпуса принятых глав."),
+    volume_words: int | None = typer.Option(None, "--объём", "--volume-words", help="Объём брифа, слов."),
 ) -> None:
-    """Добавить золотой тест из пойманной автором ошибки (FR-R1)."""
-    quality.add_golden(test_id, fragment_file, expect=expect, focal=focal, year=year, echelon=echelon)
+    """Добавить золотой тест из пойманной автором ошибки (FR-RG-1)."""
+    quality.add_golden(test_id, fragment_file, expect=expect, focal=focal, year=year, echelon=echelon, chapter=chapter,
+                       window_file=window_file, use_corpus=use_corpus, volume_words=volume_words)
 
 
 @app.command("dashboard", rich_help_panel="Обзор")

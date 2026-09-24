@@ -1,4 +1,4 @@
-"""Тесты дифф-контроля (FR-V1.10)."""
+"""Тесты дифф-контроля (FR-V1-6): внесено / не внесено / самовольные изменения."""
 
 from konveyer import verifier1
 from konveyer.schemas import Edit
@@ -29,7 +29,7 @@ def test_правка_не_внесена(ws):
     assert report.not_applied == [1] and not report.clean
 
 
-def test_самовольное_изменение(ws):
+def test_диффконтроль_самовольные_изменения(ws):
     _drafts(
         ws,
         "Чай остыл. Зоя не звонила. День обещал пустоту.",

@@ -150,8 +150,10 @@ def _focalization_laws(exports_dir: Path) -> str:
     return "\n\n".join(n.laws for n in exporter.load_narration(exports_dir) if n.laws)
 
 
-def _line_rules(stoplists: list[StopRule], participants: list[str], year: int | None) -> list[dict]:
-    """Правила линий только участников сцены + лексика года главы (FR-C1, FR-V1.5)."""
+def _line_rules(stoplists: list[StopRule], participants: list[str], year: int | None, volume: int | None = None) -> list[dict]:
+    """Правила линий только участников сцены + лексика года и тома главы (FR-WN-2, FR-V1-4)."""
+    from . import metrics as metrics_mod
+
     result = []
     for rule in sorted(stoplists, key=lambda r: (r.scope, r.rule_id)):
         if rule.kind != "лексика":  # усилители и прозаические запреты линий выводятся отдельно
@@ -159,12 +161,8 @@ def _line_rules(stoplists: list[StopRule], participants: list[str], year: int | 
         applies = rule.applies_to
         if "focal" in applies and applies["focal"] not in participants:
             continue
-        if "year" in applies and year is not None:
-            y = applies["year"]
-            if "before" in y and year >= y["before"]:
-                continue
-            if "from" in y and not (y["from"] <= year <= y.get("to", 9999)):
-                continue
+        if not metrics_mod.year_applies(applies, year) or not metrics_mod.volume_applies(applies, volume):
+            continue
         if "focal" in applies:
             scope_note = f"линия «{applies['focal']}»"
         elif rule.scope == "0.3":
@@ -537,7 +535,7 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
         norms={k: v for k, v in norms.items() if k in WINDOW_NORM_IDS},
         style_sections=_style_sections(library, root),
         focalization_laws=_focalization_laws(exports_dir),
-        line_rules=_line_rules(stoplists, participants, brief.year),
+        line_rules=_line_rules(stoplists, participants, brief.year, brief.volume),
         dossiers=scene_dossiers,
         known_facts=known,
         not_knows=not_knows,

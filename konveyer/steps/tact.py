@@ -355,6 +355,8 @@ def diff_check(chapter: int, author_fix: bool = False, fragments: list[str] | No
         secho(f"Самовольные изменения ({len(report.unauthorized)}):", fg=colors.RED)
         for u in report.unauthorized[:10]:
             echo(f"  > {u[:200]}")
+        if len(report.unauthorized) > 10:
+            echo(f"  … и ещё {len(report.unauthorized) - 10} (полный список — в дифф.json главы)")
         if report.unverifiable:
             echo(
                 "Часть изменений может быть следствием свободных указаний — если это так, "

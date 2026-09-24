@@ -213,3 +213,148 @@ def test_язык_маркеры_документа_и_буквы_из_yaml(tmp_
     c = next(c for c in verifier1.analyze(raw, "", brief, {}, [], project_root=tmp_path) if c.check_id == "V1.11_документ_вставка")
     assert c.status == "PASS" and ">>> ДОК" in c.threshold
     assert lang.get().letter == "[А-Яа-яЁёA-Za-z]" and lang.get().doc_start == lang.DOC_START
+
+
+# ------------------------------------------------------------------ стоп-листы: том, контекст проекта
+
+
+def test_стоп_правило_ограничено_томом(ws, library):
+    """Правила могут ограничиваться линией, годом и томом (FR-V1-4): колонка «тома» в документе языка/повествования."""
+    from konveyer import compiler, declparse, verifier2
+    from konveyer.schemas import StopRule
+
+    assert declparse.conv_volumes("2") == {"volume": {"from": 2, "to": 2}}
+    assert declparse.conv_volumes("1–2") == {"volume": {"from": 1, "to": 2}} and declparse.conv_volumes("с 3") == {"volume": {"from": 3}}
+    assert declparse.conv_volumes("") == {} and declparse.conv_volumes("все") == {}
+    rule = StopRule(scope="0.3", rule_id="Л-9", items=["дискурс"], applies_to={"volume": {"from": 2, "to": 2}}, action="запрет")
+    assert metrics.stoplist_applies(rule, Brief(chapter=1, volume=1)) is False
+    assert metrics.stoplist_applies(rule, Brief(chapter=1, volume=2)) is True
+    doc = library / "03_Фокализация.md"
+    doc.write_text(doc.read_text(encoding="utf-8").replace(
+        "| rule_id | фокал | слова/обороты | действие |\n|---|---|---|---|\n",
+        "| rule_id | фокал | слова/обороты | тома | действие |\n|---|---|---|---|---|\n| Л-9 | все | дискурсивный | 2 | запрет |\n"
+    ).replace("| Л-1 | Каширин | менталитет; харизма; депрессия | запрет |", "| Л-1 | Каширин | менталитет; харизма; депрессия | | запрет |")
+     .replace("| Л-4 | Зоя | отец; папа | запрет |", "| Л-4 | Зоя | отец; папа | | запрет |")
+     .replace("| Л-2 | Зоя | амбивалентный; экзистенциальный | запрет |", "| Л-2 | Зоя | амбивалентный; экзистенциальный | | запрет |")
+     .replace("| Л-3 | все | нарратив; дискурс | запрет |", "| Л-3 | все | нарратив; дискурс | | запрет |"), encoding="utf-8")
+    exporter.run_export(library, ws.exports, ws.logs)
+    stops = exporter.load_stoplists(ws.exports)
+    r9 = next(r for r in stops if r.rule_id == "Л-9")
+    assert r9.applies_to == {"all": True, "volume": {"from": 2, "to": 2}}
+    assert next(r for r in stops if r.rule_id == "Л-3").applies_to == {"all": True}
+    text = "Он думал про дискурсивный поворот и молчал."
+    flags = lambda vol: [c for c in verifier1.analyze(text, "", Brief(chapter=1, focal="Каширин", volume=vol), {}, stops)  # noqa: E731
+                         if c.check_id == "V1.5_стоп_лексика" and c.status == "FLAG"]
+    assert not flags(1) and flags(2)
+    # окно и Э2 показывают правило только главам своего тома
+    w = compiler.compile_window(ws, library, 1)[0].read_text(encoding="utf-8")
+    assert "Л-9" not in w and "Л-3" in w
+    from tests.test_этап3 import _to_review
+
+    _to_review(ws, library, 1)
+    system, user = verifier2.build_prompt(ws, 1, 1)
+    assert "[Л-3]" in user and "[Л-9]" not in user
+
+
+def test_check_и_регрессия_в_языке_проекта(ws, library, monkeypatch, tmp_path):
+    """`check` и регрессия считают Э1 в контексте проекта — свои сокращения, документы главы (FR-V1-3, П-6)."""
+    from konveyer import regression
+    from konveyer.steps import quality
+
+    (ws.root / "языки").mkdir()
+    (ws.root / "языки" / "ru.yaml").write_text("сокращения: [\"зав.\"]\n", encoding="utf-8")
+    text = "Пришёл зав. складом и долго молчал у ворот. Потом ушёл домой."
+    f = tmp_path / "фрагмент.md"
+    f.write_text(text, encoding="utf-8")
+    monkeypatch.chdir(ws.root)
+    seen = {}
+    monkeypatch.setattr(quality, "_print_verdict", lambda v: seen.update({c.check_id: c for c in v.checks}))
+    quality.check(f)
+    assert seen["V1.2a_средняя_длина"].actual == "5.5"  # «зав.» — не конец фразы (без словаря проекта было бы 3.67)
+    test = regression.GoldenTest(test_id="т", fragment=text, context_slice={"focal": "Каширин", "year": 1995},
+                                 expected_flags=["V1.2a_средняя_длина"])
+    caught, missed, extra = regression.run_e1_test(ws, test)
+    assert "V1.2a_средняя_длина" in caught  # 5.5 < 7 — БРАК; регрессия считает тем же языком проекта
+
+
+def test_документ_главы_из_реестра_без_брифа(ws):
+    """V1.11 требует блок документа и когда документ назначен только реестром документов (FR-V1-1)."""
+    brief = exporter.load_brief(ws.exports, 5)
+    assert brief.documents
+    brief.documents = []
+    checks = {c.check_id: c for c in verifier1.analyze_text(ws, 5, "Проза без документа.", brief=brief, window_raw="")}
+    assert checks["V1.11_документ_вставка"].status == "BRAK" and "№1" in checks["V1.11_документ_вставка"].note
+    with_doc = "Проза.\n\n→ ДОКУМЕНТ\nРапорт.\n← КОНЕЦ ДОКУМЕНТА\n"
+    checks = {c.check_id: c for c in verifier1.analyze_text(ws, 5, with_doc, brief=brief, window_raw="")}
+    assert checks["V1.11_документ_вставка"].status == "PASS"
+    checks = {c.check_id: c for c in verifier1.analyze_text(ws, 2, "Проза.", window_raw="")}
+    assert "V1.11_документ_вставка" not in checks  # у главы 2 документа нет
+
+
+# ------------------------------------------------------------------ регрессия
+
+
+def test_регрессия_пересобирает_выгрузки(ws, monkeypatch):
+    """`konveyer регрессия` на свежем проекте без выгрузок не падает — экспорт делается сам (FR-RG-2, П-5)."""
+    import shutil
+
+    shutil.rmtree(ws.exports)
+    monkeypatch.chdir(ws.root)
+    r = runner.invoke(app, ["регрессия"])
+    assert "norms.json не найдена" not in r.output and (ws.exports / "norms.json").exists()
+    assert "ЗЕЛЁНАЯ" in r.output, r.output
+
+
+def test_золотой_тест_со_срезом_главы(ws, library, monkeypatch, tmp_path):
+    """add-golden берёт срез контекста из брифа и окна главы, где ошибка поймана (FR-RG-1)."""
+    from konveyer import compiler, regression
+
+    compiler.compile_window(ws, library, 2)
+    frag = tmp_path / "фрагмент.md"
+    frag.write_text("Он вышел на платформу и остановился. Пиши прозу главы строго по этому окну и не выходи за бриф.\n",
+                    encoding="utf-8")
+    monkeypatch.chdir(ws.root)
+    r = runner.invoke(app, ["add-golden", "красный_окно", str(frag), "--expect", "V1.6_утечка_окна", "--глава", "2", "--корпус"])
+    assert r.exit_code == 0, r.output
+    test = next(t for t in regression.load_tests(ws) if t.test_id == "красный_окно")
+    ctx = test.context_slice
+    assert ctx["chapter"] == 2 and ctx["focal"] == "Каширин" and ctx["year"] == 1995 and ctx["volume_words"] == 350
+    assert ctx["not_knows"] and ctx["use_corpus"] is True and "<!-- СЕКЦИЯ: бриф -->" in ctx["window"]
+    win = tmp_path / "окно.md"
+    win.write_text("Пиши прозу главы строго по этому окну и не выходи за бриф.", encoding="utf-8")
+    r = runner.invoke(app, ["add-golden", "красный_окно2", str(frag), "--expect", "V1.6_утечка_окна", "--окно", str(win), "--объём", "300"])
+    assert r.exit_code == 0, r.output
+    t2 = next(t for t in regression.load_tests(ws) if t.test_id == "красный_окно2")
+    assert t2.context_slice["window"].startswith("Пиши прозу") and t2.context_slice["volume_words"] == 300
+    caught, missed, extra = regression.run_e1_test(ws, t2)
+    assert "V1.6_утечка_окна" in caught
+
+
+# ------------------------------------------------------------------ дифф-контроль
+
+
+def test_диффконтроль_короткое_стало_не_отмывает(ws):
+    """Правка «Он» → «Она» не объясняет дописанное предложение со словом «Она» (FR-V1-6, FR-ED-3)."""
+    from konveyer.schemas import Edit
+
+    d = ws.chapter_dir(1)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "черновик_1.md").write_text("Он положил её в карман. Чай остыл. Зоя не звонила.", encoding="utf-8")
+    (d / "черновик_2.md").write_text("Она положила её в карман. Чай остыл. Она ушла навсегда и больше не вернулась. Зоя не звонила.",
+                                    encoding="utf-8")
+    report = verifier1.diff_check(ws, 1, 1, 2, [Edit(chapter=1, seq=1, before="Он ", after="Она ")])
+    assert report.unauthorized == ["Она ушла навсегда и больше не вернулась."] and not report.clean
+    assert report.applied_share == 1.0  # «Она положила» — та же правка с согласованием, не самоволка
+
+
+def test_диффконтроль_полный_список_самоволий(ws):
+    from konveyer.schemas import Edit
+
+    d = ws.chapter_dir(1)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "черновик_1.md").write_text("Чай остыл.", encoding="utf-8")
+    (d / "черновик_2.md").write_text("Чай остыл. " + " ".join(f"Новое предложение номер {i}." for i in range(25)), encoding="utf-8")
+    report = verifier1.diff_check(ws, 1, 1, 2, [Edit(chapter=1, seq=1, before="Чай остыл.", after="Чай остыл.")])
+    assert len(report.unauthorized) == 25
+    waived, missing = verifier1.waive_unauthorized(ws, 1, report, ["25"])
+    assert waived == ["Новое предложение номер 24."] and not missing

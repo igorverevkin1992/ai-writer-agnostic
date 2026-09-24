@@ -38,8 +38,33 @@ def safe_file_stem(test_id: str) -> str:
     return stem[:120]
 
 
+def context_slice(ws: Workspace, *, focal: str = "", year: int | None = None, chapter: int | None = None,
+                  window_file: Path | None = None, use_corpus: bool = False, volume_words: int | None = None) -> dict:
+    """Срез контекста золотого теста (FR-RG-1): явные значения поверх брифа и окна главы, где ошибка была поймана.
+    Ключи — те, что читает прогон: chapter, volume, focal, year, volume_words, not_knows, window, use_corpus."""
+    ctx: dict = {"focal": focal, "year": year}
+    if chapter is not None:
+        brief = exporter.load_brief(ws.exports, chapter)
+        ctx.update({"chapter": brief.chapter, "volume": brief.volume, "focal": focal or brief.focal,
+                    "year": year if year is not None else brief.year})
+        if brief.volume_words:
+            ctx["volume_words"] = brief.volume_words
+        if brief.not_knows:
+            ctx["not_knows"] = list(brief.not_knows)
+        window_path = ws.window_path(chapter)
+        if window_path.exists():
+            ctx["window"] = window_path.read_text(encoding="utf-8")
+    if window_file is not None:
+        ctx["window"] = Path(window_file).read_text(encoding="utf-8")
+    if volume_words is not None:
+        ctx["volume_words"] = volume_words
+    if use_corpus:
+        ctx["use_corpus"] = True
+    return ctx
+
+
 def add_test(ws: Workspace, test: GoldenTest) -> Path:
-    """FR-R1: пополнение корпуса из ошибки, пропущенной эшелонами и пойманной автором."""
+    """FR-RG-1: пополнение корпуса из ошибки, пропущенной эшелонами и пойманной автором."""
     path = golden_dir(ws) / f"{safe_file_stem(test.test_id)}.json"
     guard.write_text(path, json.dumps(test.model_dump(), ensure_ascii=False, indent=2) + "\n")
     return path
@@ -102,16 +127,10 @@ def _brief_from_context(ctx: dict) -> Brief:
 
 def run_e1_test(ws: Workspace, test: GoldenTest) -> tuple[list[str], list[str], list[str]]:
     """Прогон Э1 по фрагменту: (поймано, пропущено, лишние flag-и по check_id)."""
-    norms = exporter.load_norms(ws.exports)
-    stoplists = exporter.load_stoplists(ws.exports)
-    checks = verifier1.analyze(
-        test.fragment,
-        test.context_slice.get("window", ""),
-        _brief_from_context(test.context_slice),
-        norms,
-        stoplists,
-        corpus_dir=ws.corpus if test.context_slice.get("use_corpus") else None,
-    )
+    ctx = test.context_slice
+    brief = _brief_from_context(ctx)
+    checks = verifier1.analyze_text(ws, brief.chapter if ctx.get("chapter") else 0, test.fragment, brief=brief,
+                                    window_raw=str(ctx.get("window", "")), use_corpus=bool(ctx.get("use_corpus")))
     raised = {c.check_id for c in checks if c.status != "PASS"}
     expected = set(test.expected_flags)
     caught = sorted(raised & expected)
