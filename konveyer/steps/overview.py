@@ -74,10 +74,13 @@ def _status_detail(ws: Workspace, chapter: int) -> ChapterState:
 
 def log(n: int = 15) -> list[dict]:
     """Последние API-вызовы: роль, модель, токены, стоимость (журнал §6.3). Возвращает показанные строки."""
-    from ..apilog import read_log
+    from .. import apilog
 
     ws, cfg, lib = _ctx()
-    rows = read_log(ws.logs)[-n:]
+    rows = apilog.read_log(ws.logs)[-n:]
+    warning = apilog.corrupt_warning(ws.logs)
+    if warning:
+        secho(f"⚠ {warning}", fg=colors.YELLOW)
     if not rows:
         echo("Журнал API пуст.")
         return rows
@@ -165,6 +168,12 @@ def doctor() -> None:
          "включите режим без обучения у провайдера и отразите его в конфиге (режим_без_обучения) и журнале решений")
     manifest = ws.exports / "индекс.json"
     item(manifest.exists(), "выгрузки выгрузки/", "выполните `konveyer export`")
+    from .. import apilog
+
+    bad_lines = apilog.corrupt_lines(ws.logs)
+    if bad_lines:
+        item(None, f"журнал API: нечитаемых строк {bad_lines} (пропускаются в сводках)",
+             "удалите оборванные строки из журналы/api.jsonl, если нужен чистый журнал")
     providers = {m.provider for m in cfg.roles().values() if not m.manual}
     for provider in sorted(providers):
         names = adapters.KEY_ENV.get(provider, ())
@@ -227,5 +236,10 @@ def accounting(volume: int | None = None) -> str:
     path = accounting_mod.save(ws, acc, cfg)
     for w in accounting_mod.warnings(ws, cfg):
         secho(f"⚠ {w}", fg=colors.YELLOW)
+    from .. import apilog
+
+    warning = apilog.corrupt_warning(ws.logs)
+    if warning:
+        secho(f"⚠ {warning}", fg=colors.YELLOW)
     echo(f"Сохранено: {path.relative_to(ws.root)}")
     return text
