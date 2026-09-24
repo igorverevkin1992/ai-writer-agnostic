@@ -1,9 +1,9 @@
-"""Сохранность (аудит 2, этап 5, п. 28–29): раскладка библиотеки относительно git, архив рабочей
+"""Сохранность (FR-BK-1…FR-BK-4): раскладка библиотеки относительно git, архив рабочей
 области, переезд библиотеки в отдельный репозиторий.
 
 Ничего здесь не пишет в канон: архив только читает рабочую область, переезд переносит папку
 библиотеки целиком (содержимое документов не меняется) и правит конфиг.yaml/.gitignore
-рабочей области. Все решения «где хранить» — за автором (Р-№ 6 второго аудита).
+рабочей области. Все решения «где хранить» — за автором.
 """
 
 from __future__ import annotations
@@ -18,17 +18,38 @@ from datetime import datetime
 from pathlib import Path
 
 from . import gitops, guard
-from .config import Config
+from .config import Config, library_dir
 from .paths import Workspace
 
-# что входит в архив рабочей области: черновики, правки автора, флаги, журнал API, круги, снапшоты, корпус, конфиг
-ARCHIVE_ITEMS = ("главы", "журналы", "драматургия", "снапшоты", "рукопись", "регрессия", "конфиг.yaml")
+# Состав архива рабочей области (FR-BK-2; П-7/NFR-5 — ничто не теряется): манифест и конфиг, артефакты такта
+# (главы/, журналы/), круги истории, снапшоты, рукопись, регрессионный корпус, пакеты пере-теста, сырьё и решения
+# онбординга, переопределения проекта (промпты, шаблоны, типы, модули, методики, языки, линтер).
+# НЕ входят: выгрузки/ (производные от канона — пересчитываются `konveyer экспорт`), архивы/, .env (секреты, Д-18).
+# Библиотека под git хранится своими копиями (remotes); библиотека НЕ под git добавляется в архив (`LIBRARY_IN_ARCHIVE`).
+ARCHIVE_ITEMS = (
+    "проект.yaml", "конфиг.yaml", ".env.example",
+    "главы", "журналы", "драматургия", "снапшоты", "рукопись", "регрессия", "пере-тест",
+    "онбординг", "сырьё", "промпты", "шаблоны", "типы", "модули", "методики", "языки", "линтер",
+)
+LIBRARY_IN_ARCHIVE = "библиотека"   # папка библиотеки в архиве, если она лежит вне рабочей области
 ARCHIVE_PREFIX = "рабочая_область_"
 DEFAULT_ARCHIVE_DIR = "../архивы"
 DEFAULT_SPLIT_TARGET = "../Библиотека"
 
 
-# ------------------------------------------------------------------ раскладка библиотеки (п. 28)
+def volumes_present(ws: Workspace) -> list[int]:
+    """Тома, у которых есть папки глав: `главы/` — том 1, `главы/ТN/` — том N."""
+    vols: set[int] = set()
+    if ws.chapters.exists():
+        if any(d.is_dir() and d.name.isdigit() for d in ws.chapters.iterdir()):
+            vols.add(1)
+        for d in ws.chapters.iterdir():
+            if d.is_dir() and d.name.startswith("Т") and d.name[1:].isdigit():
+                vols.add(int(d.name[1:]))
+    return sorted(vols)
+
+
+# ------------------------------------------------------------------ раскладка библиотеки (FR-BK-4)
 
 
 @dataclass(frozen=True)
@@ -65,14 +86,15 @@ class Layout:
                 return (
                     "коммиты канона перемешаны с коммитами кода: `git pull` обновления конвейера принесёт конфликты "
                     "с каноническими коммитами автора, а откат кода откатит и канон. "
-                    "Переезд: `konveyer library-split --показать` (план), затем `konveyer library-split`."
+                    "Переезд: `konveyer библиотека-отделить --показать` (план), затем `konveyer библиотека-отделить` "
+                    "(латинский синоним — library-split)."
                 )
             return (
                 "коммиты канона перемешаны с другими файлами репозитория; откат и бэкап канона теряют точность. "
-                "Переезд: `konveyer library-split --показать`, затем `konveyer library-split`."
+                "Переезд: `konveyer библиотека-отделить --показать`, затем `konveyer библиотека-отделить`."
             )
         if self.kind == "no-git":
-            return "git init внутри библиотеки (версионирование канона, §5.1) или `konveyer library-split` — отдельный репозиторий"
+            return "git init внутри библиотеки (версионирование канона) или `konveyer библиотека-отделить` — отдельный репозиторий"
         return ""
 
 
@@ -92,7 +114,7 @@ def layout(lib: Path, ws_root: Path | None = None) -> Layout:
     return Layout("shared", top, prefix, code_repo=bool(top and _is_code_repo(top)))
 
 
-# ------------------------------------------------------------------ архив рабочей области (п. 29)
+# ------------------------------------------------------------------ архив рабочей области (FR-BK-2)
 
 
 def archive_dir(ws: Workspace, cfg: Config, explicit: str | Path | None = None) -> Path:
@@ -121,12 +143,32 @@ def archive_age_days(dest: Path) -> float | None:
 
 def _iter_files(root: Path):
     for path in sorted(root.rglob("*")):
-        if path.is_file() and not path.name.endswith(".tmp"):
+        if path.is_file() and not path.name.endswith(".tmp") and ".git" not in path.relative_to(root).parts:
             yield path
 
 
+def archive_items(ws: Workspace, cfg: Config) -> list[tuple[Path, str]]:
+    """Что попадёт в архив: [(путь на диске, путь в архиве)] — перечисленные папки/файлы рабочей области и
+    библиотека, если она не под git (иначе у канона нет ни одной копии, FR-BK-1)."""
+    out: list[tuple[Path, str]] = []
+    for item in ARCHIVE_ITEMS:
+        src = ws.root / item
+        if src.is_file():
+            out.append((src, item))
+        elif src.is_dir():
+            out += [(f, f.relative_to(ws.root).as_posix()) for f in _iter_files(src)]
+    lib = library_dir(ws, cfg)
+    if lib.is_dir() and not gitops.is_repo(lib):
+        try:
+            prefix = lib.resolve().relative_to(ws.root.resolve()).as_posix()
+        except ValueError:
+            prefix = LIBRARY_IN_ARCHIVE
+        out += [(f, f"{prefix}/{f.relative_to(lib).as_posix()}") for f in _iter_files(lib)]
+    return out
+
+
 def make_archive(ws: Workspace, cfg: Config, dest: Path | None = None, *, keep: int | None = None) -> tuple[Path, list[Path]]:
-    """Zip перечисленных папок/файлов рабочей области в dest с датой в имени; хранит последние `keep`.
+    """Zip рабочей области (`archive_items`) в dest с датой в имени; хранит последние `keep`.
     Возвращает (путь архива, удалённые старые архивы). Архив собирается во временный файл и
     подменяется атомарно — полуархива на диске не остаётся."""
     dest = dest or archive_dir(ws, cfg)
@@ -135,19 +177,14 @@ def make_archive(ws: Workspace, cfg: Config, dest: Path | None = None, *, keep: 
     stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     final = dest / f"{ARCHIVE_PREFIX}{stamp}.zip"
     n = 2
-    while final.exists():  # два архива в одну секунду
-        final = dest / f"{ARCHIVE_PREFIX}{stamp}-{n}.zip"
+    while final.exists():  # два архива в одну секунду: суффикс «_2» сортируется ПОСЛЕ «.zip» («-2» стоял бы раньше)
+        final = dest / f"{ARCHIVE_PREFIX}{stamp}_{n}.zip"
         n += 1
     tmp = final.with_suffix(".zip.tmp")
     try:
         with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for item in ARCHIVE_ITEMS:
-                src = ws.root / item
-                if src.is_file():
-                    zf.write(src, item)
-                elif src.is_dir():
-                    for f in _iter_files(src):
-                        zf.write(f, f.relative_to(ws.root).as_posix())
+            for src, name in archive_items(ws, cfg):
+                zf.write(src, name)
         guard.replace(tmp, final)
     except BaseException:
         guard.remove(tmp)
@@ -156,7 +193,8 @@ def make_archive(ws: Workspace, cfg: Config, dest: Path | None = None, *, keep: 
 
 
 def rotate(dest: Path, keep: int) -> list[Path]:
-    """Оставляет `keep` самых свежих архивов (по имени = по дате); keep ≤ 0 — не удалять."""
+    """Оставляет `keep` самых свежих архивов (по имени = по дате, суффикс `_N` для одной секунды сортируется
+    после основного имени); keep ≤ 0 — не удалять."""
     if keep <= 0:
         return []
     items = list_archives(dest)
@@ -166,7 +204,7 @@ def rotate(dest: Path, keep: int) -> list[Path]:
     return removed
 
 
-# ------------------------------------------------------------------ переезд библиотеки (п. 28)
+# ------------------------------------------------------------------ переезд библиотеки (FR-BK-4)
 
 
 class SplitError(RuntimeError):
@@ -181,7 +219,7 @@ class SplitPlan:
     with_history: bool
     library_dir_value: str          # что запишем в конфиг.yaml
     gitignore_entry: str | None     # строка для .gitignore репозитория, откуда уезжает библиотека
-    fixed_chapters: list[int] = field(default_factory=list)  # главы «зафиксировано» — их SHA приёмки сменятся
+    fixed_chapters: list[tuple[int, int]] = field(default_factory=list)  # (том, глава) «зафиксировано» — их SHA приёмки сменятся
 
     def lines(self) -> list[str]:
         out = [
@@ -196,9 +234,9 @@ class SplitPlan:
         else:
             out.append("4. .gitignore: без изменений (библиотека была не под git)")
         if self.fixed_chapters:
-            chapters = ", ".join(str(c) for c in self.fixed_chapters)
+            chapters = ", ".join(f"т.{v} гл. {c}" for v, c in self.fixed_chapters)
             out.append(
-                f"5. состояние.yaml глав {chapters}: SHA коммита приёмки "
+                f"5. состояние.yaml глав ({chapters}): SHA коммита приёмки "
                 + ("будет найден заново по сообщению «[глава N]» в новой истории"
                    if self.with_history else
                    "будет снят (старая история остаётся в прежнем репозитории; откат этих глав git-revert'ом "
@@ -215,12 +253,14 @@ def _rel_for_config(target: Path, root: Path) -> str:
     return Path(rel).as_posix()
 
 
-def _fixed_chapters(ws: Workspace) -> list[int]:
+def _fixed_chapters(ws: Workspace) -> list[tuple[int, int]]:
+    """(том, глава) для всех томов рабочей области, у которых записан SHA коммита приёмки."""
     out = []
-    for n, d in ws.chapter_dirs():  # главы текущего тома
-        status = d / "состояние.yaml"
-        if status.exists() and "коммит_приёмки" in status.read_text(encoding="utf-8"):
-            out.append(n)
+    for v in volumes_present(ws):
+        for n, d in ws.chapter_dirs(v):
+            status = d / "состояние.yaml"
+            if status.exists() and "коммит_приёмки" in status.read_text(encoding="utf-8"):
+                out.append((v, n))
     return out
 
 
@@ -282,17 +322,18 @@ def _remap_fixed_chapters(ws: Workspace, plan: SplitPlan) -> list[str]:
     from .fsm import ChapterState
 
     notes = []
-    for n in plan.fixed_chapters:
-        st = ChapterState(ws, n)
+    for v, n in plan.fixed_chapters:
+        st = ChapterState(ws.for_volume(v), n)
         old = st.data.get("коммит_приёмки")
         new = gitops.find_chapter_commit(plan.target, n) if plan.with_history else None
+        where = f"т.{v} гл. {n}"
         if new:
             st.data["коммит_приёмки"] = new
-            notes.append(f"глава {n}: коммит приёмки {str(old)[:10]} → {new[:10]}")
+            notes.append(f"{where}: коммит приёмки {str(old)[:10]} → {new[:10]}")
         else:
             st.data.pop("коммит_приёмки", None)
             st.data["коммит_приёмки_до_переезда"] = old
-            notes.append(f"глава {n}: коммит приёмки {str(old)[:10]} остался в прежней истории — снят")
+            notes.append(f"{where}: коммит приёмки {str(old)[:10]} остался в прежней истории — снят")
         st._save()
     return notes
 
@@ -348,5 +389,5 @@ def after_split_advice(plan: SplitPlan) -> list[str]:
                "; в новом репозитории история начинается с первого коммита. Перенести её позже: "
                "`git subtree split --prefix=<папка> -b библиотека` в прежнем репозитории и `git pull <прежний> библиотека` в новом.")
         )
-    out.append("Добавьте удалённые копии (NFR-6, ≥ 2): `konveyer backup --добавить-remote <имя> <url|папка>`; проверка — `konveyer doctor`.")
+    out.append("Добавьте удалённые копии (FR-BK-1, ≥ 2): `konveyer бэкап --добавить-remote <имя> <url|папка>`; проверка — `konveyer доктор`.")
     return out

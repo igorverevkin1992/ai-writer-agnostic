@@ -363,3 +363,96 @@ def test_русские_ключи_конфига_сохранности_и_це
     assert cfg.writer.provider == "anthropic" and cfg.writer.price_in_per_1m == 3.0 and cfg.writer.price_out_per_1m == 15.0
     assert Config(writer={"provider": " Ручной ", "model": "—"}).writer.manual
     assert not Config(writer={"provider": "gemeni", "model": "м"}).writer.known_provider
+
+
+# ------------------------------------------------------------- сохранность
+
+
+def test_архив_без_git_и_состав_архива(ws, library, tmp_path):
+    """B2-3, B2-5, B5-14, B2-25: архив делается без git и содержит манифест, сырьё, онбординг, переопределения,
+    пере-тест и саму библиотеку (когда она не под git); выгрузки и .env — нет."""
+    import zipfile
+
+    for rel, text in (("сырьё/оригинал.md", "# оригинал автора\n"), ("онбординг/предложение.json", "{}"),
+                      ("промпты/писатель.md", "свой промпт"), ("пере-тест/20260101/СВОДКА.md", "# сводка"),
+                      ("главы/001/окно.md", "окно"), (".env", "KEY=секрет"), (".env.example", "KEY=")):
+        p = ws.root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+    dest = tmp_path / "архивы"
+    r = runner.invoke(app, ["бэкап", "--архив", str(dest)])
+    assert r.exit_code == 0 and "Архив рабочей области" in r.output and "не под git" in r.output, r.output
+    from konveyer import backup as backup_mod
+
+    names = set(zipfile.ZipFile(backup_mod.latest_archive(dest)).namelist())
+    for must in ("проект.yaml", "конфиг.yaml", ".env.example", "сырьё/оригинал.md", "онбординг/предложение.json",
+                 "промпты/писатель.md", "пере-тест/20260101/СВОДКА.md", "главы/001/окно.md",
+                 "Библиотека/02_Стиль_и_голос.md", "Библиотека/Проза/Том1_Глава03.md"):
+        assert must in names, must
+    assert ".env" not in names and not any(n.startswith("выгрузки/") for n in names)
+    # библиотека под git — своими копиями хранится, в архив не входит
+    _init_repo(library)
+    r = runner.invoke(app, ["бэкап", "--архив", str(dest)])
+    assert r.exit_code == 0, r.output
+    names = set(zipfile.ZipFile(backup_mod.latest_archive(dest)).namelist())
+    assert not any(n.startswith("Библиотека/") for n in names) and "главы/001/окно.md" in names
+    # --push без git — понятный отказ, а не трейсбек
+    r = runner.invoke(app, ["бэкап", "--push", "-y"])
+    assert r.exit_code == 1 and "нет удалённых" in r.output, r.output
+
+
+def test_бэкап_push_отправляет_теги(ws, library, tmp_path):
+    """B2-4: во второе место хранения уходят теги приёмок и томов, а не только ветка (FR-BK-1, FR-BK-3)."""
+    _init_repo(library)
+    _fixed_chapter(ws, library, 1)
+    assert "глава-1" in gitops.tags(library)
+    bare = tmp_path / "резерв.git"
+    r = runner.invoke(app, ["бэкап", "--добавить-remote", "резерв", str(bare)])
+    assert r.exit_code == 0, r.output
+    r = runner.invoke(app, ["бэкап", "--push", "-y"])
+    assert r.exit_code == 0 and "✓ резерв" in r.output, r.output
+    assert "глава-1" in _git(bare, "tag", "--list").split()
+    assert _git(bare, "rev-list", "-n", "1", "глава-1") == _git(library, "rev-list", "-n", "1", "глава-1")
+
+
+def test_library_split_перепривязывает_главы_всех_томов(ws, library, tmp_path, monkeypatch):
+    """B2-26: после переезда библиотеки SHA приёмок снимаются/перепривязываются и у глав других томов."""
+    from konveyer import backup as backup_mod
+    from konveyer.config import load_config
+
+    root = ws.root
+    _init_repo(root)  # библиотека — подпапка репозитория рабочей области («shared»)
+    for v, n in ((1, 2), (2, 1)):
+        st = ChapterState(ws.for_volume(v), n)
+        st.data["состояние"] = "зафиксировано"
+        st.data["коммит_приёмки"] = "deadbeef" * 5
+        st._save()
+    assert backup_mod.volumes_present(ws) == [1, 2]
+    cfg = load_config(ws)
+    plan = backup_mod.plan_split(ws, cfg, library, tmp_path / "Библиотека_новая")
+    assert plan.fixed_chapters == [(1, 2), (2, 1)]
+    assert any("т.2 гл. 1" in line for line in plan.lines())
+    notes = backup_mod.split_library(ws, cfg, plan)
+    assert any("т.2 гл. 1" in n for n in notes)
+    for v, n in ((1, 2), (2, 1)):
+        data = ChapterState(ws.for_volume(v), n).data
+        assert "коммит_приёмки" not in data and data["коммит_приёмки_до_переезда"].startswith("deadbeef")
+
+
+def test_архивы_одной_секунды_упорядочены(ws, tmp_path, monkeypatch):
+    """Два архива в одну секунду: второй считается новее (latest_archive) и ротация удаляет первый."""
+    from konveyer import backup as backup_mod
+    from konveyer.config import Config
+
+    class FrozenDT(backup_mod.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 5, 1, 12, 0, 0)
+
+    monkeypatch.setattr(backup_mod, "datetime", FrozenDT)
+    dest = tmp_path / "архивы"
+    first, _ = backup_mod.make_archive(ws, Config(), dest, keep=0)
+    second, _ = backup_mod.make_archive(ws, Config(), dest, keep=0)
+    assert first != second and backup_mod.latest_archive(dest) == second
+    removed = backup_mod.rotate(dest, 1)
+    assert removed == [first] and backup_mod.list_archives(dest) == [second]

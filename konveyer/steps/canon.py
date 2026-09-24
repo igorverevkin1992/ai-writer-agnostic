@@ -384,11 +384,14 @@ def backup(
     folder: str | None = None, push: bool = False, archive: bool = False, add_remote: tuple[str, str] | None = None,
     yes: bool = False, confirm: Confirm | None = None,
 ) -> None:
-    """Сохранность (NFR-6): состояние копий; `push` — во все remotes; `archive` — zip рабочей области;
-    `add_remote` — второе место хранения (папка на внешнем диске = без облака, §1.3 ТЗ)."""
+    """Сохранность (FR-BK-1…FR-BK-3): состояние копий; `push` — ветка и теги во все remotes; `archive` — zip
+    рабочей области (и библиотеки, если она не под git); `add_remote` — второе место хранения (папка на внешнем
+    диске = bare-репозиторий без облака, §1.3 ТЗ). Git нужен только для remotes/push; архив делается всегда (П-5)."""
     ws, cfg, lib = _ctx()
-    if not gitops.is_repo(lib):
-        raise StepError("библиотека не под git — инициализируйте репозиторий (`konveyer library-split` — как отдельный).")
+    repo = gitops.is_repo(lib)
+    if (add_remote or push) and not repo:
+        raise StepError("библиотека не под git — удалённые копии невозможны; инициализируйте репозиторий "
+                        "(git init в библиотеке или `konveyer библиотека-отделить` — как отдельный).")
     if add_remote:
         name, url = add_remote
         if name in gitops.remotes(lib):
@@ -403,33 +406,37 @@ def backup(
                 echo(f"Создан bare-репозиторий: {target}")
             url = str(target)
         gitops.add_remote(lib, name, url)
-        secho(f"Удалённое место «{name}» добавлено: {url}. Отправка — `konveyer backup --push`.", fg=colors.GREEN)
-    remotes = gitops.remotes(lib)
-    echo(f"Удалённых мест: {len(remotes)} ({', '.join(remotes) or 'нет'}); требуется ≥{cfg.backup_remotes_min}.")
-    if len(remotes) < cfg.backup_remotes_min:
-        secho("⚠ Добавьте удалённые репозитории/внешние копии (NFR-6): `konveyer backup --добавить-remote <имя> <url|папка>`.",
-              fg=colors.YELLOW)
-    if gitops.dirty(lib):
-        secho("⚠ В библиотеке незакоммиченные изменения (`konveyer canon-commit`).", fg=colors.YELLOW)
-    age = gitops.last_commit_age_days(lib)
-    if age is not None:
-        echo(f"Последний коммит: {age:.1f} дн. назад.")
+        secho(f"Удалённое место «{name}» добавлено: {url}. Отправка — `konveyer бэкап --push`.", fg=colors.GREEN)
+    remotes = gitops.remotes(lib) if repo else []
+    if repo:
+        echo(f"Удалённых мест: {len(remotes)} ({', '.join(remotes) or 'нет'}); требуется ≥{cfg.backup_remotes_min}.")
+        if len(remotes) < cfg.backup_remotes_min:
+            secho("⚠ Добавьте удалённые репозитории/внешние копии (FR-BK-1): `konveyer бэкап --добавить-remote <имя> <url|папка>`.",
+                  fg=colors.YELLOW)
+        if gitops.dirty(lib):
+            secho("⚠ В библиотеке незакоммиченные изменения (`konveyer канон-коммит`).", fg=colors.YELLOW)
+        age = gitops.last_commit_age_days(lib)
+        if age is not None:
+            echo(f"Последний коммит: {age:.1f} дн. назад.")
+    else:
+        secho("⚠ Библиотека не под git: версий канона и удалённых копий нет — архив включает саму библиотеку. "
+              "Заведите репозиторий: git init в библиотеке (`konveyer доктор` подскажет).", fg=colors.YELLOW)
     arch_dir = backup_mod.archive_dir(ws, cfg, folder)
     if archive:
         path, removed = backup_mod.make_archive(ws, cfg, arch_dir)
         secho(f"Архив рабочей области: {path}", fg=colors.GREEN)
         if removed:
-            echo(f"Удалено старых архивов: {len(removed)} (хранится последних {cfg.backup_keep}, backup_keep).")
+            echo(f"Удалено старых архивов: {len(removed)} (хранится последних {cfg.backup_keep}, хранить_архивов).")
     else:
         arch_age = backup_mod.archive_age_days(arch_dir)
         echo(
             f"Архив рабочей области: {arch_age:.1f} дн. назад ({backup_mod.latest_archive(arch_dir)})." if arch_age is not None
-            else f"Архив рабочей области ещё не делался ({arch_dir}): `konveyer backup --архив`."
+            else f"Архив рабочей области ещё не делался ({arch_dir}): `konveyer бэкап --архив`."
         )
     if push:
         if not remotes:
-            raise StepError("нет удалённых репозиториев — добавьте git remote.")
-        confirm_or_reject(yes, confirm, f"Отправить в {len(remotes)} удалённых мест? (y)")
+            raise StepError("нет удалённых репозиториев — добавьте: `konveyer бэкап --добавить-remote <имя> <url|папка>`.")
+        confirm_or_reject(yes, confirm, f"Отправить ветку и теги в {len(remotes)} удалённых мест? (y)")
         for remote in remotes:
             try:
                 gitops.push(lib, remote)

@@ -139,8 +139,9 @@ def has_identity(repo: Path) -> bool:
 
 
 def push(repo: Path, remote: str) -> None:
-    """Отправка текущей ветки в удалённое место (NFR-6, `konveyer backup --push`)."""
-    _git(repo, "push", remote, "HEAD")
+    """Отправка текущей ветки И тегов (приёмок `глава-N`, томов `том-N`) в удалённое место
+    (FR-BK-1, FR-BK-3: во втором месте хранения версии канона по приёмкам различимы)."""
+    _git(repo, "push", remote, "HEAD", "--tags")
 
 
 def remotes(repo: Path) -> list[str]:
@@ -162,7 +163,7 @@ def last_commit_age_days(repo: Path) -> float | None:
     return (time.time() - int(out)) / 86400
 
 
-# ------------------------------------------------------- сохранность (аудит 2, этап 5, п. 28)
+# ------------------------------------------------------- сохранность (FR-BK-1…FR-BK-4)
 
 
 def toplevel(repo: Path) -> Path | None:

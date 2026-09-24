@@ -565,7 +565,7 @@ def cmd_library_split(
 def cmd_backup(
     folder: str | None = typer.Argument(None, help="Папка архива для --архив (по умолчанию backup_dir из конфиг.yaml, иначе ../архивы)."),
     push: bool = typer.Option(False, "--push", help="Отправить библиотеку во все удалённые места (после y)."),
-    archive: bool = typer.Option(False, "--архив", "--archive", help="Zip рабочей области (главы/, журналы/, круги, снапшоты, корпус, конфиг.yaml)."),
+    archive: bool = typer.Option(False, "--архив", "--archive", help="Zip рабочей области: проект.yaml, конфиг.yaml, главы/, журналы/, круги, снапшоты, рукопись, регрессия, пере-тест, онбординг, сырьё, переопределения проекта; библиотека — если не под git (выгрузки/ не входят: пересчитываются)."),
     add_remote: tuple[str, str] | None = typer.Option(
         None, "--добавить-remote", "--add-remote", metavar="ИМЯ URL|ПАПКА",
         help="Добавить удалённое место библиотеки: URL или локальная папка (внешний диск; создаётся как bare-репозиторий)."
