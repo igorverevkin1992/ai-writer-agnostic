@@ -162,6 +162,16 @@ def is_blank(value: Any) -> bool:
     return isinstance(value, str) and (not value.strip() or is_placeholder(value))
 
 
+_ITEM_MARK_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+
+
+def strip_placeholders(text: str) -> str:
+    """Текст без строк-заглушек каркаса: пункт «- ⚠ заполнить» или абзац «⚠ заполнить» в выгрузку не попадает
+    (§1.3: машина не сочиняет и не хранит факты-заглушки)."""
+    kept = [ln for ln in text.splitlines() if not is_placeholder(_ITEM_MARK_RE.sub("", ln))]
+    return "\n".join(kept).strip()
+
+
 def convert(value: str, kind: str | None) -> Any:
     if is_placeholder(value):
         value = ""
@@ -313,10 +323,12 @@ def _apply_mapping(rec: dict, fmt: dict, ctx: ParseContext, path: Path) -> dict:
     mapping = fmt.get("запись")
     if not mapping:
         return rec
-    out: dict = {}
+    out: dict = {k: v for k, v in rec.items() if k.startswith("_")}  # «_строка», «_секции» — адрес записи в документе
     for target, source in mapping.items():
         if isinstance(source, str) and source in rec:
             out[target] = rec[source]
+        elif isinstance(source, str) and source.startswith("_"):
+            continue  # служебный ключ не заполнен (например, ни одной секции) — умолчание схемы
         else:
             out[target] = _template(source, ctx, path, rec)
     return out
@@ -576,7 +588,7 @@ def fmt_sections(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] | None:
         return None
     name_from = fmt.get("имя", "заголовок_1")
     top = next((s for s in sections if s.level == 1), None)
-    rec: dict[str, Any] = {"_строка": top.line if top else 1}
+    rec: dict[str, Any] = {"_строка": top.line if top else 1, "_секции": {}}
     min_level = 1
     if name_from == "заголовок_1":
         rec["name"] = top.title if top else path.stem
@@ -603,9 +615,7 @@ def fmt_sections(path: Path, fmt: dict, ctx: ParseContext) -> list[dict] | None:
             rec[field] = [ln.strip()[2:].strip() for ln in body.splitlines()
                           if ln.strip().startswith("- ") and not is_placeholder(ln.strip()[2:])]
         else:
-            text = body.strip() if sec is not None else ""
-            if is_placeholder(text):
-                text = ""
+            text = strip_placeholders(body) if sec is not None else ""
             rec[field] = text if sec is not None or kind != "таблица_пар" else {}
         if rec[field] not in ("", {}, []):
             filled = True

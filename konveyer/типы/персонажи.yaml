@@ -21,7 +21,7 @@
           status: {секция: "[Сс]татус"}
           arc: {секция: "[Аа]рк"}
         запись: {name: name, profile: profile, physique: physique, speech: speech, code: code, relations: relations,
-                 status: status, arc: arc, file: "{файл}"}
+                 status: status, arc: arc, file: "{файл}", line: _строка, sections: _секции}
 # образцы разметки карточки для постобработки (проект может переопределить): год рождения — группа «год»;
 # возраст по томам — группы «возраст» и «том»
 постобработка:

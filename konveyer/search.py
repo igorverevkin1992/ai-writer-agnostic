@@ -47,7 +47,7 @@ def find(ws_exports: Path, library: Path, query: str) -> list[Hit]:
     for r in exporter.load_stoplists(ws_exports):
         matched = [w for w in r.items if needle in _norm(w)]
         if matched or match(r.rule_id):
-            scope = r.applies_to.get("focal") or ("усилители" if r.kind == "усилитель" else f"реестр {r.scope}")
+            scope = r.applies_to.get("focal") or ("усилители" if r.kind == "усилитель" else r.scope_label)
             hits.append(Hit("правило", r.rule_id, f"{scope}: {'; '.join(matched or r.items[:5])} ({r.action})"))
 
     for b in exporter.load_briefs(ws_exports):

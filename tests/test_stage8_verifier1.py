@@ -63,7 +63,7 @@ def _norms():
 
 def test_стоп_лексика_линии_по_повествованию_в_э1():
     brief = Brief(chapter=1, focal="Штерн", year=1926)
-    rules = [StopRule(scope="0.3", rule_id="0.3-Штерн", items=["отец", "сын"],
+    rules = [StopRule(scope="повествователь", rule_id="0.3-Штерн", items=["отец", "сын"],
                       applies_to={"focal": "Штерн"}, action="запрет")]
     norms = _norms()
     norms["ttr_окно_слов"] = Norm(min=10.0, max=10.0, unit="слов", source="тест")

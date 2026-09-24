@@ -25,18 +25,18 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from . import catalog, declparse, gitops, guard, manifest as manifest_mod, mdparse, names, textutils
+from . import catalog, declparse, gitops, guard, lang as lang_mod, manifest as manifest_mod, mdparse, names, textutils
 from .mdparse import MarkupError
 from .schemas import (
     Act, Arc, Brief, Checklist, ChronicleEvent, ChronologyEvent, ContinuityEvent, Decision, DocumentSpec, Dose,
-    Dossier, InfoBan, MatrixFact, MethodNote, NarrationRules, Norm, Plant, StopRule, StoryCircle, VolumePlan,
-    WorldEntry,
+    SCOPE_NARRATOR, Dossier, InfoBan, MatrixFact, MethodNote, NarrationRules, Norm, Plant, StopRule, StoryCircle,
+    VolumePlan, WorldEntry,
 )
 
 SCHEMA_VERSION = 1
 INDEX = "индекс.json"
 CORPUS_DIR = "корпус"
-CORPUS_INDEX = ".index.json"  # кэш корпуса: имя главы → mtime_ns/size источника и хэш результата
+CORPUS_INDEX = ".index.json"  # кэш корпуса: имя главы → хэш источника и хэш результата (без времени: П-6)
 
 SCHEMAS: dict[str, type[BaseModel]] = {
     "Norm": Norm, "StopRule": StopRule, "MatrixFact": MatrixFact, "Plant": Plant, "ContinuityEvent": ContinuityEvent,
@@ -68,9 +68,6 @@ DICT_EXPORTS = {"norms.json"}
 TYPE_ORDER = ["повествование", "эпистемика", "персонажи", "стиль", "язык", "план_глав"]
 # папки конфигурации проекта, входящие в отпечаток канона (меняют выгрузки и набор проверок)
 CONFIG_DIRS = ("типы", "модули", "языки", "методики")
-
-MONTHS = {"январ": 1, "феврал": 2, "март": 3, "апрел": 4, "мая": 5, "май": 5, "июн": 6, "июл": 7,
-          "август": 8, "сентябр": 9, "октябр": 10, "ноябр": 11, "декабр": 12}
 
 
 class ExportErrors(MarkupError):
@@ -247,7 +244,7 @@ def _assemble_values(values: list[Any], spec: dict, path: Path) -> list[BaseMode
     if not items:
         return []
     if build.get("вид") == "стоп_правило":
-        return [StopRule(scope=str(build.get("scope", "")), rule_id=str(build.get("rule_id", "правило")),
+        return [StopRule(scope=str(build.get("scope", SCOPE_NARRATOR)), rule_id=str(build.get("rule_id", "правило")),
                          items=items, applies_to={"all": True}, action=str(build.get("action", "флаг")),
                          kind=str(build.get("kind", "лексика")))]
     raise ValueError(f"{path.name}: неизвестная сборка «{build.get('вид')}»")
@@ -464,9 +461,10 @@ def _patterns(value: Any) -> list[re.Pattern]:
 def _postprocess(col: Collected, volume: int, library: Path, root: Path, types: dict[str, catalog.TypeSpec]) -> None:
     d = col.data
     known = col.known_names
+    language = lang_mod.for_project(root)
     # хроника: месяц события
     for e in d["chronicle.json"]:
-        e.month = _month(e.date)
+        e.month = _month(e.date, language)
     # хронология: тома и главы видимости, годы разделов, маркеры видимости из спецификации типа
     vis_rules = _post_rules(types, "хронология").get("видимость") or {}
     hidden_words = [str(w).lower() for w in (vis_rules.get("скрыт") or [])]
@@ -558,19 +556,16 @@ def _postprocess(col: Collected, volume: int, library: Path, root: Path, types: 
                                       f"доступные: {', '.join(metrics_mod.available())}"))
 
 
-def _month(date: str) -> int | None:
-    """Месяц даты: «12.06.1995» / «12.06» → 6; «1995.06.12» / «1995-06-12» → 6; «май 1996» → 5."""
+def _month(date: str, language: lang_mod.Language | None = None) -> int | None:
+    """Месяц даты: «12.06.1995» / «12.06» → 6; «1995.06.12» / «1995-06-12» → 6; «май 1996» → 5 (названия месяцев —
+    из языкового слоя)."""
     m = re.search(r"\b\d{4}[.\-/](\d{2})(?:[.\-/]\d{1,2})?\b", date)
     if m:
         return int(m.group(1))
     m = re.search(r"\b\d{1,2}\.(\d{2})\b", date)
     if m:
         return int(m.group(1))
-    low = date.lower()
-    for stem, num in MONTHS.items():
-        if stem in low:
-            return num
-    return None
+    return (language or lang_mod.get()).month_of(date)
 
 
 def _parse_known_by(text: str, known: set[str]) -> dict[str, int]:
@@ -729,10 +724,10 @@ def _corpus_plan(library: Path, exports_dir: Path, root: Path | None) -> tuple[l
     errors: list[MarkupError] = []
     for _, path in prose_files(library, None, root):
         out = corpus_dir / (path.stem + ".txt")
-        st = path.stat()
+        src_hash = hashlib.sha256(path.read_bytes()).hexdigest()
         entry = index.get(out.name)
-        if (isinstance(entry, dict) and entry.get("mtime_ns") == st.st_mtime_ns and entry.get("size") == st.st_size
-                and isinstance(entry.get("hash"), str) and out.exists()):
+        if (isinstance(entry, dict) and entry.get("источник") == src_hash and isinstance(entry.get("hash"), str)
+                and out.exists()):
             plan.append((out, None, entry))
             continue
         try:
@@ -742,7 +737,7 @@ def _corpus_plan(library: Path, exports_dir: Path, root: Path | None) -> tuple[l
             continue
         tokens = textutils.normalize(textutils.narrator_text(raw))
         text = " ".join(tokens) + "\n"
-        plan.append((out, text, {"mtime_ns": st.st_mtime_ns, "size": st.st_size, "hash": _sha(text)}))
+        plan.append((out, text, {"источник": src_hash, "hash": _sha(text)}))
     return plan, index, errors
 
 
@@ -804,10 +799,11 @@ def run_export(library: Path, exports_dir: Path, logs_dir: Path, volume: int = 1
              "отпечаток_канона": canon_fingerprint(library, root), "files": hashes,
              "предупреждения": sorted(relative_message(w, library) for w in col.warnings)}
     _write_if_changed(exports_dir / INDEX, json.dumps(index, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-    guard.append_text(logs_dir / "экспорт.jsonl", json.dumps(
-        {"ts": datetime.now(timezone.utc).isoformat(), "том": volume, "отпечаток": index["отпечаток_канона"], "hashes": hashes,
-         "предупреждений": len(col.warnings)},
-        ensure_ascii=False, sort_keys=True) + "\n")
+    if hashes != known:  # повторный экспорт без изменений — ноль записей, в том числе в журнале (NFR-6)
+        guard.append_text(logs_dir / "экспорт.jsonl", json.dumps(
+            {"ts": datetime.now(timezone.utc).isoformat(), "том": volume, "отпечаток": index["отпечаток_канона"],
+             "hashes": hashes, "предупреждений": len(col.warnings)},
+            ensure_ascii=False, sort_keys=True) + "\n")
     return hashes
 
 

@@ -1,4 +1,4 @@
-"""Тесты экспортёра (FR-X1…FR-X3)."""
+"""Тесты экспортёра (FR-EX-1…FR-EX-3)."""
 
 import json
 
@@ -29,7 +29,7 @@ def test_выгрузки_созданы_и_валидны(ws):
 def test_идемпотентность(ws, library):
     h1 = exporter.run_export(library, ws.exports, ws.logs)
     h2 = exporter.run_export(library, ws.exports, ws.logs)
-    assert h1 == h2  # FR-X3: байт-в-байт
+    assert h1 == h2  # FR-EX-2, П-6: байт-в-байт
 
 
 def test_ошибка_структуры_с_файлом_и_строкой(ws, library):
@@ -39,7 +39,8 @@ def test_ошибка_структуры_с_файлом_и_строкой(ws, l
     )
     with pytest.raises(MarkupError) as e:
         exporter.run_export(library, ws.exports, ws.logs)
-    assert "31_Матрица_знаний.md" in str(e.value)  # FR-X1: файл и строка
+    line = len(path.read_text(encoding="utf-8").splitlines())
+    assert f"31_Матрица_знаний.md:{line}:" in str(e.value)  # FR-EX-3: файл и строка
 
 
 def test_отсутствие_нормы_выключает_метрику(ws, library):
@@ -61,7 +62,7 @@ def test_отсутствие_нормы_выключает_метрику(ws, l
 
 
 def test_невалидная_выгрузка_не_пишется(ws, library):
-    """FR-X2: при ошибке экспорт падает, старая выгрузка не перетирается мусором."""
+    """FR-EX-1, FR-SC-5: при ошибке экспорт падает, старая выгрузка не перетирается мусором."""
     before = (ws.exports / "matrix.json").read_text(encoding="utf-8")
     path = library / "31_Матрица_знаний.md"
     path.write_text(path.read_text(encoding="utf-8") + "| x | y |\n", encoding="utf-8")

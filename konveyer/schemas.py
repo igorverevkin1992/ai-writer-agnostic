@@ -14,15 +14,29 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------- выгрузки (§6.4)
 
 
+SCOPE_NARRATOR = "повествователь"   # правило действует на речь повествователя (реплики других персонажей — не флаг)
+SCOPE_ALL = "весь_текст"            # правило действует на весь текст главы (лексика эпохи)
+
+
 class StopRule(BaseModel):
     """Строка stoplists.json: стоп-лист линии повествования, лексика эпохи или словарь усилителей."""
 
-    scope: str = ""  # область/источник правила, как объявил тип документа (`постоянные: {scope: …}`)
+    # область действия: «повествователь» (по умолчанию) или «весь_текст»; объявляет тип документа
+    # (`постоянные: {scope: …}`), проектный тип может ввести свою (считается как «повествователь»)
+    scope: str = SCOPE_NARRATOR
     rule_id: str
     items: list[str]
     applies_to: dict = Field(default_factory=dict)  # {focal?|year?|all}
     action: Literal["запрет", "флаг"] = "запрет"
     kind: Literal["лексика", "усилитель", "проза"] = "лексика"  # «проза» — запреты линии фразами, не словами
+
+    @property
+    def narrator_only(self) -> bool:
+        return self.scope != SCOPE_ALL
+
+    @property
+    def scope_label(self) -> str:
+        return "весь текст" if not self.narrator_only else "речь повествователя"
 
 
 class ChronicleEvent(BaseModel):
@@ -102,7 +116,7 @@ class ChronologyEvent(BaseModel):
     visibility: str = ""          # «[Читатель: т.1 гл.32]» целиком
     volumes: list[int] = Field(default_factory=list)   # тома из видимости
     chapters: list[int] = Field(default_factory=list)  # главы из видимости
-    volume: int | None = None     # том раздела документа («## Том 2 — 1927 «Джентльмен»»)
+    volume: int | None = None     # том раздела документа («## Том 2 — …»)
     section: str = ""             # заголовок раздела
     section_years: list[int] = Field(default_factory=list)  # годы раздела («1946–1947» → [1946, 1947])
     historical: bool = False      # «(ист.)» — обязательна сверка с хроникой

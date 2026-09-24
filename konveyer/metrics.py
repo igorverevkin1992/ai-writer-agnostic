@@ -203,6 +203,7 @@ class Metric:
 
 
 REGISTRY: dict[str, Metric] = {}
+DYNAMIC: set[str] = set()  # метрики, объявленные нормами проекта (лексемные): перерегистрируются при каждом экспорте
 
 
 def metric(id: str, check_id: str, description: str, unit: str, *, scope: str = "проза", kind: str = "метрика",
@@ -322,6 +323,7 @@ def lexeme_metric(norm_id: str, lexemes: list[str], per: int = 1000, check_id: s
     m = Metric(norm_id, cid, description or f"плотность лексем {', '.join(lexemes)} на {per} слов", f"шт/{per} слов",
                "проза", "метрика", (), (), compute)
     REGISTRY[norm_id] = m
+    DYNAMIC.add(norm_id)
     return m
 
 
@@ -347,13 +349,13 @@ def m_stoplists(ctx: MetricContext) -> list[CheckResult]:
         if rule.kind != "лексика" or not stoplist_applies(rule, ctx.brief):
             continue
         # стоп-лист линии фокала касается ВНУТРЕННЕЙ речи: реплики других персонажей — не флаг; лексика эпохи — весь текст
-        scope_text = narration if rule.scope == "0.3" else ctx.text
+        scope_text = narration if rule.narrator_only else ctx.text
         found = find_items(scope_text, rule.items, L)
         if found:
             out.append(CheckResult(
                 check_id="V1.5_стоп_лексика", status="FLAG", threshold=f"действие: {rule.action}", actual="; ".join(found),
                 quotes=quote_sentences(ctx.sentences, {L.normalize_word(w) for w in found}, L),
-                rule_source=f"{rule.rule_id} (реестр {rule.scope})",
+                rule_source=f"{rule.rule_id} ({rule.scope_label})",
                 note="проверьте значение: прямое значение эпохи допустимо" if rule.action == "флаг" else ""))
     if not out:
         out.append(CheckResult(check_id="V1.5_стоп_лексика", status="PASS", threshold="0 вхождений", actual="0",
@@ -489,7 +491,12 @@ def lexeme_norm_spec(norm: Norm) -> tuple[list[str], int] | None:
 
 
 def register_lexeme_norms(norms: dict[str, Norm]) -> None:
-    """Нормы вида `лексемы_<имя>` с перечнем слов в единице («слово1, слово2 на 1000») — динамические метрики."""
+    """Нормы вида `лексемы_<имя>` с перечнем слов в единице («слово1, слово2 на 1000») — динамические метрики.
+    Реестр общий для процесса, поэтому динамические метрики другого проекта снимаются, а свои регистрируются
+    заново: список слов принадлежит проекту, не установке (П-6)."""
+    for nid in sorted(DYNAMIC):
+        REGISTRY.pop(nid, None)
+    DYNAMIC.clear()
     for nid, n in norms.items():
         if nid in REGISTRY or not is_lexeme_norm_id(nid):
             continue

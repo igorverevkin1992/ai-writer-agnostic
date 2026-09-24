@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 
+from . import lang as lang_mod
+
 CH_RE = re.compile(r"[Гг]л\.?\s*(\d+)")
 # перечисление глав после одного «гл.»: «Гл. 9, 27», «Гл. 29 или 40», «гл. 34, 40», «гл. 5–7» (диапазон)
 CH_LIST_RE = re.compile(r"[Гг]л\.?\s*(\d+(?:\s*(?:,|или|и|/|[–-])\s*\d+)*)")
@@ -21,9 +23,29 @@ _CH_RANGE_RE = re.compile(r"гл(?:ав[аы]?)?\.?\s*([\d\s,–\-]+)", re.IGNOR
 _RANGE_ITEM_RE = re.compile(r"(\d+)\s*[–-]\s*(\d+)|(\d+)")
 
 # падежные окончания имён: «Иванову», «Петровым», «Асю» (основа «Ас»), «Игорем» (основа «Игор»),
-# «Андрея» (основа «Андре»), «куратору отдела»; фамильные суффиксы («Иванов» ≠ «Иван») окончаниями не считаются
-_NAME_ENDINGS = "ами|ями|ой|ей|ом|ем|ым|им|ою|ею|ах|ях|ью|а|я|у|ю|е|и|ы|ь|й"
+# «Андрея» (основа «Андре»), «куратору отдела»; фамильные суффиксы («Иванов» ≠ «Иван») окончаниями не считаются.
+# Таблицы живут в языковом слое (`языки/ru.yaml`, раздел `имена`); значения здесь — запас на случай их отсутствия.
+_DEFAULT_RULES = {
+    "окончания": ["ами", "ями", "ой", "ей", "ом", "ем", "ым", "им", "ою", "ею", "ах", "ях", "ью", "а", "я", "у", "ю",
+                  "е", "и", "ы", "ь", "й"],
+    "усечение_основы": ["а", "я", "ь", "й"],
+    "предлоги_действия": ["к", "ко", "с", "со", "на", "за", "у", "против", "перед", "рядом", "вместе", "между", "при"],
+    "окончания_глагола": r"(?:[её]т|ит|[ую]т|[ая]т|ся|сь|ть|ти)$",
+}
 _SHORT_STEM = 4  # основа короче — только полная форма имени или основа с непустым окончанием («Над» ≠ «Надя»)
+
+
+def _rules() -> dict:
+    """Правила склонения имён языка по умолчанию (движок + переопределения проекта берутся через `lang`)."""
+    try:
+        rules = lang_mod.get().name_rules
+    except (ValueError, OSError):
+        rules = {}
+    return {**_DEFAULT_RULES, **{k: v for k, v in rules.items() if v}}
+
+
+def _endings() -> str:
+    return "|".join(re.escape(str(e)) for e in _rules()["окончания"])
 
 
 def _range_numbers(text: str) -> list[int]:
@@ -85,7 +107,7 @@ def split_items(text: str) -> list[str]:
 
 def _stem(word: str) -> str:
     """Основа имени: «Ася» → «Ас», «Игорь» → «Игор», «Андрей» → «Андре», «Иван» → «Иван»."""
-    if len(word) > 2 and word[-1] in "аяьй":
+    if len(word) > 2 and word[-1] in "".join(str(x) for x in _rules()["усечение_основы"]):
         return word[:-1]
     return word
 
@@ -104,10 +126,11 @@ def name_pattern(name: str, *, strict_case: bool = True) -> re.Pattern:
     head = (re.escape(lead) if lead.isupper() and strict_case and not rest
             else f"[{re.escape(lead.lower())}{re.escape(lead.upper())}]")
     head += f"(?i:{re.escape(stem[1:])})" if len(stem) > 1 else ""
+    endings = _endings()
     if len(stem) < _SHORT_STEM and stem != first:
-        tail = rf"(?:{_NAME_ENDINGS})"      # окончание обязательно: «Надя», «Наде», но не «Над»
+        tail = rf"(?:{endings})"      # окончание обязательно: «Надя», «Наде», но не «Над»
     else:
-        tail = rf"(?:{_NAME_ENDINGS})?"
+        tail = rf"(?:{endings})?"
     pat = rf"(?<![А-Яа-яЁё]){head}(?i:{tail})(?![А-Яа-яЁё])"
     if rest:
         pat += r"(?i:\s+" + r"\s+".join(re.escape(r) for r in rest) + ")"
@@ -143,10 +166,6 @@ def find_names(text: str, known_names: set[str], pseudo: set[str] = frozenset())
 # имя — участник действия, если стоит в именительном падеже, после предлога совместного действия
 # («к …», «с …», «на …», «за …») или как дополнение глагола настоящего времени; родительный при
 # существительном («рапорт …») и дательный адресата — упоминание, не участие
-_ACTION_PREPS = {"к", "ко", "с", "со", "на", "за", "у", "против", "перед", "рядом", "вместе", "между", "при"}
-_VERB_END_RE = re.compile(r"(?:[её]т|ит|[ую]т|[ая]т|ся|сь|ть|ти)$")
-
-
 def _acts_in(text: str, m: re.Match, name: str) -> bool:
     form = m.group(0).split()[0]
     if form.lower() == name.split()[0].lower():
@@ -155,7 +174,8 @@ def _acts_in(text: str, m: re.Match, name: str) -> bool:
     if not before:
         return False
     prev = before[-1].lower()
-    return prev in _ACTION_PREPS or bool(_VERB_END_RE.search(prev))
+    rules = _rules()
+    return prev in {str(p) for p in rules["предлоги_действия"]} or bool(re.search(str(rules["окончания_глагола"]), prev))
 
 
 def find_acting_names(text: str, known_names: set[str], pseudo: set[str] = frozenset()) -> list[str]:

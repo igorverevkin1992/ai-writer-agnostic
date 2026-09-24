@@ -134,7 +134,7 @@ def test_язык_сплиттер(tmp_path):
 def test_стоплист_реплики_персонажей(ws):
     norms = exporter.load_norms(ws.exports)
     stops = exporter.load_stoplists(ws.exports)
-    rule = next(r for r in stops if r.kind == "лексика" and r.scope == "0.3")
+    rule = next(r for r in stops if r.kind == "лексика" and r.narrator_only)
     word = rule.items[0]
     brief = Brief(chapter=1, focal=rule.applies_to.get("focal", ""), year=1995)
     in_speech = f"Он вошёл.\n\n— Это {word}, — сказал сосед и ушёл.\n"

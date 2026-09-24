@@ -132,7 +132,7 @@ def build_prompt(ws: Workspace, chapter: int, draft: int, cfg: Config | None = N
     line_rules = [
         f"- [{r.rule_id}] {r.applies_to.get('focal', 'все линии')}: {'; '.join(sorted(r.items))} ({r.action})"
         for r in stoplists
-        if r.kind == "лексика" and r.scope == "0.3" and ("focal" not in r.applies_to or r.applies_to["focal"] in participants)
+        if r.kind == "лексика" and r.narrator_only and ("focal" not in r.applies_to or r.applies_to["focal"] in participants)
     ]
     prose_rules = [
         f"- [{r.rule_id}] {r.applies_to.get('focal', 'все линии')}: {item}"

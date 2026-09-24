@@ -168,7 +168,7 @@ def cmd_verify1(chapter: int) -> None:
 def cmd_verify2(
     chapter: int,
     manual: bool = typer.Option(False, "--manual", help="Принять флаги.json, заполненный вручную (NFR-3)."),
-    taste: bool = typer.Option(False, "--вкус", "--taste", help="Дополнительно: советы по вкусу автора (02 §6.1) — не блокируют приёмку."),
+    taste: bool = typer.Option(False, "--вкус", "--taste", help="Дополнительно: советы по вкусу автора (правила вкуса документа стиля) — не блокируют приёмку."),
     again: bool = typer.Option(
         False, "--повторно", "--после-правок", "--again",
         help="Повторный Э2 по текущему черновику после правок (из «правки»/«дифф-контроль»): совещательно — "

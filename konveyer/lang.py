@@ -40,6 +40,16 @@ class Language:
     min_stem: int
     fleeting_re: re.Pattern | None
     raw: dict = field(default_factory=dict)
+    months: dict[str, int] = field(default_factory=dict)   # основа названия месяца → номер («январ» → 1)
+    name_rules: dict = field(default_factory=dict)         # склонение имён: окончания, предлоги действия, глаголы
+
+    def month_of(self, text: str) -> int | None:
+        """Номер месяца по названию в тексте («май 1996» → 5); None — названия месяца нет."""
+        low = text.lower()
+        for stem, num in self.months.items():
+            if stem and stem in low:
+                return num
+        return None
 
     # ---------------------------------------------------------------- слова
 
@@ -233,6 +243,8 @@ def _from_data(data: dict) -> Language:
         min_stem=int(stems.get("мин_основа") or 3),
         fleeting_re=re.compile(stems["беглая_гласная"]) if stems.get("беглая_гласная") else None,
         raw=data,
+        months={str(k).lower(): int(v) for k, v in (data.get("месяцы") or {}).items()},
+        name_rules=dict(data.get("имена") or {}),
     )
 
 
