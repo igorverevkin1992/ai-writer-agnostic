@@ -234,15 +234,19 @@ class Metric:
     params: tuple[str, ...] = ()  # нормы-параметры, от которых зависит
     needs: tuple[str, ...] = ()   # бриф | окно | корпус | стоп-листы
     compute: Callable[[MetricContext], list[CheckResult]] | None = None
+    # калибровка (FR-V1-7): (нужна нижняя граница, нужна верхняя); None — по образцам не калибруется
+    calibrate: tuple[bool, bool] | None = None
+    decimals: int = 0             # знаков после запятой в предлагаемых коридорах
 
 
 REGISTRY: dict[str, Metric] = {}
 
 
 def metric(id: str, check_id: str, description: str, unit: str, *, scope: str = "проза", kind: str = "метрика",
-           params: tuple[str, ...] = (), needs: tuple[str, ...] = ()):
+           params: tuple[str, ...] = (), needs: tuple[str, ...] = (), calibrate: tuple[bool, bool] | None = None,
+           decimals: int = 0):
     def deco(fn):
-        REGISTRY[id] = Metric(id, check_id, description, unit, scope, kind, params, needs, fn)
+        REGISTRY[id] = Metric(id, check_id, description, unit, scope, kind, params, needs, fn, calibrate, decimals)
         return fn
     return deco
 
@@ -280,14 +284,14 @@ parameter("утечка_нграмма", "длина совпадения с о�
 parameter("повтор_нграмма", "длина межглавного повтора", "слов")
 
 
-@metric("средняя_длина", "V1.2a_средняя_длина", "средняя длина предложения", "слов")
+@metric("средняя_длина", "V1.2a_средняя_длина", "средняя длина предложения", "слов", calibrate=(True, True), decimals=1)
 def m_avg(ctx: MetricContext) -> list[CheckResult]:
     L = ctx.lengths
     return _result(ctx, REGISTRY["средняя_длина"], round(sum(L) / len(L), 2) if L else 0.0)
 
 
 @metric("доля_коротких", "V1.2b_доля_коротких", "доля предложений не длиннее порога короткой фразы", "доля",
-        params=("короткая_фраза_порог",))
+        params=("короткая_фраза_порог",), calibrate=(True, True), decimals=2)
 def m_short(ctx: MetricContext) -> list[CheckResult]:
     thr = ctx.param("короткая_фраза_порог")
     if thr is None or not ctx.lengths:
@@ -296,7 +300,7 @@ def m_short(ctx: MetricContext) -> list[CheckResult]:
 
 
 @metric("доля_длинных", "V1.2c_доля_длинных", "доля предложений не короче порога длинной фразы", "доля",
-        params=("длинная_фраза_порог",))
+        params=("длинная_фраза_порог",), calibrate=(False, True), decimals=2)
 def m_long(ctx: MetricContext) -> list[CheckResult]:
     thr = ctx.param("длинная_фраза_порог")
     if thr is None or not ctx.lengths:
@@ -304,7 +308,7 @@ def m_long(ctx: MetricContext) -> list[CheckResult]:
     return _result(ctx, REGISTRY["доля_длинных"], round(sum(1 for x in ctx.lengths if x >= thr) / len(ctx.lengths), 3))
 
 
-@metric("максимум_длины", "V1.2d_максимум_длины", "самое длинное предложение", "слов")
+@metric("максимум_длины", "V1.2d_максимум_длины", "самое длинное предложение", "слов", calibrate=(False, True))
 def m_max(ctx: MetricContext) -> list[CheckResult]:
     if not ctx.lengths:
         return []
@@ -314,7 +318,7 @@ def m_max(ctx: MetricContext) -> list[CheckResult]:
 
 
 @metric("объём_главы", "V1.2e_объём", "объём главы (коридор мин–макс, если бриф не задаёт объём или нет нормы «объём_допуск»)",
-        "слов", needs=("бриф",))
+        "слов", needs=("бриф",), calibrate=(True, True))
 def m_volume(ctx: MetricContext) -> list[CheckResult]:
     if ctx.brief.volume_words and ctx.norm("объём_допуск") is not None:
         return []  # объём брифа проверяет «объём_брифа»
@@ -336,7 +340,8 @@ def m_brief_volume(ctx: MetricContext) -> list[CheckResult]:
                         actual=f"{n} слов (отклонение {deviation:.0%})", rule_source=norm.source)]
 
 
-@metric("был_на_250", "V1.3_был", "плотность лексем «был/было/были» (набор «был» языкового модуля) на 250 слов", "шт/250 слов")
+@metric("был_на_250", "V1.3_был", "плотность лексем «был/было/были» (набор «был» языкового модуля) на 250 слов", "шт/250 слов",
+        calibrate=(False, True), decimals=1)
 def m_byl(ctx: MetricContext) -> list[CheckResult]:
     forms = ctx.language.lexemes("был")
     count = sum(1 for t in ctx.tokens if t in forms)
@@ -375,7 +380,7 @@ def lexeme_metric(norm_id: str, norm: Norm) -> Metric | None:
                        quotes=ctx.quote(forms), note=f"{count} вхождений на {ctx.n_words} слов")
 
     m = Metric(norm_id, f"V1.3_{norm_id}", f"плотность лексем {', '.join(lexemes)} на {per} слов", f"шт/{per} слов",
-               "проза", "метрика", (), (), compute)
+               "проза", "метрика", (), (), compute, (False, True), 1)
     return m
 
 
@@ -386,7 +391,7 @@ def describe(norm_id: str, norm: Norm | None = None) -> str | None:
 
 
 @metric("усилители_на_1000", "V1.4_усилители", "плотность наречий-усилителей по словарю стиля на 1000 слов", "шт/1000 слов",
-        needs=("стоп-листы",))
+        needs=("стоп-листы",), calibrate=(False, True), decimals=1)
 def m_intensifiers(ctx: MetricContext) -> list[CheckResult]:
     L = ctx.language
     forms = {L.normalize_word(w) for r in ctx.stoplists if r.kind == "усилитель" for w in r.items}
@@ -501,7 +506,7 @@ def m_ttr(ctx: MetricContext) -> list[CheckResult]:
     return out
 
 
-@metric("доля_диалога", "V1.9a_доля_диалога", "доля абзацев-реплик", "доля", scope="диалог")
+@metric("доля_диалога", "V1.9a_доля_диалога", "доля абзацев-реплик", "доля", scope="диалог", calibrate=(True, True), decimals=2)
 def m_dialogue(ctx: MetricContext) -> list[CheckResult]:
     if not ctx.paragraphs:
         return []
@@ -510,7 +515,7 @@ def m_dialogue(ctx: MetricContext) -> list[CheckResult]:
                    note=f"{d} реплик-абзацев из {len(ctx.paragraphs)}")
 
 
-@metric("фраз_в_абзаце", "V1.9b_фраз_в_абзаце", "среднее число предложений в абзаце", "предложений")
+@metric("фраз_в_абзаце", "V1.9b_фраз_в_абзаце", "среднее число предложений в абзаце", "предложений", calibrate=(True, True), decimals=1)
 def m_para(ctx: MetricContext) -> list[CheckResult]:
     if not ctx.paragraphs:
         return []

@@ -507,3 +507,64 @@ def test_модули_доз_документов_хроники_на_демо(w
     assert "## Бриф главы" in user2
     report = lint.run_lint(library, ws.exports, ws.logs, export=True, root=ws.root, use_cache=False)
     assert report.errors == 0
+
+
+# ------------------------------------------------------------------ калибровка
+
+
+def test_калибровка_считает_вычислителями_реестра(ws):
+    """Калибровка — теми же вычислителями, что Э1 (без второй реализации формул); лексемные нормы калибруются (FR-V1-7)."""
+    from konveyer import calibrate
+
+    L = lang.for_project(ws.root)
+    norms = exporter.load_norms(ws.exports)
+    norms["лексемы_ветер"] = Norm(max=1, unit="ветер на 100 слов")
+    for mid in ("объём_главы", "доля_диалога", "фраз_в_абзаце"):
+        norms[mid] = Norm(min=0, max=1000, unit="")
+    text = "Ветер гнал по перрону обрывки газет. Он был мрачен. Спичка сломалась дважды.\n\n— Сынок, — сказал сосед.\n"
+    v = calibrate.measure(text, norms, L, exporter.load_stoplists(ws.exports))
+    checks = {c.check_id: c for c in verifier1.analyze(text, "", Brief(chapter=0), norms, exporter.load_stoplists(ws.exports))}
+    for mid, cid in (("средняя_длина", "V1.2a_средняя_длина"), ("доля_коротких", "V1.2b_доля_коротких"),
+                     ("объём_главы", "V1.2e_объём"), ("был_на_250", "V1.3_был"), ("доля_диалога", "V1.9a_доля_диалога"),
+                     ("фраз_в_абзаце", "V1.9b_фраз_в_абзаце"), ("лексемы_ветер", "V1.3_лексемы_ветер")):
+        assert v[mid] == float(checks[cid].actual.split()[0]), mid
+    assert {m.id for m in calibrate.calibrated_metrics(norms)} >= {"средняя_длина", "максимум_длины", "лексемы_ветер"}
+    assert "ttr_мин" not in v  # TTR в окне зависит от корпуса тома, по одному образцу не калибруется
+
+
+def test_калибровка_не_затирает_авторский_брак(ws, library):
+    """Утверждение по 1–2 образцам не стирает брак и односторонние границы автора; несогласуемое снимается с пометкой."""
+    from konveyer import calibrate
+
+    L = lang.for_project(ws.root)
+    norms = exporter.load_norms(ws.exports)
+    assert norms["средняя_длина"].brak == 7 and norms["доля_длинных"].min is None
+    text = "Поезд ушёл без него. Ветер гнал по перрону обрывки газет, и старуха у кассы прятала лицо в платок. Он был мрачен."
+    pr = calibrate.propose([("а", text), ("б", text + " Спичка сломалась дважды.")], norms, L)
+    n = pr.corridors["средняя_длина"]
+    assert n.brak == 7 and "брак 7 сохранён" in "; ".join(pr.notes["средняя_длина"])
+    assert pr.corridors["доля_коротких"].brak is None and "доля_коротких" not in pr.notes
+    merged = calibrate.merged_table((library / STYLE).read_text(encoding="utf-8"), pr.corridors)
+    assert f"| средняя_длина | средняя длина фразы | {n.min:g} | {n.max:g} | 7 | слов |" in merged
+    # брак, оказавшийся внутри нового коридора, не наследуется вслепую
+    norms["средняя_длина"] = Norm(min=9, max=12, brak=7, unit="слов")
+    five = ("Раз два три четыре пять. " * 4).strip()
+    nine = ("Раз два три четыре пять шесть семь восемь девять. " * 4).strip()
+    pr2 = calibrate.propose([("а", five), ("б", nine)], norms, L)
+    n2 = pr2.corridors["средняя_длина"]
+    assert n2.min < 7 < n2.max and n2.brak is None
+    assert "снят" in "; ".join(pr2.notes["средняя_длина"]) and "снят" in pr2.report
+
+
+def test_калибровка_синонимы_колонок_из_типа(ws, library):
+    """Таблица норм с заголовками min/max (синонимы типа «стиль») калибруется, а не падает (FR-V1-7)."""
+    from konveyer import calibrate
+
+    style = library / STYLE
+    text = style.read_text(encoding="utf-8").replace("| id | параметр | мин | макс | брак | единица |",
+                                                     "| метрика | параметр | min | max | брак | единица |")
+    corridors = {"средняя_длина": Norm(min=8, max=11, brak=6, unit="слов"), "новая_метрика": Norm(max=3, unit="шт")}
+    merged = calibrate.merged_table(text, corridors, calibrate.norm_columns(ws))
+    assert "| средняя_длина | средняя длина фразы | 8 | 11 | 6 | слов |" in merged
+    assert "| новая_метрика | новая_метрика | — | 3 | — | шт |" in merged
+    assert calibrate.decision_id_prefix(ws) == "Р-" and calibrate.next_decision_id("## Р-007\n", "Р-") == "Р-008"
