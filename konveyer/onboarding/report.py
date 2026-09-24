@@ -98,10 +98,10 @@ def build(ws: Workspace, library: Path) -> str:
     for c in checks:
         if c.ok is not True and c.hint:
             steps.append(f"{c.label} → {c.hint}")
-    steps.append("`konveyer doctor` — проверить готовность; `konveyer export` — пересобрать выгрузки.")
+    steps.append("`konveyer доктор` — проверить готовность; `konveyer экспорт` — пересобрать выгрузки.")
     if any(not man.docs(library, "проза", None, types) for _ in [0]) if library.is_dir() else True:
         steps.append("Есть готовая проза — `konveyer импорт <папка>` и тип «проза»: нормы калибруются по ней (`konveyer нормы --калибровать`).")
-    steps.append("Первый такт: `konveyer compile 1` → `konveyer write 1`.")
+    steps.append("Первый такт: `konveyer собрать 1` → `konveyer написать 1`.")
     lines += [f"{i}. {s}" for i, s in enumerate(steps[:7], start=1)]
     return "\n".join(lines) + "\n"
 

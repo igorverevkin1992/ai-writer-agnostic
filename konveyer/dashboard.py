@@ -185,7 +185,7 @@ def render_dashboard(ws: Workspace) -> str:
 <title>КОНВЕЙЕР · Дашборд</title><style>{CSS}</style></head>
 <body><div class="viz-root">
 <h1>КОНВЕЙЕР · метрики по главам</h1>
-<p class="meta">Сгенерировано `konveyer dashboard`. Пороги — из norms.json (02 §5). Файл самодостаточен, сеть не нужна.</p>
+<p class="meta">Сгенерировано `konveyer дашборд`. Пороги — из norms.json (02 §5). Файл самодостаточен, сеть не нужна.</p>
 {''.join(figures)}
 </div></body></html>
 """
@@ -193,7 +193,7 @@ def render_dashboard(ws: Workspace) -> str:
 
 
 def build_dashboard(ws: Workspace) -> Path:
-    """`konveyer dashboard`: пишет дашборд.html в рабочую область."""
+    """`konveyer дашборд`: пишет дашборд.html в рабочую область."""
     path = ws.root / "дашборд.html"
     guard.write_text(path, render_dashboard(ws))
     return path

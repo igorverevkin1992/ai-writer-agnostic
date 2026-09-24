@@ -40,7 +40,7 @@ TRANSITIONS: dict[str, set[str]] = {
 }
 
 
-# Артефакты, копия которых сохраняется за номером черновика при входе в состояние (NFR-4):
+# Артефакты, копия которых сохраняется за номером черновика при входе в состояние (П-7, NFR-5):
 # вердикт.json/флаги.json/дифф.json остаются «текущими», вердикт_k.json — историей повторов.
 DRAFT_ARTIFACTS: dict[str, tuple[str, ...]] = {
     "верифицировано-1": ("вердикт.json",),
@@ -137,7 +137,7 @@ class ChapterState:
         self.snapshot_artifacts(*DRAFT_ARTIFACTS.get(to, ()))
 
     def snapshot_artifacts(self, *names: str) -> list[Path]:
-        """Копия «текущего» артефакта под номером черновика: вердикт.json → вердикт_k.json (NFR-4).
+        """Копия «текущего» артефакта под номером черновика: вердикт.json → вердикт_k.json (П-7, NFR-5).
         Повторы (авто-повтор Э1, второй цикл правок) больше не затирают прошлые вердикты."""
         chdir = self.ws.chapter_dir(self.chapter)
         copies: list[Path] = []

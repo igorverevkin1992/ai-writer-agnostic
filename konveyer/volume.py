@@ -274,7 +274,7 @@ def close_volume(ws: Workspace, cfg: Config, library: Path, volume: int, *, agai
                  author_confirmed: bool) -> CloseResult:
     """Закрывает том (аудит 2, п. 27): проверка приёмки всех глав → снапшот 3.5 в библиотеку (через
     `canonchange.canon_change`, коммит) → тег `том-N` → рукопись .md/.docx → статистика.
-    Выгрузки должны быть тома `volume` (закрывается текущий том; другой — сначала `konveyer volume open N`)."""
+    Выгрузки должны быть тома `volume` (закрывается текущий том; другой — сначала `konveyer том открыть N`)."""
     if not author_confirmed:
         raise PermissionError("закрытие тома без подтверждения автора запрещено (FR-K2, Д-8).")
     if volume != ws.volume:

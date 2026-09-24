@@ -53,7 +53,7 @@ def check_write_allowed(path: Path) -> None:
         if not _allowed():
             raise CanonWriteError(
                 f"Запись в библиотеку канона запрещена: {path}. "
-                "В Библиотека/ пишет только `konveyer canonize` после подтверждения автора (FR-K3)."
+                "В Библиотека/ пишет только `konveyer канон` после подтверждения автора (FR-K3)."
             )
 
 

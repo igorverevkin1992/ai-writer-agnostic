@@ -160,7 +160,7 @@ def build_review_html(ws: Workspace, chapter: int, draft: int) -> Path:
                 target = f" → {_esc(res.target_registry)}" if res.target_registry else ""
                 decision = f'<div class="resolved">решение: {res.decision}{target}</div>'
             else:
-                decision = f'<div class="unresolved">БЕЗ РЕШЕНИЯ — konveyer resolve {chapter} {f.flag_id} …</div>'
+                decision = f'<div class="unresolved">БЕЗ РЕШЕНИЯ — konveyer решение {chapter} {f.flag_id} …</div>'
         badge = "самоволка" if f.kind == "samovolka" else f.severity
         type_part = "" if _norm_eq(f.type, badge) else f" · {_esc(f.type)}"
         return (
@@ -194,7 +194,7 @@ def build_review_html(ws: Workspace, chapter: int, draft: int) -> Path:
 <title>Приёмка · Глава {chapter}</title><style>{CSS}</style></head>
 <body><div class="wrap">
 <h1>Приёмка · Глава {chapter} · черновик {draft}</h1>
-<p class="meta">Сгенерировано `konveyer review {chapter}`. Правки — в правки.md; решения по самоволкам — `konveyer resolve {chapter}`.</p>
+<p class="meta">Сгенерировано `konveyer приёмка {chapter}`. Правки — в правки.md; решения по самоволкам — `konveyer решение {chapter}`.</p>
 <h2>Формальные проверки (Э1)</h2>
 <table><tr><th></th><th>Проверка</th><th>Факт</th><th>Порог</th><th>Источник</th></tr>{e1_rows}</table>
 <h2>Смысловые флаги (Э2)</h2>

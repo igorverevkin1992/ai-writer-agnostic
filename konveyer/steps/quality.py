@@ -66,7 +66,7 @@ def circles(
     if to_canon:
         n = len(circles_mod.drafts(ws))
         if not n:
-            raise StepError("черновиков кругов нет — сначала `konveyer circles`.")
+            raise StepError("черновиков кругов нет — сначала `konveyer каркас`.")
         confirm_or_reject(
             yes, confirm,
             f"Внести {n} круг(ов) в {circles_mod.canon_doc_name(ws.volume)} библиотеки и закоммитить? (Д-8) (y)",
@@ -76,7 +76,7 @@ def circles(
         except RuntimeError as e:
             raise StepError(str(e)) from e
         secho(f"Круги внесены в канон: {path}. Коммит: {commit}", fg=colors.GREEN)
-        echo("Окна глав теперь содержат секцию «Драматургия»; пересоберите начатые главы (`konveyer compile N`).")
+        echo("Окна глав теперь содержат секцию «Драматургия»; пересоберите начатые главы (`konveyer собрать N`).")
         return None
     result = circles_mod.run(ws, cfg, scope, chapter, only_missing=not redo, library=lib)
     for path in result["готово"]:
@@ -98,7 +98,7 @@ def regress(llm: bool = False) -> dict:
     if not report["всего"]:
         secho(
             "⚠ Корпус золотых тестов ПУСТ (регрессия/золотые/) — регрессия ничего не проверила и зелёной "
-            "считаться не может (FR-R3). Пополните корпус: `konveyer add-golden` (FR-R1).",
+            "считаться не может (FR-R3). Пополните корпус: `konveyer золотой` (FR-R1).",
             fg=colors.YELLOW,
         )
     elif not report.get("выполнено"):

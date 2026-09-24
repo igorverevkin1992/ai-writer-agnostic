@@ -48,7 +48,7 @@ def resolve(chapter: int, flag_id: str | None = None, decision: str | None = Non
             if left:
                 echo(f"Осталось без решения: {', '.join(left)}")
             return resolutions
-    raise StepError(f"самоволка {flag_id} не найдена (см. `konveyer resolve {chapter}`).")
+    raise StepError(f"самоволка {flag_id} не найдена (см. `konveyer решение {chapter}`).")
 
 
 def edits(chapter: int) -> list:
@@ -75,7 +75,7 @@ def edits(chapter: int) -> list:
             fg=colors.YELLOW,
         )
     else:
-        secho(f"Распознано {len(parsed)} правок. Далее: `konveyer apply-edits {chapter}`.", fg=colors.GREEN)
+        secho(f"Распознано {len(parsed)} правок. Далее: `konveyer правки-внести {chapter}`.", fg=colors.GREEN)
     return parsed
 
 

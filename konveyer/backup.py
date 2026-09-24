@@ -65,14 +65,14 @@ class Layout:
                 return (
                     "коммиты канона перемешаны с коммитами кода: `git pull` обновления конвейера принесёт конфликты "
                     "с каноническими коммитами автора, а откат кода откатит и канон. "
-                    "Переезд: `konveyer library-split --показать` (план), затем `konveyer library-split`."
+                    "Переезд: `konveyer библиотека-отделить --показать` (план), затем `konveyer библиотека-отделить`."
                 )
             return (
                 "коммиты канона перемешаны с другими файлами репозитория; откат и бэкап канона теряют точность. "
-                "Переезд: `konveyer library-split --показать`, затем `konveyer library-split`."
+                "Переезд: `konveyer библиотека-отделить --показать`, затем `konveyer библиотека-отделить`."
             )
         if self.kind == "no-git":
-            return "git init внутри библиотеки (версионирование канона, §5.1) или `konveyer library-split` — отдельный репозиторий"
+            return "git init внутри библиотеки (версионирование канона, §5.1) или `konveyer библиотека-отделить` — отдельный репозиторий"
         return ""
 
 
@@ -239,7 +239,7 @@ def plan_split(ws: Workspace, cfg: Config, lib: Path, target: Path | None = None
         raise SplitError("папка назначения не может лежать внутри самой библиотеки.")
     if lay.kind == "shared":
         if gitops.dirty(lib):
-            raise SplitError("в библиотеке незакоммиченные изменения — сначала `konveyer canon-commit`, затем переезд.")
+            raise SplitError("в библиотеке незакоммиченные изменения — сначала `konveyer канон-коммит`, затем переезд.")
         if gitops.in_progress(lib):
             raise SplitError(f"в репозитории незавершённая операция git ({gitops.in_progress(lib)}).")
     if with_history:
@@ -273,7 +273,7 @@ def _append_gitignore(top: Path, entry: str) -> bool:
         return False
     if text and not text.endswith("\n"):
         text += "\n"
-    text += f"# библиотека канона вынесена в отдельный репозиторий (konveyer library-split)\n{entry}\n"
+    text += f"# библиотека канона вынесена в отдельный репозиторий (konveyer библиотека-отделить)\n{entry}\n"
     guard.write_text(path, text)
     return True
 
@@ -323,7 +323,7 @@ def split_library(ws: Workspace, cfg: Config, plan: SplitPlan) -> list[str]:
         gitops.init_repo(target, initial_branch=branch)
         if old_repo is not None:
             gitops.copy_identity(old_repo, target)
-        commit = gitops.commit_all(target, "Библиотека канона: отдельный репозиторий (konveyer library-split)", author=cfg.commit_author)
+        commit = gitops.commit_all(target, "Библиотека канона: отдельный репозиторий (konveyer библиотека-отделить)", author=cfg.commit_author)
         notes.append(f"новый репозиторий: {target} (первый коммит {str(commit)[:10]}, ветка {branch})")
     guard.set_library_dir(target)
     _update_config_library_dir(ws, plan.library_dir_value)
@@ -348,5 +348,5 @@ def after_split_advice(plan: SplitPlan) -> list[str]:
                "; в новом репозитории история начинается с первого коммита. Перенести её позже: "
                "`git subtree split --prefix=<папка> -b библиотека` в прежнем репозитории и `git pull <прежний> библиотека` в новом.")
         )
-    out.append("Добавьте удалённые копии (NFR-6, ≥ 2): `konveyer backup --добавить-remote <имя> <url|папка>`; проверка — `konveyer doctor`.")
+    out.append("Добавьте удалённые копии (NFR-6, ≥ 2): `konveyer бэкап --добавить-remote <имя> <url|папка>`; проверка — `konveyer доктор`.")
     return out

@@ -6,7 +6,7 @@
                                                               └→ или явное «незакоммичено»
 
 Только этот модуль открывает `guard.canon_write_session()` (статический тест): приёмка главы (канонист), внесение кругов истории,
-правка документа и исправление линтера из панели, `konveyer canon-commit` — все идут здесь.
+правка документа и исправление линтера из панели, `konveyer канон-коммит` — все идут здесь.
 Подтверждение автора (FR-K2, Д-8) вызывающий даёт явно флагом `author_confirmed`.
 """
 
@@ -94,7 +94,7 @@ def _rollback(library: Path, ws: Workspace, error: BaseException) -> None:
         ) from error
     try:
         exporter.run_export(library, ws.exports, ws.logs, ws.volume, ws.root)
-    except Exception:  # noqa: BLE001 — выгрузки пересчитает `konveyer export`; важнее показать исходную ошибку
+    except Exception:  # noqa: BLE001 — выгрузки пересчитает `konveyer экспорт`; важнее показать исходную ошибку
         pass
 
 
@@ -115,7 +115,7 @@ def canon_change(
     """Единственный путь записи в библиотеку канона.
 
     * `writer` выполняется внутри `guard.canon_write_session()` и пишет через `guard.write_text`/`append_text`;
-      `writer=lambda: None` — изменения уже на диске (автор правил документы сам, `konveyer canon-commit`).
+      `writer=lambda: None` — изменения уже на диске (автор правил документы сам, `konveyer канон-коммит`).
     * затем экспорт (валидация Д-1) и линт по свежим выгрузкам (сбой линтера — находка ЛИНТ-0, не откат);
     * `commit=True` — `git commit` всех изменений папки библиотеки с авторством `cfg.commit_author` (Д-8);
       `confirm(result)` — последняя возможность отказаться от коммита уже после линта (вопрос автору);

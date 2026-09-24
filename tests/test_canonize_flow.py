@@ -1,7 +1,7 @@
 """Сквозной оффлайн-такт (без API): review → правки → канонизация → атомарный коммит.
 
 Проверяет критерии этапа 2: приёмка порождает корректный атомарный коммит;
-запись в библиотеку — только через канониста (FR-K2/K3); корпус пересчитан.
+запись в библиотеку — только через канониста (FR-CN-2, П-3); корпус пересчитан.
 """
 
 import json
@@ -35,7 +35,7 @@ def test_полный_такт_с_коммитом(ws, library):
     cfg = Config()
     chapter = 1
 
-    # машинные шаги такта (черновик кладём руками — API в тесте нет, NFR-3)
+    # машинные шаги такта (черновик кладём руками — API в тесте нет, ручной режим)
     compiler.compile_window(ws, library, chapter)
     st = ChapterState(ws, chapter)
     st.transition("собрано", "compile")
@@ -97,7 +97,7 @@ def test_полный_такт_с_коммитом(ws, library):
     commit = canonist.apply_batch(ws, cfg, library, chapter, 2)
     st.transition("зафиксировано", "canonize --apply")
 
-    # атомарный коммит с шаблонным сообщением (FR-K2)
+    # атомарный коммит с шаблонным сообщением (FR-CN-2)
     assert commit != head_before
     log = subprocess.run(
         ["git", "-C", str(library), "log", "-1", "--format=%s"], capture_output=True, text=True, encoding="utf-8"

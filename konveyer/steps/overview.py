@@ -130,7 +130,7 @@ def doctor() -> None:
             echo(f"   → {hint}")
 
     secho(f"Рабочая область: {ws.root}", bold=True)
-    item((ws.root / "конфиг.yaml").exists(), "конфиг.yaml", "создайте: `konveyer init`")
+    item((ws.root / "конфиг.yaml").exists(), "конфиг.yaml", "создайте: `konveyer начать`")
     item(lib.exists(), f"библиотека канона: {lib}", "положите Библиотека/ или поправьте library_dir в конфиг.yaml")
     if lib.exists():
         lay = backup_mod.layout(lib, ws.root)
@@ -144,15 +144,15 @@ def doctor() -> None:
                  f"завершите или отмените: git {gitops.in_progress(lib) or ''} --abort (в документах могут быть маркеры конфликта)")
             n_remotes = len(gitops.remotes(lib))
             item(n_remotes >= cfg.backup_remotes_min, f"удалённых копий: {n_remotes} (нужно ≥{cfg.backup_remotes_min})",
-                 "`konveyer backup --добавить-remote <имя> <url|папка>` — папка на внешнем диске подходит (NFR-6, §1.3)")
+                 "`konveyer бэкап --добавить-remote <имя> <url|папка>` — папка на внешнем диске подходит (NFR-6, §1.3)")
     arch_dir = backup_mod.archive_dir(ws, cfg)
     arch_age = backup_mod.archive_age_days(arch_dir)
     if arch_age is None:
         item(None if cfg.backup_dir is None else False, f"архив рабочей области: ещё не делался ({arch_dir})",
-             "`konveyer backup --архив`; backup_dir в конфиг.yaml — архив после каждой приёмки главы (п. 29)")
+             "`konveyer бэкап --архив`; backup_dir в конфиг.yaml — архив после каждой приёмки главы (п. 29)")
     else:
         item(arch_age <= 7, f"архив рабочей области: {arch_age:.1f} дн. назад ({backup_mod.latest_archive(arch_dir)})",
-             "`konveyer backup --архив`")
+             "`konveyer бэкап --архив`")
     if lib.exists():
         from .. import project as project_mod
 
@@ -167,7 +167,7 @@ def doctor() -> None:
          + (f": роли с обучением — {', '.join(training)}" if training else ""),
          "включите режим без обучения у провайдера и отразите его в конфиге (режим_без_обучения) и журнале решений")
     manifest = ws.exports / "индекс.json"
-    item(manifest.exists(), "выгрузки выгрузки/", "выполните `konveyer export`")
+    item(manifest.exists(), "выгрузки выгрузки/", "выполните `konveyer экспорт`")
     from .. import apilog
 
     bad_lines = apilog.corrupt_lines(ws.logs)
@@ -203,7 +203,7 @@ def doctor() -> None:
         ok, note = adapters.probe_model(mc)
         roles = "/".join(labels.get(r, r) for r, m in explicit.items() if (m.provider, m.model) == (mc.provider, mc.model))
         label = f"модель {mc.model} ({roles}): " + (f"есть в API ({note})" if ok else note)
-        item(ok, label, "смените пин в конфиг.yaml через пере-тест (`konveyer retest`, сценарий В, Д-11)" if ok is False else "")
+        item(ok, label, "смените пин в конфиг.yaml через пере-тест (`konveyer пере-тест`, FR-RT-1, Д-19)" if ok is False else "")
     green = regression_mod.is_green(ws)
     if green is None:
         label = (
@@ -212,9 +212,9 @@ def doctor() -> None:
         )
     else:
         label = "регрессия зелёная" if green else "регрессия КРАСНАЯ"
-    item(green, label, "`konveyer regress`" if green is None else "пропущенные флаги блокируют смену конфигурации (FR-R3)")
+    item(green, label, "`konveyer регрессия`" if green is None else "пропущенные флаги блокируют смену конфигурации (FR-R3)")
     n_tests = len(regression_mod.load_tests(ws)) if ws.regression.exists() else 0
-    item(n_tests > 0, f"золотых тестов: {n_tests}", "корпус пуст — регрессия не может быть зелёной; пополните: `konveyer add-golden` (FR-R1)")
+    item(n_tests > 0, f"золотых тестов: {n_tests}", "корпус пуст — регрессия не может быть зелёной; пополните: `konveyer золотой` (FR-R1)")
 
 
 def dashboard() -> Path:

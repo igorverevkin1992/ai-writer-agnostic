@@ -71,7 +71,7 @@ def volume_close(
     if missing:
         secho(
             f"Том {nxt} не открыт: в библиотеке нет его документов — заведите " + "; ".join(missing)
-            + f", затем `konveyer volume open {nxt}`.", fg=colors.YELLOW,
+            + f", затем `konveyer том открыть {nxt}`.", fg=colors.YELLOW,
         )
         return res
     if next_volume is None:
@@ -83,7 +83,7 @@ def volume_close(
         secho(f"Текущий том: {nxt} (главы — {ws.chapters_root(nxt).relative_to(ws.root).as_posix()}/, выгрузки пересобраны).",
               fg=colors.GREEN)
     else:
-        echo(f"Текущий том остался {ws.volume}; переключить позже — `konveyer volume open {nxt}`.")
+        echo(f"Текущий том остался {ws.volume}; переключить позже — `konveyer том открыть {nxt}`.")
     return res
 
 

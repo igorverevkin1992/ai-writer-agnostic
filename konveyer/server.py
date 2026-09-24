@@ -825,7 +825,7 @@ class PanelAPI:
     def _canon_path(self, rel: str, *, for_write: bool = False) -> Path:
         """Путь документа канона по относительному имени. `for_write` — запрет создавать НОВЫЕ файлы
         в `Проза/` и в корне библиотеки (4.9): новая проза попадает в корпус только через приёмку
-        главы (FSM, `konveyer canonize --apply`), новый документ канона автор кладёт файлом на диск;
+        главы (FSM, `konveyer канон --apply`), новый документ канона автор кладёт файлом на диск;
         правка существующих документов из панели — можно."""
         if not rel or not rel.endswith(".md") or ".." in rel.split("/"):
             raise ValueError("документ канона: относительный путь к .md внутри библиотеки")
@@ -876,7 +876,7 @@ class PanelAPI:
     def _canon_change(self, writer, message: str, changed: list[str]) -> canonchange.ChangeResult:
         """Изменение канона из панели — единым конвейером (п. 25) БЕЗ коммита: сессия записи → выгрузки →
         линт (сводка сразу в ответе, без очереди наблюдателя) → состояние «незакоммичено» в /api/state;
-        коммит — отдельным действием автора («Закоммитить канон» / `konveyer canon-commit`).
+        коммит — отдельным действием автора («Закоммитить канон» / `konveyer канон-коммит`).
         Вызывать под `jobs.exclusive()`; подтверждение автор дал диалогом в панели (Д-8)."""
         result = canonchange.canon_change(
             self.ws, self.cfg, self.library, writer, message, commit=False, author_confirmed=True,
@@ -1127,7 +1127,7 @@ def make_handler(api: PanelAPI):
                 if path == "/dashboard":
                     from . import dashboard
 
-                    # в памяти: GET не пишет дашборд.html (4.3); файл пишет `konveyer dashboard`
+                    # в памяти: GET не пишет дашборд.html (4.3); файл пишет `konveyer дашборд`
                     return self._send(200, dashboard.render_dashboard(api.ws).encode("utf-8"), "text/html")
                 return self._static(path)
             except FileNotFoundError as e:

@@ -138,7 +138,7 @@ def has_identity(repo: Path) -> bool:
 
 
 def push(repo: Path, remote: str) -> None:
-    """Отправка текущей ветки в удалённое место (NFR-6, `konveyer backup --push`)."""
+    """Отправка текущей ветки в удалённое место (NFR-6, `konveyer бэкап --push`)."""
     _git(repo, "push", remote, "HEAD")
 
 
@@ -182,7 +182,7 @@ def tag(repo: Path, name: str, sha: str) -> str:
 
 
 def delete_tag(repo: Path, name: str) -> None:
-    """Снять тег (перестановка `том-N` при `konveyer volume close N --заново`)."""
+    """Снять тег (перестановка `том-N` при `konveyer том закрыть N --заново`)."""
     _git(repo, "tag", "-d", name, check=False)
 
 

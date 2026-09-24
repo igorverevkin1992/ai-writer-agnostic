@@ -1,4 +1,4 @@
-"""Тесты конечного автомата главы (10.5, §5.4)."""
+"""Тесты конечного автомата главы (FR-TK-2…4, FR-SC-4)."""
 
 import pytest
 
@@ -27,7 +27,7 @@ def test_авто_повтор_при_браке(ws):
     st = ChapterState(ws, 3)
     st.transition("собрано")
     st.transition("сгенерировано")
-    st.transition("сгенерировано")  # брак → повторная генерация (§5.4)
+    st.transition("сгенерировано")  # брак → повторная генерация (FR-TK-3)
     assert st.bump_retries() == 1
 
 
@@ -62,5 +62,5 @@ def test_зафиксировано_терминально(ws):
 def test_состояние_переживает_перезапуск(ws):
     st = ChapterState(ws, 7)
     st.transition("собрано")
-    st2 = ChapterState(ws, 7)  # Д-5: YAML-файл, без БД
+    st2 = ChapterState(ws, 7)  # Д-3: YAML-файл, без БД
     assert st2.state == "собрано"

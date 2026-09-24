@@ -108,7 +108,7 @@ def current_chapter(n: int | None) -> None:
 
 
 def confirm_or_reject(yes: bool, confirm: Confirm | None, prompt: str, *, abort: bool = False) -> None:
-    """Подтверждение автора (Д-8): `yes` — без вопроса; иначе вопрос через `confirm`; без `confirm`
+    """Подтверждение автора (Д-17): `yes` — без вопроса; иначе вопрос через `confirm`; без `confirm`
     или при отказе — `Rejected` (код 0; с `abort` — «Aborted!», код 1)."""
     if yes:
         return

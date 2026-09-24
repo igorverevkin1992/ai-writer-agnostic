@@ -1,5 +1,5 @@
-"""Этап 4 аудита 2 — цикл автора: правки кодом (п. 19, Р-023), время такта по задачам (п. 23),
-повторный Э2 после правок и варианты A/B (п. 24), точки отмены (cancel.py)."""
+"""Цикл автора: правки кодом (FR-ED-1), время такта по задачам (FR-CT-2),
+повторный Э2 после правок (FR-V2-7) и варианты A/B (FR-WR-2), точки отмены (FR-AD-7)."""
 
 import json
 from datetime import datetime, timedelta, timezone
@@ -88,7 +88,7 @@ def test_apply_edits_кодом_без_модели_и_чистый_дифф(ws,
     assert "применено кодом 2, Писателю 0" in r.output and not called
     st = ChapterState(ws, 1)
     assert st.state == "правки" and st.draft == 2
-    assert st.data.get("итераций_правок", 0) == 0  # бюджет FR-E3 не расходуется без модели
+    assert st.data.get("итераций_правок", 0) == 0  # бюджет FR-ED-1 не расходуется без модели
     assert ws.draft_path(1, 2).read_text(encoding="utf-8") == "Первая фраза. Другая фраза.\n"
     meta = json.loads((ws.chapter_dir(1) / "черновик_2.meta.json").read_text(encoding="utf-8"))
     assert meta["mode"] == "правки (код)" and meta["применено_кодом"] == [1, 2]
@@ -137,7 +137,7 @@ def test_apply_edits_лимит_итераций_не_мешает_правка�
     r = runner.invoke(app, ["apply-edits", "1"])
     assert r.exit_code == 0, r.output
     assert ChapterState(ws, 1).state == "правки"
-    # а свободное указание при исчерпанном бюджете — по-прежнему стоп FR-E3
+    # а свободное указание при исчерпанном бюджете — по-прежнему стоп FR-ED-3
     ChapterState(ws, 1).rollback("на-приёмке")
     st = ChapterState(ws, 1)
     st.data["итераций_правок"] = 3

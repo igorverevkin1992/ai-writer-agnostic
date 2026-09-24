@@ -66,5 +66,5 @@ def apply_onboarding(yes: bool, confirm=None, commit: bool = True) -> apply_mod.
     if res.lint_errors:
         secho(f"  линтер нашёл ошибок: {res.lint_errors} — см. журналы/линтер.md", fg=colors.YELLOW)
     rp = report.save(ws, lib)
-    echo(f"Отчёт готовности: {rp.relative_to(ws.root)}; затем `konveyer doctor`.")
+    echo(f"Отчёт готовности: {rp.relative_to(ws.root)}; затем `konveyer доктор`.")
     return res

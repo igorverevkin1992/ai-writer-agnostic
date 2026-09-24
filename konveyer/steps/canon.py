@@ -93,17 +93,17 @@ def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False,
 
 def snapshot(volume: int | None = None) -> Path:
     """Черновик снапшота тома (реестр 3.5): кто что знает, закладки, хронология.
-    В канон снапшот вносит `konveyer volume close N`. Возвращает путь черновика."""
+    В канон снапшот вносит `konveyer том закрыть N`. Возвращает путь черновика."""
     from .. import snapshot as snapshot_mod
 
     ws, cfg, lib = _ctx()
     volume = volume or ws.volume
     if volume != ws.volume:
-        raise StepError(f"выгрузки — тома {ws.volume}; для среза тома {volume} переключитесь: `konveyer volume open {volume}`.")
+        raise StepError(f"выгрузки — тома {ws.volume}; для среза тома {volume} переключитесь: `konveyer том открыть {volume}`.")
     exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
     path = snapshot_mod.build_snapshot(ws, volume)
     secho(f"Срез тома {volume}: {path}", fg=colors.GREEN)
-    echo("Внесите его в библиотеку правкой канона и `konveyer canon-commit` (FR-K3 соблюдён).")
+    echo("Внесите его в библиотеку правкой канона и `konveyer канон-коммит` (FR-K3 соблюдён).")
     return path
 
 
@@ -145,7 +145,7 @@ def rollback(chapter: int, to: str | None = None, yes: bool = False, confirm: Co
         try:
             exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
         except MarkupError as e:
-            secho(f"⚠ Откат выполнен, но выгрузки не пересчитаны: {e}. Поправьте канон и `konveyer export`.", fg=colors.YELLOW)
+            secho(f"⚠ Откат выполнен, но выгрузки не пересчитаны: {e}. Поправьте канон и `konveyer экспорт`.", fg=colors.YELLOW)
         if to != "принято":
             st.rollback(to)
         secho(f"Откат выполнен: глава {chapter} → «{st.state}», выгрузки и корпус пересчитаны.", fg=colors.GREEN)
@@ -170,7 +170,7 @@ def retest(chapter: int = 1, fix: bool = False) -> Path:
                 else "отчёт регрессии устарел (изменились конфиг.yaml, шаблоны или нормы)"
                 if regression_mod.is_stale(ws) else "регрессия не запускалась"
             )
-            raise StepError(f"фиксация retest запрещена: {why} (FR-R3). Сначала `konveyer regress` с непустым корпусом.")
+            raise StepError(f"фиксация retest запрещена: {why} (FR-R3). Сначала `konveyer регрессия` с непустым корпусом.")
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
         from .. import pins
 
@@ -360,7 +360,7 @@ def library_split(
     for line in plan.lines():
         echo(f"  {line}")
     if show:
-        echo("Ничего не изменено (--показать). Выполнить: `konveyer library-split`" + (" --с-историей" if with_history else "") + ".")
+        echo("Ничего не изменено (--показать). Выполнить: `konveyer библиотека-отделить`" + (" --с-историей" if with_history else "") + ".")
         return
     confirm_or_reject(yes, confirm, "Выполнить переезд? (y)")
     for note in backup_mod.split_library(ws, cfg, plan):
@@ -378,7 +378,7 @@ def backup(
     `add_remote` — второе место хранения (папка на внешнем диске = без облака, §1.3 ТЗ)."""
     ws, cfg, lib = _ctx()
     if not gitops.is_repo(lib):
-        raise StepError("библиотека не под git — инициализируйте репозиторий (`konveyer library-split` — как отдельный).")
+        raise StepError("библиотека не под git — инициализируйте репозиторий (`konveyer библиотека-отделить` — как отдельный).")
     if add_remote:
         name, url = add_remote
         if name in gitops.remotes(lib):
@@ -393,14 +393,14 @@ def backup(
                 echo(f"Создан bare-репозиторий: {target}")
             url = str(target)
         gitops.add_remote(lib, name, url)
-        secho(f"Удалённое место «{name}» добавлено: {url}. Отправка — `konveyer backup --push`.", fg=colors.GREEN)
+        secho(f"Удалённое место «{name}» добавлено: {url}. Отправка — `konveyer бэкап --push`.", fg=colors.GREEN)
     remotes = gitops.remotes(lib)
     echo(f"Удалённых мест: {len(remotes)} ({', '.join(remotes) or 'нет'}); требуется ≥{cfg.backup_remotes_min}.")
     if len(remotes) < cfg.backup_remotes_min:
-        secho("⚠ Добавьте удалённые репозитории/внешние копии (NFR-6): `konveyer backup --добавить-remote <имя> <url|папка>`.",
+        secho("⚠ Добавьте удалённые репозитории/внешние копии (NFR-6): `konveyer бэкап --добавить-remote <имя> <url|папка>`.",
               fg=colors.YELLOW)
     if gitops.dirty(lib):
-        secho("⚠ В библиотеке незакоммиченные изменения (`konveyer canon-commit`).", fg=colors.YELLOW)
+        secho("⚠ В библиотеке незакоммиченные изменения (`konveyer канон-коммит`).", fg=colors.YELLOW)
     age = gitops.last_commit_age_days(lib)
     if age is not None:
         echo(f"Последний коммит: {age:.1f} дн. назад.")
@@ -414,7 +414,7 @@ def backup(
         arch_age = backup_mod.archive_age_days(arch_dir)
         echo(
             f"Архив рабочей области: {arch_age:.1f} дн. назад ({backup_mod.latest_archive(arch_dir)})." if arch_age is not None
-            else f"Архив рабочей области ещё не делался ({arch_dir}): `konveyer backup --архив`."
+            else f"Архив рабочей области ещё не делался ({arch_dir}): `konveyer бэкап --архив`."
         )
     if push:
         if not remotes:

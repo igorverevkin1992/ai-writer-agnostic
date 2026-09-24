@@ -1,4 +1,4 @@
-"""Журнал API-вызовов (§6.3, NFR-5): каждая попытка — строка журналы/api.jsonl (вне git)."""
+"""Журнал API-вызовов (FR-CT-1, FR-WR-5): каждая попытка — строка журналы/api.jsonl (вне git)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 from . import guard
 
 # Текущий том рабочей области (выставляет `steps.common._ctx()`): строки журнала несут «volume», чтобы
-# `konveyer volume status` считал стоимость по главам тома; старые строки без поля — том 1.
+# `konveyer том статус` считал стоимость по главам тома; старые строки без поля — том 1.
 current_volume: int = 1
 
 

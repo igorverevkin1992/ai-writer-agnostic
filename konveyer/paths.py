@@ -58,7 +58,7 @@ class Workspace:
         return self.root / "снапшоты"
 
     def for_volume(self, volume: int) -> "Workspace":
-        """Та же рабочая область, но с другим текущим томом (`konveyer volume close N`, снапшот тома)."""
+        """Та же рабочая область, но с другим текущим томом (`konveyer том закрыть N`, снапшот тома)."""
         return dataclasses.replace(self, volume=int(volume))
 
     def chapters_root(self, volume: int | None = None) -> Path:
