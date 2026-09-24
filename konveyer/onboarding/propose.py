@@ -452,6 +452,10 @@ def set_decision(ws: Workspace, file: str, decision: str) -> Proposal:
     """Решение автора по файлу (FR-ON-12) — записывается в предложение.json."""
     if not (decision in DECISIONS or decision.startswith("тип:")):
         raise ValueError(f"решение «{decision}»: допустимо {', '.join(DECISIONS)} или тип:<имя>")
+    if decision.startswith("тип:"):
+        known = catalog.load_types(ws.root)
+        if decision[4:].strip() not in known:
+            raise ValueError(f"тип «{decision[4:].strip()}» неизвестен: один из {', '.join(sorted(known))}")
     proposals = load(ws)
     pr = next((p for p in proposals if p.файл == file), None)
     if pr is None:

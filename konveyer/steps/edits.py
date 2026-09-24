@@ -32,6 +32,12 @@ def resolve(chapter: int, flag_id: str | None = None, decision: str | None = Non
         raise StepError("решение должно быть «вычеркнуть», «канонизировать» или «отклонить» (с --причина).")
     if decision == "отклонить" and not reason.strip():
         raise StepError("отклонение флага требует причины: --причина «…» (FR-RV-2).")
+    if decision == "канонизировать":
+        from ..canonist import registries
+
+        regs = sorted(registries(ws.root))
+        if registry not in regs:
+            raise StepError(f"канонизация требует целевой реестр: --реестр один из {', '.join(regs)}.")
     flags_by_id = {f.flag_id: f for f in verifier2.load_flags(ws, chapter)}
     if decision == "отклонить" and flag_id not in {r.flag_id for r in resolutions} and flag_id in flags_by_id:
         resolutions.append(review_mod.Resolution(flag_id=flag_id))  # отклонить можно и флаг-нарушение, не только самоволку

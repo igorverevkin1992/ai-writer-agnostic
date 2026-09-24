@@ -304,15 +304,18 @@ def test_diff_check_author_в_командах(ws, library, monkeypatch):
     calls: list[tuple] = []
     monkeypatch.setattr(tact, "diff_check", lambda chapter, author_fix=False: calls.append((chapter, author_fix)))
     api = server.PanelAPI(ws, Config(), library)
-    api.run_command("diff-check-author", 7)
+    api.run_command("diff-check-author", 3)
     deadline = time.time() + 5
     while api.jobs.busy and time.time() < deadline:
         time.sleep(0.05)
-    assert calls == [(7, True)]
-    api.run_command("diff-check", 7)
+    assert calls == [(3, True)]
+    api.run_command("diff-check", 3)
     while api.jobs.busy and time.time() < deadline:
         time.sleep(0.05)
-    assert calls[-1] == (7, False)
+    assert calls[-1] == (3, False)
+    # главы вне плана тома нет — команда для неё не стартует (404 «нет объекта», FR-AP-2)
+    with pytest.raises(FileNotFoundError, match="нет в плане"):
+        api.run_command("diff-check", 7)
 
 
 # ----------------------------------------------------------- 5.3 подсветка пересекающихся цитат

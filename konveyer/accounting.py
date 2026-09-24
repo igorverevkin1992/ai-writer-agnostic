@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import apilog, timing
 from .config import Config, ModelConfig
-from .fsm import all_states
+from .fsm import ChapterState, StatusFileError
 from .paths import Workspace
 
 
@@ -82,7 +82,12 @@ def volume_account(ws: Workspace, volume: int | None = None, chapters_total: int
     volume = ws.volume if volume is None else int(volume)
     acc = VolumeAccount(volume=volume)
     vws = ws.for_volume(volume)
-    for st in all_states(vws):
+    for n, _ in vws.chapter_dirs():
+        try:
+            st = ChapterState(vws, n)
+        except StatusFileError:  # битый состояние.yaml одной главы не должен ронять учёт тома (П-5)
+            acc.chapters[n] = ChapterAccount(chapter=n, state="повреждено")
+            continue
         machine, author = timing.chapter_times(st.data.get("история", []))
         acc.chapters[st.chapter] = ChapterAccount(chapter=st.chapter, machine_s=machine, author_s=author, state=st.state)
     for row in _rows(ws, volume):

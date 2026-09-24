@@ -48,7 +48,28 @@ COMMANDS = {
     "snapshot", "calibrate", "doctor",
 }
 
-# допустимые уровни кругов истории (Р-020) и виды промптов ручного режима
+# команды, которым нужен номер главы: без него — 400 до старта задачи, а не задача со статусом «ошибка»
+CHAPTER_COMMANDS = {
+    "run", "compile", "write", "verify1", "verify2", "review", "apply-edits", "diff-check", "diff-check-author",
+    "canonize", "canonize-apply",
+}
+# типы параметров команд ({команда: {параметр: тип}}); прочие ключи тела отбрасываются
+PARAM_TYPES: dict[str, dict[str, type]] = {
+    "story-circles": {"scope": str, "chapter": int, "redo": bool},
+    "lint-llm": {"files": list},
+    "canon-commit": {"message": str},
+    "import": {"path": str},
+    "onboarding": {"model": bool},
+    "onboarding-apply": {"no_commit": bool},
+    "accounting": {"volume": int},
+    "retest": {"chapter": int, "fix": bool},
+    "volume-close": {"volume": int, "again": bool},
+    "volume-open": {"volume": int},
+    "snapshot": {"volume": int},
+    "calibrate": {"approve": bool},
+}
+
+# допустимые уровни каркасов драматургии и виды промптов ручного режима
 CIRCLE_SCOPES = ("книга", "акт", "глава")
 PROMPT_KINDS = ("verify2", "edits")
 
@@ -92,11 +113,12 @@ class JobRunner:
     операция не ждёт, а сразу отклоняется («дождитесь завершения»).
     """
 
-    def __init__(self, on_idle: Callable[[], None] | None = None) -> None:
+    def __init__(self, on_idle: Callable[[], None] | None = None, sanitize: Callable[[str], str] | None = None) -> None:
         self._lock = threading.Lock()      # защита job['output']
         self._gate = threading.Lock()      # одна операция с захватом вывода
         self.job: dict | None = None
         self.on_idle = on_idle             # после любой задачи/синхронной операции (сброс кэшей панели, 26б)
+        self.sanitize = sanitize or (lambda text: text)  # вывод задачи без абсолютных путей машины автора (FR-PN-6)
 
     def _notify_idle(self) -> None:
         if self.on_idle is not None:
@@ -205,13 +227,17 @@ class JobRunner:
                 return None
             out = job["output"]
             summary = {k: v for k, v in job.items() if k != "output"}
+        out = self.sanitize(out)  # длина и хвост — по тексту, который видит панель
         summary["output_tail"] = out[-OUTPUT_TAIL:]
         summary["output_len"] = len(out)
         return summary
 
     def full(self) -> dict:
         with self._lock:
-            return dict(self.job) if self.job else {}
+            job = dict(self.job) if self.job else {}
+        if "output" in job:
+            job["output"] = self.sanitize(job["output"])
+        return job
 
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
@@ -254,7 +280,7 @@ class PanelAPI:
         self.ws = ws
         self.cfg = cfg
         self.library = library
-        self.jobs = JobRunner(on_idle=self.invalidate_caches)
+        self.jobs = JobRunner(on_idle=self.invalidate_caches, sanitize=lambda text: _sanitize(text, self))
         # кэш состояния панели (26б): сводки глав по mtime/size их файлов, регрессия по отчёту и отпечатку
         # шаблонов/норм, незакоммиченные файлы канона — по событиям и с коротким сроком годности
         self._cache_lock = threading.Lock()
@@ -408,6 +434,8 @@ class PanelAPI:
             "regression_green": self._regression_green(),
             "models": {"writer": self.cfg.writer.model, "verifier2": self.cfg.verifier2.model,
                        **{r: m.model for r, m in self.cfg.roles().items()}},
+            # провайдер по ролям — из конфига (панель не называет провайдера сама, П-1)
+            "providers": {r: m.provider for r, m in self.cfg.roles().items()},
             "job": self.jobs.summary(),
             "lint": self.lint_summary(),
             "author_today_min": round(author_today_s / 60, 1),
@@ -419,7 +447,30 @@ class PanelAPI:
         """«Сегодня: N мин автора» (5.7) — та же арифметика, что у timing.today_author_minutes, по кэшу глав."""
         return self._chapters_cached()[1]
 
+    def _plan_chapters(self) -> set[int] | None:
+        """Номера глав плана тома (briefs.json); None — плана нет (выгрузки не собраны): ограничения нет (П-5)."""
+        try:
+            return {b.chapter for b in exporter.load_briefs(self.ws.exports)}
+        except Exception:  # noqa: BLE001 — нет выгрузок или устаревшая схема
+            return None
+
+    def _check_chapter(self, n: int) -> None:
+        """Глава есть в плане тома или у неё есть папка; иначе 404 «нет объекта» (FR-AP-2), а не карточка
+        «не-начато» для любого числа и не папка главы вне плана."""
+        if self.ws.chapter_dir(n).exists():
+            return
+        plan = self._plan_chapters()
+        if plan is not None and n not in plan:
+            raise FileNotFoundError(f"главы {n} нет в плане тома {self.ws.volume}")
+
+    def _draft_text(self, n: int, k: int) -> str:
+        path = self.ws.draft_path(n, k)
+        if not path.exists():
+            raise FileNotFoundError(f"нет черновика {k} главы {n}")
+        return path.read_text(encoding="utf-8")
+
     def chapter(self, n: int) -> dict:
+        self._check_chapter(n)
         st = ChapterState(self.ws, n)
         chdir = self.ws.chapter_dir(n)
 
@@ -440,6 +491,8 @@ class PanelAPI:
         canon_batch = chdir / "пакет_канона.md"
         from .steps.common import NEXT_STEP
 
+        edits_md = edits_md_path.read_text(encoding="utf-8") if edits_md_path.exists() else None
+        batch_md = canon_batch.read_text(encoding="utf-8") if canon_batch.exists() else None
         return {
             "chapter": n,
             "state": st.state,
@@ -455,22 +508,28 @@ class PanelAPI:
             "drafts": sorted(
                 int(m.group(1)) for p in chdir.glob("черновик_*.md") if (m := re.match(r"черновик_(\d+)\.md", p.name))
             ) if chdir.exists() else [],
-            "edits_md": edits_md_path.read_text(encoding="utf-8") if edits_md_path.exists() else None,
+            "edits_md": edits_md,
+            # версии правки.md и пакета — оптимистичная блокировка, как у документов канона (FR-PN-4)
+            "edits_version": self._version(edits_md) if edits_md is not None else None,
             "edits_parsed": edits_parsed,
-            "canon_batch": canon_batch.read_text(encoding="utf-8") if canon_batch.exists() else None,
+            "canon_batch": batch_md,
+            "batch_version": self._version(batch_md) if batch_md is not None else None,
             "author_min": round(author_s / 60, 1),
             "machine_min": round(machine_s / 60, 1),
             "next": NEXT_STEP.get(st.state, "").format(n=n),
+            "registries": self.registries(),
         }
 
     def draft(self, n: int, k: int) -> dict:
-        return {"chapter": n, "draft": k, "text": self.ws.draft_path(n, k).read_text(encoding="utf-8")}
+        self._check_chapter(n)
+        return {"chapter": n, "draft": k, "text": self._draft_text(n, k)}
 
     def diff(self, n: int, k1: int, k2: int) -> dict:
         import difflib
 
-        a = self.ws.draft_path(n, k1).read_text(encoding="utf-8").splitlines()
-        b = self.ws.draft_path(n, k2).read_text(encoding="utf-8").splitlines()
+        self._check_chapter(n)
+        a = self._draft_text(n, k1).splitlines()
+        b = self._draft_text(n, k2).splitlines()
         return {"lines": list(difflib.unified_diff(a, b, f"черновик_{k1}", f"черновик_{k2}", lineterm="", n=2))}
 
     def api_log(self, n: int = 30) -> list[dict]:
@@ -480,6 +539,7 @@ class PanelAPI:
 
     def window(self, n: int) -> dict:
         """Окно контекста главы + флаг превышения лимита (FR-C5)."""
+        self._check_chapter(n)
         path = self.ws.window_path(n)
         flag = self.ws.chapter_dir(n) / "window_size_флаг.md"
         return {
@@ -493,6 +553,7 @@ class PanelAPI:
         Возвращает текст, имя файла ответа и имя файла промпта — записать его
         на диск можно отдельным POST (`save_prompt`).
         """
+        self._check_chapter(n)
         if kind == "verify2":
             system, user = verifier2.build_prompt(self.ws, n, ChapterState(self.ws, n).draft)
             text = f"<!-- system -->\n{system}\n\n<!-- user -->\n{user}\n"
@@ -542,13 +603,87 @@ class PanelAPI:
             "предложения": [propose.asdict(p) for p in propose.load(self.ws)],
             "отчёт": report.read_text(encoding="utf-8") if report.exists() else "",
             "решения": list(propose.DECISIONS),
+            # полный каталог типов — «выбрать другой тип из списка» (FR-ON-12), а не только гипотезы машины
+            "типы": self.types()["типы"],
+        }
+
+    def types(self) -> dict:
+        """Каталог типов документов (движок + типы проекта) — для выбора типа в онбординге и вида «Проект»."""
+        from . import catalog
+
+        return {"типы": [{"имя": t.name, "назначение": t.purpose, "множественность": t.multiplicity,
+                          "имя_по_умолчанию": t.default_name, "для_такта": t.required_for_tact, "источник": t.source,
+                          "питает": list(t.feeds)} for t in sorted(catalog.load_types(self.ws.root).values(), key=lambda t: t.name)]}
+
+    def metrics(self) -> dict:
+        """Реестр метрик Э1 (FR-V1-1): что считает каждая норма — для вида «Качество»."""
+        from . import metrics as metrics_mod
+
+        return {"метрики": [{"id": m.id, "проверка": m.check_id, "описание": m.description, "единица": m.unit,
+                             "область": m.scope, "вид": m.kind, "параметры": list(m.params)} for m in metrics_mod.REGISTRY.values()]}
+
+    def quality(self) -> dict:
+        """Вид «Качество» (FR-LC-4, этап 8): нормы стиля из выгрузок, отчёт последней калибровки, регрессия."""
+        from . import metrics as metrics_mod, regression as regression_mod
+
+        try:
+            norms = exporter.load_norms(self.ws.exports)
+        except Exception:  # noqa: BLE001 — нет выгрузок: нормы неизвестны, не ошибка (П-5)
+            norms = {}
+        report = self.ws.logs / "калибровка.md"
+        return {
+            "нормы": [{"id": nid, "коридор": metrics_mod.corridor(n), "описание": (metrics_mod.REGISTRY[nid].description
+                                                                                 if nid in metrics_mod.REGISTRY else "⚠ неизвестная метрика"),
+                       **n.model_dump()} for nid, n in sorted(norms.items())],
+            "калибровка": report.read_text(encoding="utf-8") if report.exists() else "",
+            "регрессия": regression_mod.is_green(self.ws),
+            "пере_тест": sorted(p.name for p in (self.ws.root / "пере-тест").iterdir()) if (self.ws.root / "пере-тест").is_dir() else [],
+        }
+
+    def add_golden(self, test_id: str, fragment: str, expect: list[str], focal: str = "", year: int | None = None,
+                   echelon: str = "Э1") -> dict:
+        """Золотой тест из ошибки, пойманной автором (FR-R1) — паритет с `konveyer золотой` (FR-PN-7)."""
+        from . import regression as regression_mod
+        from .schemas import GoldenTest
+
+        if not test_id.strip() or not re.fullmatch(r"[\w.\-]+", test_id.strip()):
+            raise ValueError("id теста: буквы, цифры, точка, дефис, подчёркивание")
+        if not fragment.strip():
+            raise ValueError("фрагмент теста пуст")
+        if echelon not in ("Э1", "Э2"):
+            raise ValueError("эшелон: Э1 или Э2")
+        test = GoldenTest(test_id=test_id.strip(), fragment=fragment, context_slice={"focal": focal, "year": year},
+                          expected_flags=[e for e in expect if e.strip()], echelon=echelon)  # type: ignore[arg-type]
+        with self.jobs.exclusive():
+            path = regression_mod.add_test(self.ws, test)
+        self.invalidate_caches()
+        return {"ok": True, "path": path.relative_to(self.ws.root).as_posix()}
+
+    def volume(self) -> dict:
+        """Вид «Том» (FR-LC-4, этап 11): сводка текущего тома и тома плана — без пересборки выгрузок (GET не пишет)."""
+        from . import volume as volume_mod
+
+        stats = volume_mod.volume_stats(self.ws, self.library, self.ws.volume)
+        try:
+            volumes = [v.model_dump() for v in exporter.load_volumes(self.ws.exports)]
+        except Exception:  # noqa: BLE001 — плана томов нет: не ошибка (П-5)
+            volumes = []
+        return {
+            "том": stats.volume, "глав_в_плане": stats.chapters_total, "зафиксировано": stats.fixed,
+            "в_работе": {str(k): v for k, v in sorted(stats.in_work.items())}, "слов": stats.words_total,
+            "метрики": stats.total_metrics, "стоимость": stats.cost, "вызовов": stats.calls,
+            "нет_документов": stats.missing_docs, "тома": volumes,
+            "снапшоты": sorted(p.name for p in (self.ws.root / "снапшоты").glob("*.md")) if (self.ws.root / "снапшоты").is_dir() else [],
         }
 
     def onboarding_decision(self, file: str, decision: str) -> dict:
         from .onboarding import propose
 
         with self.jobs.exclusive():
-            pr = propose.set_decision(self.ws, file, decision)
+            try:
+                pr = propose.set_decision(self.ws, file, decision)
+            except KeyError as e:  # устаревший вид после повторного онбординга — «нет объекта», не 500
+                raise FileNotFoundError(str(e).strip("'")) from None
         return {"ok": True, "файл": pr.файл, "решение": pr.решение, "тип": pr.тип}
 
     def journals(self) -> dict:
@@ -593,21 +728,40 @@ class PanelAPI:
             data = self.prompt(n, kind)
             path = self.ws.chapter_dir(n) / data["file"]
             guard.write_text(path, data["text"])
-        return {**data, "saved": str(path)}
+        return {**data, "saved": path.relative_to(self.ws.root).as_posix()}
 
-    def save_edits(self, n: int, text: str) -> dict:
+    def _check_version(self, path: Path, version: str | None) -> None:
+        """Оптимистичная блокировка файла главы (FR-PN-4): `version` — хэш текста, который автор открыл;
+        расхождение с диском → 409, без версии — осознанная перезапись."""
+        if version is None:
+            return
+        current = self._version(path.read_text(encoding="utf-8")) if path.exists() else None
+        if current != version:
+            raise VersionConflict(f"{path.name} изменён на диске после открытия — перечитайте, чтобы не затереть чужую правку")
+
+    def save_edits(self, n: int, text: str, version: str | None = None) -> dict:
+        """правки.md: сначала разбор в памяти (ошибка формата → 400, файл на диске не тронут), затем запись
+        правки.md и правки.jsonl вместе — артефакты главы не расходятся (FR-E2)."""
         from . import guard
 
+        self._check_chapter(n)
+        path = self.ws.chapter_dir(n) / "правки.md"
+        edits = review.parse_edits_text(text, n, path)
         with self.jobs.exclusive():
-            guard.write_text(self.ws.chapter_dir(n) / "правки.md", text)
-            edits = review.parse_edits_md(self.ws, n)
-        return {"parsed": len(edits)}
+            self._check_version(path, version)
+            guard.write_text(path, text)
+            review.save_edits(self.ws, n, edits)
+        return {"parsed": len(edits), "version": self._version(text)}
 
-    @staticmethod
-    def _check_decision(decision: str, registry: str | None) -> None:
+    def registries(self) -> list[dict]:
+        """Реестры, принимающие строки Канониста (типы проекта включительно): панель заполняет ими выбор
+        целевого реестра, а не зашитым списком (П-1)."""
         from .canonist import registries
 
-        regs = registries()
+        return [{"name": name, "purpose": spec.get("purpose", "")} for name, spec in sorted(registries(self.ws.root).items())]
+
+    def _check_decision(self, decision: str, registry: str | None) -> None:
+        regs = [r["name"] for r in self.registries()]
         if decision not in ("вычеркнуть", "канонизировать", "отклонить"):
             raise ValueError("решение: «вычеркнуть», «канонизировать» или «отклонить»")
         if decision == "канонизировать" and registry not in regs:
@@ -620,6 +774,7 @@ class PanelAPI:
         r.reason = reason if decision == "отклонить" else ""
 
     def resolve(self, n: int, flag_id: str, decision: str, registry: str | None, reason: str = "") -> dict:
+        self._check_chapter(n)
         self._check_decision(decision, registry)
         if decision == "отклонить" and not reason.strip():
             raise ValueError("отклонение флага требует причины (FR-RV-2)")
@@ -638,8 +793,12 @@ class PanelAPI:
         raise ValueError(f"флаг {flag_id} не найден")
 
     def resolve_all(self, n: int, decision: str, registry: str | None) -> dict:
-        """Одно решение для всех самоволок без решения (5.6, «Вычеркнуть все»); уже решённые не трогаются."""
+        """Одно решение для всех самоволок без решения (5.6, «Вычеркнуть все»); уже решённые не трогаются.
+        «Отклонить» скопом невозможно: отклонение — по одному флагу и с причиной (FR-RV-2)."""
+        self._check_chapter(n)
         self._check_decision(decision, registry)
+        if decision == "отклонить":
+            raise ValueError("отклонить все разом нельзя: отклонение — по одному флагу, с причиной (FR-RV-2)")
         with self.jobs.exclusive():
             resolutions = review.load_resolutions(self.ws, n)
             todo = [r for r in resolutions if r.decision is None]
@@ -649,12 +808,15 @@ class PanelAPI:
                 review.save_resolutions(self.ws, n, resolutions)
         return {"ok": True, "resolved": len(todo), "flag_ids": [r.flag_id for r in todo]}
 
-    def save_canon_batch(self, n: int, text: str) -> dict:
+    def save_canon_batch(self, n: int, text: str, version: str | None = None) -> dict:
         from . import guard
 
+        self._check_chapter(n)
+        path = self.ws.chapter_dir(n) / "пакет_канона.md"
         with self.jobs.exclusive():
-            guard.write_text(self.ws.chapter_dir(n) / "пакет_канона.md", text)
-        return {"ok": True}
+            self._check_version(path, version)
+            guard.write_text(path, text)
+        return {"ok": True, "version": self._version(text)}
 
     def manual_draft(self, n: int, text: str) -> dict:
         """Ручной режим (NFR-3): вставленный ответ Писателя → следующий черновик.
@@ -668,6 +830,7 @@ class PanelAPI:
             raise ValueError("пустой текст черновика")
         from . import guard
 
+        self._check_chapter(n)
         with self.jobs.exclusive():
             st = ChapterState(self.ws, n)
             if st.state in ("собрано", "сгенерировано"):
@@ -679,10 +842,11 @@ class PanelAPI:
             k = st.draft + 1
             guard.write_text(self.ws.draft_path(n, k), text)
             output = _captured(register, "черновик не принят")
-        return {"ok": True, "draft": k, "output": output}
+        return {"ok": True, "draft": k, "output": _sanitize(output, self)}
 
     def manual_flags(self, n: int, text: str) -> dict:
         """Ручной режим Э2: вставленный ответ Верификатора-2 → флаги.json + verify2 --manual."""
+        self._check_chapter(n)
         flags = verifier2.parse_flags(text)  # понимает JSON в прозе/```-блоке
         with self.jobs.exclusive():
             st = ChapterState(self.ws, n)
@@ -694,14 +858,16 @@ class PanelAPI:
 
     def accept(self, n: int) -> dict:
         """Приёмка: подтверждение автор дал кнопкой + диалогом в панели (Д-8)."""
+        self._check_chapter(n)
         with self.jobs.exclusive():
             output = _captured(lambda: _job(tact.accept, n, yes=True), "приёмка отклонена")
-        return {"ok": True, "output": output}
+        return {"ok": True, "output": _sanitize(output, self)}
 
     def rollback(self, n: int, to: str | None) -> dict:
+        self._check_chapter(n)
         with self.jobs.exclusive():
             output = _captured(lambda: _job(canon.rollback, n, to=to, yes=True), "откат отклонён")
-        return {"ok": True, "output": output}
+        return {"ok": True, "output": _sanitize(output, self)}
 
     def circles(self) -> dict:
         from . import circles as circles_mod
@@ -718,10 +884,15 @@ class PanelAPI:
             "acts": [a.model_dump() for a in circles_mod.act_list(self.ws)],
             "parts": parts,
             "prompts": sorted(p.name for p in prompts_dir.glob("*.md")) if prompts_dir.exists() else [],
+            # документ канона, в который вносятся каркасы текущего тома — из каталога типов, не из текста панели (П-1)
+            "canon_doc": circles_mod.canon_doc_name(self.ws.volume, self.ws.root),
+            "volume": self.ws.volume,
         }
 
     def circle_prompt(self, stem: str) -> dict:
         path = self.ws.root / "драматургия" / "промпты" / f"{stem}.md"
+        if not path.exists():
+            raise FileNotFoundError(f"нет промпта каркаса «{stem}» в драматургия/промпты/")
         return {"text": path.read_text(encoding="utf-8")}
 
     def manual_circle(self, scope: str, key, text: str) -> dict:
@@ -739,7 +910,7 @@ class PanelAPI:
             raise ValueError("пустой ответ модели")
         with self.jobs.exclusive():
             path = circles_mod.accept_manual(self.ws, scope, key, text)
-        return {"ok": True, "path": str(path)}
+        return {"ok": True, "path": path.relative_to(self.ws.root).as_posix()}
 
     # ------------------------------------------------------- канон и линтер
 
@@ -800,6 +971,15 @@ class PanelAPI:
         self._lint_stop.set()
         self._lint_wake.set()
 
+    def close(self, timeout: float = 3.0) -> None:
+        """Остановка фоновых потоков (наблюдатель канона, рабочий поток линтера) — при закрытии сервера;
+        иначе они жили бы до конца процесса и копились при повторных запусках (тесты, панель в IDE)."""
+        self.watcher.stop()
+        self.stop_lint_worker()
+        for t in (self.watcher._thread, self._lint_thread):
+            if t is not None and t.is_alive() and t is not threading.current_thread():
+                t.join(timeout)
+
     def run_lint_now(self) -> None:
         """Совместимость: синхронная перепроверка через очередь (ждём результата)."""
         self.request_lint(wait=30.0)
@@ -816,6 +996,9 @@ class PanelAPI:
             "changed": self.lint_changed,
             "running": self.lint_running,
             "pending": self.lint_pending,
+            # сколько документов проверит модельный слой (`lint-llm` без файлов) — панель не считает это сама
+            "llm_docs": len(lint_mod.resolve_library_files(self.library, None)),
+            "llm_provider": self.cfg.role("линтер").provider,
         }
 
     def lint_summary(self) -> dict | None:
@@ -833,17 +1016,31 @@ class PanelAPI:
         path = (lib / rel).resolve()
         if lib not in path.parents:
             raise ValueError("путь вне библиотеки")
-        if for_write and not path.exists() and path.parent in (lib, lib / "Проза"):
-            raise ValueError(
-                f"новый файл «{rel}» из панели не создаётся: проза попадает в библиотеку только через приёмку "
-                "главы (`canonize --apply`), новый документ канона — файлом на диске; здесь правятся существующие."
-            )
+        if for_write and not path.exists():
+            # папка прозы — из манифеста проекта (тип «проза»), не зашитое имя (П-1); любая глубина
+            prose = exporter.prose_folder(self.library, self.ws.root).resolve()
+            if path.parent == lib or path == prose or prose in path.parents:
+                raise ValueError(
+                    f"новый файл «{rel}» из панели не создаётся: проза попадает в библиотеку только через приёмку "
+                    "главы (`canonize --apply`), новый документ канона — файлом на диске; здесь правятся существующие."
+                )
+            if not path.parent.is_dir():
+                raise ValueError(f"новый файл «{rel}» из панели не создаётся: папки для него в библиотеке нет")
         return path
 
     def canon_docs(self) -> dict:
+        """Документы библиотеки: только настоящие файлы внутри неё — символическая ссылка наружу или битая
+        в списке не показывается (её всё равно нельзя открыть, FR-SC-7)."""
+        lib = self.library.resolve()
         docs = []
         for p in sorted(self.library.rglob("*.md")):
-            st = p.stat()
+            try:
+                real = p.resolve()
+                if lib not in real.parents or not real.is_file():
+                    continue
+                st = p.stat()
+            except OSError:
+                continue
             docs.append({"path": str(p.relative_to(self.library)).replace("\\", "/"), "name": p.name,
                          "mtime": st.st_mtime_ns, "size": st.st_size})
         return {"docs": docs}
@@ -877,16 +1074,74 @@ class PanelAPI:
         """Изменение канона из панели — единым конвейером (п. 25) БЕЗ коммита: сессия записи → выгрузки →
         линт (сводка сразу в ответе, без очереди наблюдателя) → состояние «незакоммичено» в /api/state;
         коммит — отдельным действием автора («Закоммитить канон» / `konveyer canon-commit`).
-        Вызывать под `jobs.exclusive()`; подтверждение автор дал диалогом в панели (Д-8)."""
-        result = canonchange.canon_change(
-            self.ws, self.cfg, self.library, writer, message, commit=False, author_confirmed=True,
-        )
+        Вызывать под `jobs.exclusive()`; подтверждение автор дал диалогом в панели (Д-8).
+
+        Ошибка данных (структура документа не распознана экспортом) не должна менять канон (400 по FR-AP-2):
+        если библиотека не под чистым git и `canon_change` не откатил запись сам, изменённые файлы
+        возвращаются к прежнему содержимому тем же единственным путём записи (П-3)."""
+        before = {rel: self._read_or_none(rel) for rel in changed}
+        try:
+            result = canonchange.canon_change(
+                self.ws, self.cfg, self.library, writer, message, commit=False, author_confirmed=True,
+            )
+        except Exception:
+            self._restore(before)
+            self.watcher._snapshot = self.watcher._scan()
+            self.invalidate_caches()
+            raise
         self.watcher._snapshot = self.watcher._scan()  # своя запись — не «внешнее» изменение
         with self._lint_lock:
             self.lint_report = result.lint
             self.lint_changed = changed
         self.invalidate_caches()
         return result
+
+    def _read_or_none(self, rel: str) -> str | None:
+        path = self.library / rel
+        return path.read_text(encoding="utf-8") if path.is_file() else None
+
+    def _restore(self, before: dict[str, str | None]) -> None:
+        """Возврат файлов к содержимому до неудавшегося изменения — через `canon_change` (П-3), без коммита."""
+        stale = {rel: old for rel, old in before.items() if old is not None and self._read_or_none(rel) != old}
+        if not stale:
+            return
+
+        def writer() -> None:
+            for rel, old in stale.items():
+                guard.write_text(self.library / rel, old)
+
+        with contextlib.suppress(Exception):  # прежнее содержимое разбиралось — экспорт пройдёт; иначе файл всё равно возвращён
+            canonchange.canon_change(self.ws, self.cfg, self.library, writer, "возврат после ошибки правки из панели",
+                                     commit=False, author_confirmed=True)
+
+    # ------------------------------------------------------- история документа (FR-PN-2 «Канон»: история)
+
+    def canon_history(self, rel: str, limit: int = 30) -> dict:
+        """История документа канона: коммиты git по файлу (дата, автор, сообщение) и состояние «не закоммичено».
+        Библиотека не под git — пустая история с пометкой (П-5)."""
+        path = self._canon_path(rel)
+        if not path.exists():
+            raise FileNotFoundError(f"нет документа {rel}")
+        if not gitops.is_repo(self.library):
+            return {"path": rel, "git": False, "commits": [], "uncommitted": False}
+        commits = gitops.file_log(self.library, self._git_rel(rel), limit=limit)
+        return {"path": rel, "git": True, "commits": commits, "uncommitted": self._git_rel(rel) in self.canon_status()}
+
+    def canon_history_diff(self, rel: str, sha: str) -> dict:
+        """Изменения документа в одном коммите (`git show`), строки unified diff."""
+        path = self._canon_path(rel)
+        if not path.exists():
+            raise FileNotFoundError(f"нет документа {rel}")
+        if not re.fullmatch(r"[0-9a-fA-F]{4,40}", sha):
+            raise ValueError("коммит: шестнадцатеричный идентификатор git")
+        if not gitops.is_repo(self.library):
+            raise ValueError("библиотека не под git — истории нет")
+        return {"path": rel, "sha": sha, "lines": gitops.file_diff(self.library, sha, self._git_rel(rel))}
+
+    def _git_rel(self, rel: str) -> str:
+        """Путь документа относительно корня репозитория (библиотека может быть подпапкой репозитория)."""
+        top = gitops.toplevel(self.library)
+        return (self.library.resolve() / rel).relative_to(top.resolve()).as_posix() if top else rel
 
     def apply_lint_fix(self, fix_data: dict) -> dict:
         """Применяет ровно то исправление, которое автор видел и подтвердил (file/line/old/new),
@@ -903,13 +1158,50 @@ class PanelAPI:
         return {"applied": fix.model_dump(), "lint": self.lint_summary(),
                 "canon_uncommitted": result.uncommitted, "canon_uncommitted_files": result.dirty_files}
 
+    def _check_params(self, cmd: str, params: dict | None) -> dict:
+        """Параметры команды по таблице PARAM_TYPES: неверный тип — 400 по-русски (не «invalid literal» в задаче)."""
+        if params is None:
+            params = {}
+        if not isinstance(params, dict):
+            raise ValueError("params: JSON-объект с параметрами команды")
+        out: dict = {}
+        for name, typ in PARAM_TYPES.get(cmd, {}).items():
+            v = params.get(name)
+            if v is None:
+                continue
+            if typ is int and (isinstance(v, bool) or not isinstance(v, int)):
+                raise ValueError(f"параметр {name}: целое число")
+            if typ is str and not isinstance(v, str):
+                raise ValueError(f"параметр {name}: строка")
+            if typ is bool and not isinstance(v, bool):
+                raise ValueError(f"параметр {name}: true или false")
+            if typ is list and not (isinstance(v, list) and all(isinstance(x, str) for x in v)):
+                raise ValueError(f"параметр {name}: список строк")
+            out[name] = v
+        if "volume" in out and out["volume"] < 1:
+            raise ValueError("параметр volume: номер тома ≥ 1")
+        if "chapter" in out:
+            self._check_chapter(out["chapter"])
+        if cmd == "import":
+            from .onboarding import importer
+
+            if not out.get("path", "").strip():
+                raise ValueError("импорт: укажите папку, файл или .zip с материалами (path)")
+            importer.check_source(self.ws, Path(out["path"]))
+        return out
+
     def run_command(self, cmd: str, chapter: int | None, params: dict | None = None) -> dict:
-        """Долгие шаги такта — фоновой задачей с захватом вывода."""
-        if cmd not in COMMANDS:
+        """Долгие шаги такта — фоновой задачей с захватом вывода. Обязательность главы и типы параметров
+        проверяются ДО старта задачи: ошибка ввода — 400 по-русски, а не задача со статусом «ошибка» (FR-AP-2)."""
+        if not isinstance(cmd, str) or cmd not in COMMANDS:
             raise ValueError(f"неизвестная команда: {cmd}")
         if chapter is not None and (isinstance(chapter, bool) or not isinstance(chapter, int)):
             raise ValueError("номер главы: целое число")
-        params = params if isinstance(params, dict) else {}
+        if cmd in CHAPTER_COMMANDS and chapter is None:
+            raise ValueError(f"команда {cmd} требует номер главы")
+        if chapter is not None:
+            self._check_chapter(chapter)
+        params = self._check_params(cmd, params)
         # функции ядра (konveyer/steps) вызываются напрямую, как обычные; их исключения переводит `_run`
         fns = {
             "story-circles": lambda: _job(
@@ -937,17 +1229,17 @@ class PanelAPI:
             "lint": lambda: _job(canon.lint, llm=False, files=[], watch=False, max_calls=40),
             "lint-llm": lambda: _job(canon.lint, llm=True, files=list(params.get("files") or []), watch=False, max_calls=40),
             # подтверждение автор дал диалогом в панели (Д-8); сообщение — из поля панели
-            "canon-commit": lambda: _job(canon.canon_commit, message=str(params.get("message") or "правка канона из панели"), yes=True),
+            "canon-commit": lambda: _job(canon.canon_commit, message=params.get("message") or "правка канона из панели", yes=True),
             # этап 6 (FR-PN-2/7): онбординг и обзорные команды теми же функциями ядра, что и CLI
-            "import": lambda: _job(onboarding_steps.import_materials, str(params.get("path") or "")),
+            "import": lambda: _job(onboarding_steps.import_materials, params["path"]),
             "onboarding": lambda: _job(onboarding_steps.propose_types, use_model=bool(params.get("model")), decisions=None),
             "onboarding-apply": lambda: _job(onboarding_steps.apply_onboarding, True, None, not bool(params.get("no_commit"))),
             "accounting": lambda: _job(overview.accounting, params.get("volume")),
-            "retest": lambda: _job(canon.retest, chapter=int(params.get("chapter") or 1), fix=bool(params.get("fix"))),
+            "retest": lambda: _job(canon.retest, chapter=params.get("chapter") or 1, fix=bool(params.get("fix"))),
             "backup-archive": lambda: _job(canon.backup, archive=True),
-            "volume-close": lambda: _job(volume_steps.volume_close, int(params.get("volume") or self.ws.volume), yes=True,
+            "volume-close": lambda: _job(volume_steps.volume_close, params.get("volume") or self.ws.volume, yes=True,
                                          again=bool(params.get("again")), next_volume=False),
-            "volume-open": lambda: _job(volume_steps.volume_open, int(params.get("volume") or self.ws.volume + 1)),
+            "volume-open": lambda: _job(volume_steps.volume_open, params.get("volume") or self.ws.volume + 1),
             "snapshot": lambda: _job(canon.snapshot, params.get("volume")),
             "calibrate": lambda: _job(quality.norms, calibrate_files=None, approve=bool(params.get("approve")), yes=True, from_corpus=True),
             "doctor": lambda: _job(overview.doctor),
@@ -1013,8 +1305,21 @@ def _log_exception(api: PanelAPI, method: str, path: str) -> None:
         pass
 
 
+def _str_field(body: dict, name: str, default: str | None = "") -> str | None:
+    """Строковое поле тела POST: JSON null/число/объект — 400 «поле … должно быть строкой», а не «None» в файле."""
+    v = body.get(name)
+    if v is None:
+        return default
+    if not isinstance(v, str):
+        raise ValueError(f"поле {name} должно быть строкой")
+    return v
+
+
 def make_handler(api: PanelAPI):
     class Handler(BaseHTTPRequestHandler):
+        server_version = "konveyer-panel"  # без версии Python в заголовке Server
+        sys_version = ""
+
         def log_message(self, fmt, *args):  # тихий сервер
             pass
 
@@ -1033,6 +1338,16 @@ def make_handler(api: PanelAPI):
 
         def _error(self, message: str, code: int = 400) -> None:
             self._json({"error": _sanitize(message, api)}, code)
+
+        def send_error(self, code, message=None, explain=None):  # noqa: D102 — ошибки самого http.server: JSON по-русски, не HTML
+            self.close_connection = True
+            text = {400: "некорректный запрос", 404: "нет такого пути", 413: "запрос слишком велик",
+                    414: "слишком длинный адрес", 431: "слишком большие заголовки", 501: "метод не поддерживается"}.get(
+                int(code), "ошибка запроса")
+            try:
+                self._json({"error": text}, int(code))
+            except OSError:
+                pass
 
         def _internal(self, e: Exception) -> None:
             """500: автору — короткое сообщение, трейсбек — в журналы/панель.log (не в браузер)."""
@@ -1054,6 +1369,18 @@ def make_handler(api: PanelAPI):
             allowed = {f"http://{h}" for h in _local_hosts(self._port())}
             return origin.strip().lower() in allowed
 
+        def _route(self) -> tuple[str, dict[str, list[str]]]:
+            """Путь и параметры запроса в UTF-8: http.server читает строку запроса как latin-1, а браузер
+            percent-кодирует кириллицу — оба случая (сырая кириллица из curl и %D0…) дают одно и то же
+            (NFR-2: кириллица в именах обязана работать)."""
+            from urllib.parse import parse_qs, unquote
+
+            raw = self.path
+            with contextlib.suppress(UnicodeEncodeError, UnicodeDecodeError):
+                raw = raw.encode("latin-1").decode("utf-8")
+            path, _, query = raw.partition("?")
+            return unquote(path), parse_qs(query)
+
         def _body(self) -> dict:
             try:
                 length = int(self.headers.get("Content-Length") or 0)
@@ -1062,10 +1389,26 @@ def make_handler(api: PanelAPI):
             if length > MAX_BODY:
                 raise _BodyTooLarge()
             raw = self.rfile.read(length) if length else b"{}"
-            data = json.loads(raw.decode("utf-8") or "{}")
+            try:
+                data = json.loads(raw.decode("utf-8") or "{}")
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                raise ValueError("тело запроса должно быть JSON-объектом в UTF-8") from None
             if not isinstance(data, dict):
                 raise ValueError("тело запроса должно быть JSON-объектом")
             return data
+
+        # ------------------------------------------- прочие методы: 405 в JSON, а не английская HTML-страница
+
+        def _unsupported(self) -> None:
+            self.send_response(405)
+            body = json.dumps({"error": "метод не поддерживается — панель использует GET и POST"}, ensure_ascii=False).encode("utf-8")
+            self.send_header("Allow", "GET, POST")
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        do_HEAD = do_OPTIONS = do_PUT = do_DELETE = do_PATCH = _unsupported  # noqa: N815
 
         # --------------------------------------------------------- GET
 
@@ -1073,7 +1416,8 @@ def make_handler(api: PanelAPI):
             if not self._host_ok():
                 return self._error("запрос не с локального адреса панели (Host)", 403)
             try:
-                path = self.path.split("?")[0]
+                path, query = self._route()
+                q1 = lambda name: query.get(name, [""])[0]  # noqa: E731
                 if path == "/api/state":
                     return self._json(api.state())
                 m = re.fullmatch(r"/api/chapter/(\d+)", path)
@@ -1099,11 +1443,16 @@ def make_handler(api: PanelAPI):
                     return self._json(api.journals())
                 if path == "/api/regression":
                     return self._json(api.regression())
+                if path == "/api/quality":
+                    return self._json(api.quality())
+                if path == "/api/volume":
+                    return self._json(api.volume())
+                if path == "/api/types":
+                    return self._json(api.types())
+                if path == "/api/metrics":
+                    return self._json(api.metrics())
                 if path == "/api/find":
-                    from urllib.parse import parse_qs, urlparse
-
-                    q = parse_qs(urlparse(self.path).query).get("q", [""])[0]
-                    return self._json(api.find(q))
+                    return self._json(api.find(q1("q")))
                 if path == "/api/circles":
                     return self._json(api.circles())
                 m = re.fullmatch(r"/api/circles/prompt/([\w\-]+)", path)
@@ -1114,10 +1463,11 @@ def make_handler(api: PanelAPI):
                 if path == "/api/canon":
                     return self._json(api.canon_docs())
                 if path == "/api/canon/doc":
-                    from urllib.parse import parse_qs, urlparse
-
-                    rel = parse_qs(urlparse(self.path).query).get("path", [""])[0]
-                    return self._json(api.canon_doc(rel))
+                    return self._json(api.canon_doc(q1("path")))
+                if path == "/api/canon/history":
+                    return self._json(api.canon_history(q1("path")))
+                if path == "/api/canon/history/diff":
+                    return self._json(api.canon_history_diff(q1("path"), q1("sha")))
                 if path == "/api/log":
                     return self._json(api.api_log())
                 if path == "/api/job":
@@ -1134,7 +1484,8 @@ def make_handler(api: PanelAPI):
                 self._error(str(e), 404)
             except Busy as e:
                 self._error(str(e), 423)
-            except ValueError as e:
+            except (ValueError, RuntimeError) as e:
+                # ожидаемые ошибки данных (битый состояние.yaml, недопустимый переход, структура MD) — 400, не 500
                 self._error(str(e), 400)
             except Exception as e:
                 self._internal(e)
@@ -1162,54 +1513,65 @@ def make_handler(api: PanelAPI):
                 return self._error("чужой Origin (защита от cross-origin)", 403)
             try:
                 body = self._body()
-                path = self.path.split("?")[0]
+                path, _ = self._route()
                 if path == "/api/command":
-                    job = api.run_command(body.get("cmd", ""), body.get("chapter"), body.get("params"))
+                    job = api.run_command(_str_field(body, "cmd"), body.get("chapter"), body.get("params"))
                     return self._json({"job": job})
                 if path == "/api/job/cancel":
                     return self._json({"job": api.jobs.cancel()})
                 if path == "/api/onboarding/decision":
-                    return self._json(api.onboarding_decision(str(body.get("file", "")), str(body.get("decision", ""))))
+                    return self._json(api.onboarding_decision(_str_field(body, "file"), _str_field(body, "decision")))
+                if path == "/api/regression/golden":
+                    expect = body.get("expect") or []
+                    if not (isinstance(expect, list) and all(isinstance(x, str) for x in expect)):
+                        raise ValueError("поле expect: список ожидаемых флагов (строк)")
+                    year = body.get("year")
+                    if year is not None and (isinstance(year, bool) or not isinstance(year, int)):
+                        raise ValueError("поле year: целое число или null")
+                    return self._json(api.add_golden(_str_field(body, "id"), _str_field(body, "fragment"), expect,
+                                                     focal=_str_field(body, "focal"), year=year,
+                                                     echelon=_str_field(body, "echelon", "Э1")))
                 m = re.fullmatch(r"/api/chapter/(\d+)/resolve-all", path)
                 if m:
-                    return self._json(api.resolve_all(int(m.group(1)), body.get("decision", ""), body.get("registry")))
+                    return self._json(api.resolve_all(int(m.group(1)), _str_field(body, "decision"), _str_field(body, "registry", None)))
                 m = re.fullmatch(r"/api/chapter/(\d+)/edits", path)
                 if m:
-                    return self._json(api.save_edits(int(m.group(1)), str(body.get("text", ""))))
+                    return self._json(api.save_edits(int(m.group(1)), _str_field(body, "text"), _str_field(body, "version", None)))
                 m = re.fullmatch(r"/api/chapter/(\d+)/resolve", path)
                 if m:
                     return self._json(
-                        api.resolve(int(m.group(1)), body.get("flag_id", ""), body.get("decision", ""), body.get("registry"))
+                        api.resolve(int(m.group(1)), _str_field(body, "flag_id"), _str_field(body, "decision"),
+                                    _str_field(body, "registry", None), _str_field(body, "reason"))
                     )
                 m = re.fullmatch(r"/api/chapter/(\d+)/canon-batch", path)
                 if m:
-                    return self._json(api.save_canon_batch(int(m.group(1)), str(body.get("text", ""))))
+                    return self._json(api.save_canon_batch(int(m.group(1)), _str_field(body, "text"), _str_field(body, "version", None)))
                 m = re.fullmatch(r"/api/chapter/(\d+)/prompt/(\w+)", path)
                 if m:
                     return self._json(api.save_prompt(int(m.group(1)), m.group(2)))
                 if path == "/api/canon/doc":
-                    version = body.get("version")
-                    return self._json(api.save_canon_doc(str(body.get("path", "")), str(body.get("text", "")),
-                                                         str(version) if isinstance(version, str) else None))
+                    # version отсутствует — осознанная перезапись («Перезаписать всё равно»); не строка — ошибка клиента
+                    return self._json(api.save_canon_doc(_str_field(body, "path"), _str_field(body, "text"),
+                                                         _str_field(body, "version", None)))
                 if path == "/api/lint/fix":
                     fix = body.get("fix")
                     if not isinstance(fix, dict):
                         raise ValueError("нужно исправление {file, line, old, new}")
                     return self._json(api.apply_lint_fix(fix))
                 if path == "/api/circles/manual":
-                    return self._json(api.manual_circle(body.get("scope", ""), body.get("key"), str(body.get("text", ""))))
+                    return self._json(api.manual_circle(_str_field(body, "scope"), body.get("key"), _str_field(body, "text")))
                 m = re.fullmatch(r"/api/chapter/(\d+)/manual-draft", path)
                 if m:
-                    return self._json(api.manual_draft(int(m.group(1)), str(body.get("text", ""))))
+                    return self._json(api.manual_draft(int(m.group(1)), _str_field(body, "text")))
                 m = re.fullmatch(r"/api/chapter/(\d+)/manual-flags", path)
                 if m:
-                    return self._json(api.manual_flags(int(m.group(1)), str(body.get("text", ""))))
+                    return self._json(api.manual_flags(int(m.group(1)), _str_field(body, "text")))
                 m = re.fullmatch(r"/api/chapter/(\d+)/accept", path)
                 if m:
                     return self._json(api.accept(int(m.group(1))))
                 m = re.fullmatch(r"/api/chapter/(\d+)/rollback", path)
                 if m:
-                    return self._json(api.rollback(int(m.group(1)), body.get("to")))
+                    return self._json(api.rollback(int(m.group(1)), _str_field(body, "to", None)))
                 return self._error("неизвестный путь", 404)
             except _BodyTooLarge:
                 self.close_connection = True
@@ -1230,11 +1592,23 @@ def make_handler(api: PanelAPI):
     return Handler
 
 
-def serve(ws: Workspace, cfg: Config, library: Path, port: int = 8765, watch: bool = True) -> ThreadingHTTPServer:
-    """Создаёт сервер на 127.0.0.1 (не запускает цикл — это делает вызывающий)."""
+class PanelServer(ThreadingHTTPServer):
+    """HTTP-сервер панели: закрытие сервера останавливает и фоновые потоки PanelAPI (наблюдатель, линтер)."""
+
+    api: PanelAPI
+
+    def server_close(self) -> None:
+        super().server_close()
+        api = getattr(self, "api", None)
+        if api is not None:
+            api.close()
+
+
+def serve(ws: Workspace, cfg: Config, library: Path, port: int = 8765, watch: bool = True) -> PanelServer:
+    """Создаёт сервер на 127.0.0.1 (не запускает цикл — это делает вызывающий; `server_close()` гасит потоки)."""
     api = PanelAPI(ws, cfg, library)
-    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(api))
-    server.api = api  # type: ignore[attr-defined]
+    server = PanelServer(("127.0.0.1", port), make_handler(api))
+    server.api = api
     if watch:
         api.start_lint_worker()
         api.watcher.start()  # линтер канона в реальном времени

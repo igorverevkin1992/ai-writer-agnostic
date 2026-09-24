@@ -79,7 +79,7 @@ def test_ошибка_без_абсолютного_пути(panel, ws):
     code, data = _req(port, "GET", "/api/chapter/1/draft/99")
     assert code == 404, data
     assert str(ws.root) not in data["error"]
-    assert "рабочая область" in data["error"]
+    assert "нет черновика 99" in data["error"]  # русский текст без пути, а не «[Errno 2] No such file…»
     # документ канона, которого нет — тоже 404 без путей
     code, data = _req(port, "GET", "/api/canon/doc?path=none.md")
     assert code == 404 and str(ws.root) not in data["error"]

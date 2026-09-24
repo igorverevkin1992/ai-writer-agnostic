@@ -131,11 +131,33 @@ def _iter_files(src: Path) -> list[tuple[Path, Path]]:
     return out
 
 
-def import_path(ws: Workspace, source: Path, *, now: str | None = None) -> ImportReport:
-    """Импорт файла, папки или .zip в сырьё проекта. Идемпотентен по хэшу (FR-ON-5)."""
+def check_source(ws: Workspace, source: Path) -> Path:
+    """Источник импорта — папка, файл или .zip ВНЕ самого проекта: пустой путь, корень рабочей области,
+    библиотека канона и папка сырья отвергаются (иначе `import` без пути затянул бы в сырьё весь проект)."""
+    if not str(source).strip():
+        raise ValueError("импорт: укажите папку, файл или .zip с материалами")
     source = Path(source)
     if not source.exists():
         raise FileNotFoundError(f"источник не найден: {source}")
+    real = source.resolve()
+    root = ws.root.resolve()
+    if real == root:
+        raise ValueError("импорт: источник совпадает с рабочей областью проекта — укажите папку с материалами автора")
+    from .. import guard
+
+    protected = [(raw_dir(ws), "папка сырья")]
+    if guard._library() is not None:
+        protected.append((guard._library(), "библиотека канона"))  # путь библиотеки — из конфига (задан `_ctx`/сервером)
+    for folder, what in protected:
+        f = Path(folder).resolve()
+        if real == f or f in real.parents:
+            raise ValueError(f"импорт: источник лежит внутри проекта ({what}) — он уже в проекте")
+    return source
+
+
+def import_path(ws: Workspace, source: Path, *, now: str | None = None) -> ImportReport:
+    """Импорт файла, папки или .zip в сырьё проекта. Идемпотентен по хэшу (FR-ON-5)."""
+    source = check_source(ws, Path(source))
     report = ImportReport()
     entries = load_index(ws)
     stamp = now or datetime.now(timezone.utc).isoformat(timespec="seconds")
