@@ -261,13 +261,13 @@ def test_git_только_в_пределах_библиотеки(ws, library):
 def test_откат_не_ревертит_реверт_и_не_трогает_чужие_файлы(ws, library):
     _init_repo(ws.root)
     (library / "Проза" / "Том1_Глава09.md").write_text("Глава.\n", encoding="utf-8")
-    sha = gitops.commit_all(library, "[глава 9] приёмка: записей 0")
+    sha = gitops.commit_all(library, "[глава 9] приёмка: записей 0" + gitops.acceptance_trailer(9, "черновик_1.md"))
     gitops.revert(library, sha)
     assert not (library / "Проза" / "Том1_Глава09.md").exists()
     # откачённая приёмка — не приёмка: повторный canonize --apply не должен её «находить» (4.1)
     assert gitops.find_chapter_commit(library, 9) is None
     (library / "Проза" / "Том1_Глава09.md").write_text("Глава заново.\n", encoding="utf-8")
-    sha2 = gitops.commit_all(library, "[глава 9] приёмка: повторная")
+    sha2 = gitops.commit_all(library, "[глава 9] приёмка: повторная" + gitops.acceptance_trailer(9, "черновик_2.md"))
     assert gitops.find_chapter_commit(library, 9) == sha2  # новая приёмка после отката — действующая
     # коммит, задевающий файл вне библиотеки, откатить нельзя
     (ws.root / "код.py").write_text("x", encoding="utf-8")
