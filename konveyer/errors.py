@@ -7,7 +7,7 @@
 * `ManualMode` — API недоступен: «⚠ причина» + «Ручной режим (NFR-3): подсказка», код 2 (прежний `_manual`);
   это тот же класс, что `adapters.ManualModeNeeded`;
 * `Rejected` — автор не подтвердил действие: без сообщения, код 0 (прежний `typer.Exit()`);
-  с `abort=True` — «Aborted!», код 1 (прежний `typer.Abort()`);
+  с `abort=True` — «Отменено автором.», код 1 (прежний `typer.Abort()`);
 * `StepExit` — шаг сам всё напечатал и просит код возврата (брак Э1 после авто-повторов — 1,
   круги без API — 2; прежний `typer.Exit(code=…)` после сообщения).
 """
@@ -33,7 +33,7 @@ class ManualMode(StepError):
 
 
 class Rejected(StepError):
-    """Автор не подтвердил действие (Д-8): ничего не печатается; код 0, с `abort` — 1 («Aborted!»)."""
+    """Автор не подтвердил действие (Д-17): ничего не печатается; код 0, с `abort` — 1 («Отменено автором.»)."""
 
     def __init__(self, message: str = "", *, abort: bool = False):
         super().__init__(message)

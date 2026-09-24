@@ -16,7 +16,9 @@ from konveyer.paths import Workspace
 from tests.профиль import LIBRARY_ENV
 
 _FALLBACK = Path(__file__).resolve().parents[3] / "igorverevkin1992" / "ugar-library"
-ETALON = Path(os.environ.get(LIBRARY_ENV) or os.environ.get("KONVEYER_ЭТАЛОН") or (_FALLBACK if _FALLBACK.is_dir() else ""))
+_ETALON_VALUE = os.environ.get(LIBRARY_ENV) or os.environ.get("KONVEYER_ЭТАЛОН") or (str(_FALLBACK) if _FALLBACK.is_dir() else "")
+# пустое значение — библиотека не подключена (Path("") — это текущая папка, копировать её в проект нельзя)
+ETALON = Path(_ETALON_VALUE) if _ETALON_VALUE else Path("/нет/эталона")
 pytestmark = pytest.mark.skipif(not ETALON.is_dir(), reason=f"библиотека эталона не подключена ({LIBRARY_ENV})")
 
 
