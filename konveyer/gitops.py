@@ -47,8 +47,15 @@ def commit_all(repo: Path, message: str, author: str | None = None) -> str | Non
     args = ["commit", "-m", message]
     if author:
         args += ["--author", author]
-    _git(repo, *args)
+    # pathspec «.»: в коммит попадают только файлы папки библиотеки — то, что автор успел
+    # проиндексировать в остальном репозитории (библиотека как подпапка), остаётся в индексе (FR-CN-2)
+    _git(repo, *args, "--", ".")
     return head(repo)
+
+
+def staged_files(repo: Path) -> list[str]:
+    """Файлы, уже проиндексированные во ВСЁМ репозитории (`git diff --cached`), пути от корня репозитория."""
+    return [p for p in _git(repo, "diff", "--cached", "--name-only", check=False).splitlines() if p]
 
 
 def restore_library(repo: Path) -> None:
@@ -96,6 +103,13 @@ def revert(repo: Path, commit: str, author: str | None = None) -> str:
     revert: в документах канона не остаются маркеры `<<<<<<<`, индекс чист, REVERT_HEAD нет."""
     if in_progress(repo):
         raise RuntimeError(f"в библиотеке незавершённая операция git ({in_progress(repo)}) — завершите или отмените её (`git revert --abort`).")
+    staged = staged_files(repo)
+    if staged:
+        # revert-коммит собирается из индекса целиком: чужие проиндексированные файлы попали бы в него
+        raise RuntimeError(
+            f"в индексе git уже есть файлы ({', '.join(staged[:5])}{'…' if len(staged) > 5 else ''}) — "
+            "закоммитьте их или снимите (`git restore --staged`), затем повторите откат."
+        )
     try:
         _git(repo, "revert", "--no-edit", "--no-commit", commit)
         touched = [p for p in _git(repo, "diff", "--cached", "--name-only", check=False).splitlines() if p]

@@ -122,6 +122,22 @@ class ChapterState:
             self.data["авто_повторов"] = 0
         self._move(to, cmd)
 
+    # Поля, привязанные к циклу приёмки: после выхода из «зафиксировано» они относятся к уже
+    # откачённой приёмке и должны быть сняты вместе со счётчиками (FR-TK-4, FR-SC-4).
+    ACCEPTANCE_FIELDS = ("коммит_приёмки", "пакет_хэш", "база_приёмки")
+
+    def unfix(self, cmd: str = "rollback (git revert)") -> None:
+        """Выход из терминального «зафиксировано» → «принято» ПОСЛЕ успешного git-revert коммита приёмки
+        (FR-TK-4): счётчики авто-повторов и итераций правок обнуляются, поля цикла приёмки снимаются.
+        Сам revert выполняет вызывающий (`steps.canon.rollback`) — здесь только состояние главы."""
+        if self.state != "зафиксировано":
+            raise TransitionError(f"Глава {self.chapter} в состоянии «{self.state}» — выход из «зафиксировано» неприменим.")
+        for key in self.ACCEPTANCE_FIELDS:
+            self.data.pop(key, None)
+        self.data["авто_повторов"] = 0
+        self.data["итераций_правок"] = 0
+        self._move("принято", cmd)
+
     def _record(self, frm: str, to: str, cmd: str) -> None:
         rec = {"из": frm, "в": to, "время": datetime.now(timezone.utc).isoformat(), "команда": cmd}
         if timing.current_job:

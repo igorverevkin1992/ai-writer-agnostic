@@ -126,29 +126,39 @@ def rollback(chapter: int, to: str | None = None, yes: bool = False, confirm: Co
     if STATES.index(to) >= STATES.index(st.state):
         raise StepError(f"откат возможен только назад: «{st.state}» → «{to}» не является откатом.")
     if st.state == "зафиксировано":
-        # только git-revert коммита приёмки с пересчётом выгрузок и корпуса
+        # только git-revert коммита приёмки с пересчётом выгрузок и корпуса (FR-TK-4, FR-SC-4)
+        if not gitops.is_repo(lib):
+            raise StepError(f"библиотека не под git — откат зафиксированной главы {chapter} невозможен (только git-revert).")
         sha = st.data.get("коммит_приёмки") or gitops.find_chapter_commit(lib, chapter)
         if not sha:
             raise StepError(f"не найден коммит приёмки главы {chapter} в библиотеке.")
+        # те же проверки, что у любой записи в канон (FR-SC-2): незавершённые операции, чистота,
+        # авторство — ДО revert'а, иначе revert-коммит захватил бы чужие правки автора
+        try:
+            canonchange.check_git(lib, commit=True, action=f"откат главы {chapter}")
+        except RuntimeError as e:
+            raise StepError(f"откат не выполнен, библиотека не тронута: {e}") from e
         confirm_or_reject(yes, confirm, f"git revert {sha[:10]} (приёмка главы {chapter}) и пересчёт выгрузок? (y)")
         try:
             gitops.revert(lib, sha, author=cfg.commit_author)
         except RuntimeError as e:
             raise StepError(f"откат не выполнен, библиотека не тронута: {e}") from e
-        # состояние — сразу после успешного реверта, чтобы повторный откат не «ревертил реверт»
-        st.data["состояние"] = "принято"
-        st.data.pop("коммит_приёмки", None)
-        st.data.setdefault("история", []).append(
-            {"из": "зафиксировано", "в": "принято", "время": datetime.now(timezone.utc).isoformat(), "команда": "rollback (git revert)"}
-        )
-        st._save()
+        # состояние — сразу после успешного реверта, чтобы повторный откат не «ревертил реверт»;
+        # выход из терминального состояния сбрасывает счётчики и поля цикла приёмки (FR-TK-4)
+        st.unfix()
+        exported = True
         try:
             exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
         except MarkupError as e:
+            exported = False
             secho(f"⚠ Откат выполнен, но выгрузки не пересчитаны: {e}. Поправьте канон и `konveyer export`.", fg=colors.YELLOW)
         if to != "принято":
             st.rollback(to)
-        secho(f"Откат выполнен: глава {chapter} → «{st.state}», выгрузки и корпус пересчитаны.", fg=colors.GREEN)
+        secho(
+            f"Откат выполнен: глава {chapter} → «{st.state}», "
+            + ("выгрузки и корпус пересчитаны." if exported else "выгрузки НЕ пересчитаны (см. выше)."),
+            fg=colors.GREEN if exported else colors.YELLOW,
+        )
         return st.state
     try:
         st.rollback(to)
