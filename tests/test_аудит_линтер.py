@@ -708,3 +708,34 @@ def test_выключение_модуля_без_следов_в_окне_э2_�
     off_codes = catalog.enabled_lint_codes(mods, set(mods) - set(targets))
     assert not {f.code for f in report.findings} - off_codes, [f.message for f in report.findings]
     assert report.errors == 0 and report.warnings == 0 and report.notes == 0
+
+
+# ------------------------------------------------------------------ окно тома 2: без тайн, с каркасом и арками
+
+
+def test_окно_тома_2_без_тайн_с_каркасом_и_арками(ws, library):
+    """Демо-том 2 (каркасы, арки, свой информрежим): окно каждой главы без маркеров тайн, недоступных фокалу,
+    с шагами тома/акта/главы из канона и «что видно снаружи» участников (FR-WN-3, FR-DR-5)."""
+    from konveyer import compiler
+    from konveyer.config import set_volume
+
+    exporter.run_export(library, ws.exports, ws.logs, 2)
+    set_volume(ws, 2)
+    ws2 = type(ws)(ws.root, 2)
+    bans = exporter.load_infobans(ws2.exports)
+    for b in exporter.load_briefs(ws2.exports):
+        w = compiler.compile_window(ws2, library, b.chapter)[0].read_text(encoding="utf-8")
+        low = w.lower()
+        for ban in bans:
+            if not ban.secret or ban.known_to(b.focal, b.chapter):
+                continue
+            for marker in ban.markers:
+                assert marker.lower() not in low, f"гл. {b.chapter}: маркер «{marker}» тайны {ban.ban_id} в окне"
+        assert "- Том: шаг" in w and "в канон ещё не внесён" not in w
+        if b.chapter <= 2:
+            assert "- Акт 1 «Письмо»: шаг" in w
+        if b.chapter == 1:
+            assert "- Круг главы: письмо ломает утро." in w and "7. Возвращение (сц. 1.1, финал) — чай остыл." in w
+            assert "8. Изменение" not in w and "изменение фокала не требуется" in w
+        assert "## Что видно снаружи (арки участников)" in w
+        assert compiler.compile_window(ws2, library, b.chapter)[0].read_text(encoding="utf-8") == w  # детерминизм
