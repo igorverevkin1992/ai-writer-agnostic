@@ -550,7 +550,7 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
         intensifiers=intensifiers,
         volume_norm=norms.get("объём_главы"),
         drama=drama,
-        drama_lines=circles.frame_lines(drama),
+        drama_lines=circles.frame_lines_for(ws, drama),
         drama_intro=circles.window_intro(ws, drama),
         arc_lines=arcs,
     )

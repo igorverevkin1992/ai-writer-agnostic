@@ -16,7 +16,7 @@ from .names import chapter_range
 from .schemas import Act, CircleStep, StoryCircle
 
 # слово заголовка — любое одно слово методики (не «Акты»: таблица актов — не каркас)
-HEAD_RE = re.compile(r"^##\s*(?!Акты\b)(?P<word>[^\s#|]+)\s+(?P<kind>тома|акта\s+(?P<act>[IVXLCDM\d]+)|главы\s+(?P<chapter>\d+))\b(?P<tail>.*)$",
+HEAD_RE = re.compile(r"^##\s*(?!Акты\b)(?P<word>[^\s#|]+)\s+(?P<kind>тома|акта\s+(?P<act>[^\s«(]+)|главы\s+(?P<chapter>\d+))\b(?P<tail>.*)$",
                      re.MULTILINE)
 STEP_RE = re.compile(r"^(\d+)\.\s+\*\*(.+?)\*\*\s*(?:\(([^)]*)\))?\s*(?:[—–-]+\s*)?(.*)$")
 _ROMAN_VALUES = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}

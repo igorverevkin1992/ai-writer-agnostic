@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from konveyer import dramaturgy_doc, exporter, lint
+from konveyer import dramaturgy_doc, exporter, lint, manifest as manifest_mod
 from konveyer.schemas import Act, CircleStep, StoryCircle
 
 PLAN = "23_Поглавник_Том1.md"
@@ -115,3 +115,110 @@ def test_заголовок_своей_методики_разбирается_�
     parsed = dramaturgy_doc.parse_frames(doc)
     assert [(c.scope, c.key) for c in parsed] == [("книга", None), ("глава", 1)]
     assert parsed[0].steps[0].name == "Завязка" and parsed[0].line == text[: text.index("\n## Структура тома")].count("\n") + 2
+
+
+# ------------------------------------------------------------------ методики: ничего от круга Хармона в движке
+
+
+def _own_methodic(ws, library, heading: str = "Каркас") -> None:
+    folder = ws.root / "методики" / "своя"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "методика.yaml").write_text(
+        f"методика: своя\nназвание: Своя методика\nуровни: [глава]\nзаголовок_документа: {heading}\n"
+        "незаданный_шаг: \"(шаг {n} «{name}» автором не задан)\"\n"
+        "шаги:\n  - {n: 1, имя: Завязка}\n  - {n: 2, имя: Развязка}\nобязательность:\n  глава: [1]\n", encoding="utf-8")
+    (folder / "в_окно.j2").write_text("СВОЯ-В-ОКНЕ", encoding="utf-8")
+    (folder / "в_э2.md").write_text("СВОЯ-В-Э2", encoding="utf-8")
+    man = manifest_mod.load(ws.root)
+    man.методики.глава = "своя"
+    man.методики.обязательные_шаги = {}
+    man.библиотека.append(manifest_mod.LibraryEntry(файл="21_Круги_истории_Том1.md", тип="каркасы", том=1))
+    manifest_mod.save(ws.root, man)
+
+
+def test_окно_и_э2_своей_методики_без_текстов_круга(ws, library):
+    """Своя методика из двух шагов: окно и Э2 получают её заголовок, её пометку о незаданном шаге и имя шага
+    из методики — ни «шаг 8», ни «изменение фокала», ни «Круг главы» в движке нет (П-1, FR-DR-1)."""
+    from konveyer import circles, compiler, verifier2
+
+    _own_methodic(ws, library, heading="Структура")
+    acts = [Act(act=1, title="А", from_chapter=1, to_chapter=6, parts="I", steps="1–2")]
+    ch = StoryCircle(scope="глава", key=1, summary="осмотр", steps=[CircleStep(n=1, name="Завязка", text="начало", chapters="сц. 1.1")])
+    (library / "21_Круги_истории_Том1.md").write_text(circles.render_canon_doc([ch], acts, 1, ws), encoding="utf-8")
+    exporter.run_export(library, ws.exports, ws.logs)
+    assert len(exporter.load_circles(ws.exports)) == 1  # заголовок «Структура главы 1» читается обратно
+    w = compiler.compile_window(ws, library, 1)[0].read_text(encoding="utf-8")
+    section = w.split("СВОЯ-В-ОКНЕ", 1)[1].split("<!-- СЕКЦИЯ", 1)[0]
+    assert "- Структура главы: осмотр" in section and "1. Завязка (сц. 1.1) — начало" in section
+    assert "(шаг 2 «Развязка» автором не задан)" in section
+    for alien in ("шаг 8", "изменение фокала", "Круг главы", "Изменение"):
+        assert alien not in w, alien
+    ws.chapter_dir(1).mkdir(parents=True, exist_ok=True)
+    ws.draft_path(1, 1).write_text("Текст.\n", encoding="utf-8")
+    system, user = verifier2.build_prompt(ws, 1, 1)
+    assert "(шаг 2 «Развязка» автором не задан)" in user and "изменение фокала" not in user
+    assert "СВОЯ-В-Э2" in system
+    # линтер: обязательный шаг 1 задан — КРУГ-1 молчит; без шага 1 — находка по методике «Своя методика»
+    assert not [f for f in _lint(ws, library).findings if f.code == "КРУГ-1"]
+    _edit(library / "21_Круги_истории_Том1.md", "1. **Завязка** (сц. 1.1) — начало", "1. **Завязка** (сц. 1.1) — в материале не задано")
+    f = next(f for f in _lint(ws, library).findings if f.code == "КРУГ-1")
+    assert "Своя методика" in f.message and "[1]" in f.message
+
+
+def test_пометка_незаданного_шага_из_методики_круга(ws, library):
+    """Пометка «изменение фокала не требуется» живёт в методике круга, а не в движке; без ключа в методике —
+    нейтральная пометка движка."""
+    from konveyer import circles, methodics
+
+    engine = Path(circles.__file__).parent
+    for py in engine.glob("*.py"):
+        assert "изменение фокала" not in py.read_text(encoding="utf-8"), py.name
+    m = methodics.load_all()["круг_хармона"]
+    assert "изменение фокала не требуется" in m.unset_note
+    frame = {"book_steps": [], "act_steps": [], "chapter": StoryCircle(scope="глава", key=1, steps=[]), "has_any": True}
+    assert circles.frame_lines(frame, optional={2}, step_names={2: "Развязка"}) == ["- Каркас главы:", "  (шаг 2 «Развязка» в каркасе главы не задан)"]
+
+
+def test_пустая_методика_шаги_из_манифеста(ws, library):
+    from konveyer import circles
+
+    man = manifest_mod.load(ws.root)
+    man.методики.глава = "пустая"
+    man.методики.обязательные_шаги = {}
+    man.методики.шаги_пустой = ["Завязка", "Кульминация"]
+    manifest_mod.save(ws.root, man)
+    m = circles.methodic_for(ws, "глава")
+    assert m.name == "пустая" and m.step_names() == ["Завязка", "Кульминация"] and m.required_steps("глава", man) == {1, 2}
+    man.методики.шаги_пустой = {"глава": ["Одно"], "том": ["Другое"]}
+    manifest_mod.save(ws.root, man)
+    assert circles.methodic_for(ws, "глава").step_names() == ["Одно"]
+    assert "Шаги: 1" not in circles._template(ws, "глава") or "Одно" in circles._template(ws, "глава")
+
+
+def test_методика_не_для_уровня_не_подменяется_кругом(ws, library):
+    """Манифест «том: сцена_сиквел» (уровни [глава]): каркас тома не строится по кругу молча — понятная ошибка,
+    доктор предупреждает; окно главы при этом собирается (П-5)."""
+    from konveyer import circles, compiler, methodics, project
+
+    man = manifest_mod.load(ws.root)
+    man.методики.том = "сцена_сиквел"
+    man.методики.акт = "нет_такой"
+    man.методики.серия = "круг_хармона"
+    man.методики.глава = ["круг_хармона", "сцена_сиквел"]
+    manifest_mod.save(ws.root, man)
+    with pytest.raises(ValueError, match="не поддерживает уровень «том»"):
+        circles.methodic_for(ws, "книга")
+    with pytest.raises(ValueError, match="не найдена"):
+        circles.methodic_for(ws, "акт")
+    problems = methodics.problems(man, ws.root)
+    assert any("«серия» в этой версии не поддержан" in p for p in problems)
+    assert any("не поддерживает уровень «том»" in p for p in problems)
+    assert any("«нет_такой»" in p and "не найдена" in p for p in problems)
+    assert any("несколько методик" in p and "«круг_хармона»" in p for p in problems)
+    checks = [c for c in project.readiness(ws.root, library) if c.label.startswith("методики:")]
+    assert len(checks) == 4 and all(c.ok is None for c in checks)
+    assert compiler.compile_window(ws, library, 1)[0].exists()
+    # без методик в манифесте — методика движка по умолчанию, без предупреждений
+    man.методики = manifest_mod.Methodics()
+    manifest_mod.save(ws.root, man)
+    assert circles.methodic_for(ws, "книга").name == "круг_хармона" and not methodics.problems(man, ws.root)

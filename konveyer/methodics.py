@@ -42,6 +42,7 @@ class Methodic:
     e2_text: str
     folder: Path
     raw: dict = field(default_factory=dict)
+    unset_note: str = ""                # пометка Писателю о незаданном необязательном шаге главы ({n}, {name})
 
     def step_names(self) -> list[str]:
         return [s.name for s in self.steps]
@@ -89,7 +90,7 @@ def _load_one(folder: Path, override: Path | None = None) -> Methodic:
         levels=tuple(data.get("уровни") or LEVELS), steps=tuple(steps), required=required,
         heading=str(data.get("заголовок_документа", "Каркас")), prompt=text("промпт.md"),
         schema=json.loads(schema_text) if schema_text.strip() else {}, window_template=text("в_окно.j2"),
-        e2_text=text("в_э2.md"), folder=folder, raw=data,
+        e2_text=text("в_э2.md"), folder=folder, raw=data, unset_note=str(data.get("незаданный_шаг", "") or ""),
     )
 
 
@@ -126,9 +127,36 @@ def primary(level: str, manifest: manifest_mod.Manifest, project_root: Path | No
     return ms[0] if ms else None
 
 
-def empty_from_manifest(manifest: manifest_mod.Manifest, base: Methodic) -> Methodic:
-    """«Пустая» методика: шаги берутся из манифеста (`методики.шаги_пустой`), если заданы."""
-    steps = manifest.методики.model_extra.get("шаги_пустой") if manifest.методики.model_extra else None
+def empty_from_manifest(manifest: manifest_mod.Manifest, base: Methodic, level: str | None = None) -> Methodic:
+    """«Пустая» методика: шаги формулирует автор в манифесте (`методики.шаги_пустой` — список, либо словарь
+    уровень → список); без них методика остаётся без шагов."""
+    steps = manifest.методики.empty_steps(level)
     if not steps:
         return base
-    return Methodic(**{**base.__dict__, "steps": tuple(Step(i, str(s)) for i, s in enumerate(steps, start=1))})
+    return Methodic(**{**base.__dict__, "steps": tuple(Step(i, str(st)) for i, st in enumerate(steps, start=1))})
+
+
+def problems(manifest: manifest_mod.Manifest, project_root: Path | None = None) -> list[str]:
+    """Расхождения манифеста с методиками — для доктора (П-5: с пометкой, а не молча): неизвестная методика,
+    методика, не поддерживающая уровень, несколько методик на уровне, уровень «серия» (в этой версии каркас
+    серии не строится)."""
+    all_m = load_all(project_root)
+    out: list[str] = []
+    for level in LEVELS:
+        names = manifest.методики.for_level(level)
+        if not names:
+            continue
+        if level == "серия":
+            out.append(f"методики.серия = {', '.join(names)}: уровень «серия» в этой версии не поддержан — каркас серии не строится")
+            continue
+        for name in names:
+            m = all_m.get(name)
+            if m is None:
+                out.append(f"методика «{name}» (уровень «{level}») не найдена ни в движке, ни в методики/ проекта")
+            elif m.levels and level not in m.levels:
+                out.append(f"методика «{name}» не поддерживает уровень «{level}» (её уровни: {', '.join(m.levels)}) — "
+                           f"каркас уровня не строится")
+        if len(names) > 1:
+            out.append(f"на уровне «{level}» задано несколько методик ({', '.join(names)}): применяется первая — «{names[0]}», "
+                       "остальные не участвуют в окне, Э2 и линтере")
+    return out

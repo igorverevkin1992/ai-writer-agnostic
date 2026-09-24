@@ -30,16 +30,17 @@ SCOPE_ALIASES = {"части": "акты", "часть": "акт"}
 LEVEL_OF = {"книга": "том", "акт": "акт", "глава": "глава"}
 STEP_UNSET = dramaturgy_doc.STEP_UNSET
 step_unset = dramaturgy_doc.step_unset
+# методика движка по умолчанию — когда в манифесте уровень не задан вовсе (совместимость со старыми проектами)
 _DEFAULT = "круг_хармона"
+UNSET_NOTE_DEFAULT = "(шаг {n} «{name}» в каркасе главы не задан)"
 
 
 def _default_methodic() -> methodics.Methodic:
     return methodics.load_all()[_DEFAULT]
 
 
-# совместимость: имена шагов методики по умолчанию (круг истории)
+# совместимость: имена шагов методики по умолчанию
 STEP_NAMES = _default_methodic().step_names()
-REQUIRED_CHAPTER_STEPS = 7
 
 
 def _manifest(ws: Workspace) -> manifest_mod.Manifest:
@@ -48,15 +49,33 @@ def _manifest(ws: Workspace) -> manifest_mod.Manifest:
 
 
 def methodic_for(ws: Workspace, scope: str) -> methodics.Methodic:
-    """Методика уровня из манифеста; без выбора — круг истории (совместимость)."""
+    """Методика уровня из манифеста. Уровень не задан — методика движка по умолчанию; задана, но не найдена или
+    не поддерживает уровень — ValueError с понятной причиной (доктор показывает то же, `methodics.problems`)."""
     man = _manifest(ws)
     level = LEVEL_OF.get(scope, scope)
     m = methodics.primary(level, man, ws.root)
     if m is None:
+        names = man.методики.for_level(level)
+        if names:
+            known = methodics.load_all(ws.root)
+            missing = [n for n in names if n not in known]
+            if missing:
+                raise ValueError(f"методика «{missing[0]}» (уровень «{level}») не найдена ни в движке, ни в методики/ проекта")
+            raise ValueError(f"методика «{names[0]}» не поддерживает уровень «{level}» "
+                             f"(её уровни: {', '.join(known[names[0]].levels)})")
         m = methodics.load_all(ws.root).get(_DEFAULT) or _default_methodic()
     if m.name == "пустая":
-        m = methodics.empty_from_manifest(man, m)
+        m = methodics.empty_from_manifest(man, m, level)
     return m
+
+
+def _chapter_methodic(ws: Workspace) -> tuple[methodics.Methodic | None, manifest_mod.Manifest]:
+    """Методика главы для окна и Э2; при ошибке манифеста — None (П-5: окно собирается без текстов методики)."""
+    man = _manifest(ws)
+    try:
+        return methodic_for(ws, "глава"), man
+    except ValueError:
+        return None, man
 
 
 def required_steps(ws: Workspace, scope: str) -> set[int]:
@@ -75,10 +94,10 @@ CANON_DOC = canon_doc_name(1)
 
 def chapter_steps_present(circle: StoryCircle, required: set[int] | None = None) -> list[CircleStep]:
     """Шаги каркаса, которые есть по содержанию: незаданный НЕобязательный шаг не выводится ни в окно, ни в Э2;
-    для тома/акта (все шаги обязательны) — как есть."""
+    обязательные (по методике и манифесту) выводятся всегда; для тома/акта — как есть."""
     if circle.scope != "глава":
         return list(circle.steps)
-    req = required if required is not None else set(range(1, REQUIRED_CHAPTER_STEPS + 1))
+    req = required or set()
     return [st for st in circle.steps if st.n in req or not step_unset(st)]
 
 
@@ -98,9 +117,8 @@ def window_intro(ws: Workspace, frame: dict) -> str:
     """Вводный абзац секции «Драматургия» окна — из `в_окно.j2` методики главы (FR-DR-1)."""
     if not frame.get("has_any"):
         return ""
-    m = methodic_for(ws, "глава")
-    man = _manifest(ws)
-    if not m.window_template.strip():
+    m, man = _chapter_methodic(ws)
+    if m is None or not m.window_template.strip():
         return ""
     return Environment().from_string(m.window_template).render(
         step_names=m.step_names(), optional=sorted(m.optional_steps("глава", man)), required=sorted(m.required_steps("глава", man)),
@@ -109,7 +127,20 @@ def window_intro(ws: Workspace, frame: dict) -> str:
 
 def e2_text(ws: Workspace) -> str:
     """Текст проверки драматургии для Э2 — из `в_э2.md` методики главы."""
-    return methodic_for(ws, "глава").e2_text.strip()
+    m, _ = _chapter_methodic(ws)
+    return m.e2_text.strip() if m is not None else ""
+
+
+def frame_lines_for(ws: Workspace, frame: dict, with_weak_spot: bool = False) -> list[str]:
+    """Строки каркаса главы по методике главы из манифеста: обязательность, имена шагов, заголовок и пометка
+    о незаданном шаге — из методики, не из движка (П-1)."""
+    m, man = _chapter_methodic(ws)
+    if m is None or not frame.get("has_any"):
+        return frame_lines(frame, with_weak_spot=with_weak_spot)
+    return frame_lines(
+        frame, with_weak_spot=with_weak_spot, required=m.required_steps("глава", man), optional=m.optional_steps("глава", man),
+        step_names={st.n: st.name for st in m.steps}, unset_note=m.unset_note, heading=m.heading,
+    )
 
 
 def _dir(ws: Workspace) -> Path:
@@ -120,8 +151,9 @@ def _dir(ws: Workspace) -> Path:
 
 
 def to_model(data: dict, step_names: list[str] | None = None) -> StoryCircle:
-    """JSON черновика (ответ модели + scope/key) → StoryCircle с разобранными диапазонами глав."""
-    names_ = step_names or STEP_NAMES
+    """JSON черновика (ответ модели + scope/key) → StoryCircle с разобранными диапазонами глав; имена шагов без
+    имени в ответе — из методики (`step_names`), иначе «шаг N»."""
+    names_ = step_names or []
     steps = []
     for i, st in enumerate(data.get("steps", []), start=1):
         chapters = str(st.get("chapters", "") or "").strip()
@@ -137,9 +169,16 @@ def to_model(data: dict, step_names: list[str] | None = None) -> StoryCircle:
     )
 
 
+def _step_names_of(ws: Workspace, scope: str) -> list[str]:
+    try:
+        return methodic_for(ws, scope).step_names()
+    except ValueError:
+        return []
+
+
 def drafts(ws: Workspace) -> list[StoryCircle]:
     """Черновики каркасов рабочей области (драматургия/*.json)."""
-    return [to_model(c) for c in list_circles(ws)]
+    return [to_model(c, _step_names_of(ws, str(c.get("scope", "глава")))) for c in list_circles(ws)]
 
 
 def canon_circles(ws: Workspace) -> list[StoryCircle]:
@@ -175,8 +214,11 @@ def frame_for_chapter(circles: list[StoryCircle], acts: list[Act], chapter: int)
 
 
 def frame_lines(frame: dict, with_weak_spot: bool = False, required: set[int] | None = None,
-                optional: set[int] | None = None) -> list[str]:
-    """Текстовое представление каркаса — для промптов Писателя, аналитика и Э2."""
+                optional: set[int] | None = None, step_names: dict[int, str] | None = None, unset_note: str = "",
+                heading: str = "Каркас") -> list[str]:
+    """Текстовое представление каркаса — для промптов Писателя, аналитика и Э2. Всё, что зависит от методики
+    (обязательные и необязательные шаги, имена шагов, слово заголовка, пометка о незаданном шаге), приходит
+    параметрами (`frame_lines_for`); без них — только заданные шаги, без пометок."""
     lines: list[str] = []
     for st in frame["book_steps"]:
         lines.append(f"- Том: шаг {st.n} «{st.name}» ({st.chapters}) — {st.text}")
@@ -186,16 +228,17 @@ def frame_lines(frame: dict, with_weak_spot: bool = False, required: set[int] | 
         lines.append(f"- {label}: шаг {st.n} «{st.name}» ({st.chapters}) — {st.text}")
     ch = frame.get("chapter")
     if ch:
-        lines.append(f"- Круг главы: {ch.summary}" if ch.summary else "- Круг главы:")
+        label = f"- {heading or 'Каркас'} главы:"
+        lines.append(f"{label} {ch.summary}" if ch.summary else label)
         present = chapter_steps_present(ch, required)
         for st in present:
             where = f" ({st.chapters})" if st.chapters else ""
             lines.append(f"  {st.n}. {st.name}{where} — {st.text}")
-        opt = optional if optional is not None else {8}
-        for n in sorted(opt):
+        names_ = step_names or {}
+        for n in sorted(optional or set()):
             if not any(st.n == n for st in present):
-                name = next((st.name for st in ch.steps if st.n == n), f"шаг {n}")
-                lines.append(f"  (шаг {n} «{name}» в каркасе главы не задан — изменение фокала не требуется)")
+                name = names_.get(n) or next((st.name for st in ch.steps if st.n == n), f"шаг {n}")
+                lines.append("  " + (unset_note or UNSET_NOTE_DEFAULT).format(n=n, name=name))
         if with_weak_spot and ch.weak_spot:
             lines.append(f"  Слабое место (по оценке аналитика): {ch.weak_spot}")
     return lines
@@ -443,10 +486,8 @@ def list_circles(ws: Workspace) -> list[dict]:
 
 def render_canon_doc(circles: list[StoryCircle], acts: list[Act], volume: int = 1, ws: Workspace | None = None) -> str:
     """Документ каркасов из актов и кругов — в разметке, которую читает экспорт (тип «каркасы»)."""
-    if ws is not None:
-        m = methodic_for(ws, "глава")
-        return dramaturgy_doc.render_doc(circles, acts, volume, method_name=m.title, heading=m.heading)
-    return dramaturgy_doc.render_doc(circles, acts, volume, method_name="круг истории", heading="Круг")
+    m = methodic_for(ws, "глава") if ws is not None else _default_methodic()
+    return dramaturgy_doc.render_doc(circles, acts, volume, method_name=m.title, heading=m.heading)
 
 
 def canon_status(ws: Workspace) -> dict[str, str]:
