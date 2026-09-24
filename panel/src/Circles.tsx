@@ -41,6 +41,8 @@ export function Circles(props: {
   const [data, setData] = useState<CirclesData | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [manualStem, setManualStem] = useState<string>("");
+  // предпросмотр внесения в канон (FR-DR-4): дифф документа каркасов до подтверждения
+  const [preview, setPreview] = useState<{ doc: string; lines: string[]; changed: boolean } | null>(null);
   // вставленный ответ модели (ручной режим) — в localStorage и в реестре «не сохранено» (аудит 5.3)
   const ds = useDraft("круги:ручной", "", "в ручном режиме «Кругов истории»");
   const pasted = ds.text;
@@ -64,6 +66,16 @@ export function Circles(props: {
     });
 
   const pendingCanon = Object.values(data.canon_status).filter((s) => s !== "в каноне").length;
+
+  const showPreview = () =>
+    run(async () => {
+      if (preview) return setPreview(null);
+      try {
+        setPreview(await apiGet<{ doc: string; lines: string[]; changed: boolean }>("/api/circles/preview"));
+      } catch (e) {
+        notify(errText(e));
+      }
+    });
 
   const toCanon = () =>
     run(async () => {
@@ -131,10 +143,26 @@ export function Circles(props: {
         <button disabled={busy} onClick={() => generate("акты")}>Акты</button>
         <button disabled={busy} onClick={() => generate("главы")}>Главы</button>
         <button disabled={busy} onClick={() => generate("всё", true)}>Пересчитать всё</button>
+        <button disabled={busy || data.circles.length === 0} onClick={showPreview}>
+          {preview ? "Скрыть изменения" : "Что изменится в каноне"}
+        </button>
         <button className={pendingCanon > 0 ? "primary" : ""} disabled={busy || data.circles.length === 0} onClick={toCanon}>
           Внести в канон{pendingCanon > 0 ? ` (${pendingCanon})` : ""}
         </button>
       </div>
+      {preview && (
+        <div className="card" data-testid="circles-preview">
+          <strong>{preview.doc}</strong>{" "}
+          <span className="muted">{preview.changed ? "— изменения при внесении в канон:" : "— уже совпадает с черновиками"}</span>
+          {preview.changed && (
+            <div className="diff">
+              {preview.lines.map((l, i) => (
+                <div key={i} className={l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : ""}>{l}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {data.prompts.length > 0 && (
         <details className="card">

@@ -292,6 +292,8 @@ PANEL_TO_CLI = {
     "resolve-all": "resolve", "lint-fix": "lint", "circles-manual": "circles", "manual-draft": "write", "manual-flags": "verify2",
     "canon-doc": "canon-commit", "onboarding-decision": "onboarding", "job-cancel": "run", "canon-batch": "canonize",
     "edits": "edits", "prompt": "write", "accept": "accept", "rollback": "rollback", "resolve": "resolve",
+    "add-golden": "add-golden", "circles-preview": "circles", "quality": "нормы", "volume": "volume", "types": "типы",
+    "metrics": "метрики", "canon-history": "canon-commit",  # история коммитов документа: в терминале — git log
 }
 
 

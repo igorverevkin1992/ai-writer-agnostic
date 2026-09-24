@@ -84,9 +84,21 @@ def circles(
         n = len(circles_mod.drafts(ws))
         if not n:
             raise StepError("черновиков кругов нет — сначала `konveyer circles`.")
+        try:
+            path, _, lines = circles_mod.canon_preview(ws, lib)
+        except RuntimeError as e:
+            raise StepError(str(e)) from e
+        if not lines:
+            echo(f"Документ {path.name} уже совпадает с черновиками — вносить нечего.")
+            return None
+        echo(f"Изменения в {path.name} (FR-DR-4, предпросмотр):")
+        for line in lines[:200]:
+            secho(line, fg=colors.GREEN if line.startswith("+") else colors.RED if line.startswith("-") else None)
+        if len(lines) > 200:
+            echo(f"… и ещё {len(lines) - 200} строк")
         confirm_or_reject(
             yes, confirm,
-            f"Внести {n} круг(ов) в {circles_mod.canon_doc_name(ws.volume)} библиотеки и закоммитить? (Д-8) (y)",
+            f"Внести {n} каркас(ов) в {path.name} библиотеки и закоммитить? (Д-8) (y)",
         )
         try:
             path, commit = circles_mod.commit_to_canon(ws, cfg, lib)

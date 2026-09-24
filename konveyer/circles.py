@@ -464,18 +464,30 @@ def canon_status(ws: Workspace) -> dict[str, str]:
     return status
 
 
-def commit_to_canon(ws: Workspace, cfg: Config, library: Path) -> tuple[Path, str]:
-    """Вносит черновики каркасов в документ каркасов библиотеки (только по подтверждению автора, FR-DR-4)."""
+def canon_preview(ws: Workspace, library: Path) -> tuple[Path, str, list[str]]:
+    """Что изменится в документе каркасов при внесении черновиков (FR-DR-4: предпросмотр и дифф до подтверждения):
+    (путь документа, новый текст, строки unified diff против текущего документа; пустой список — изменений нет)."""
+    import difflib
+
     new = drafts(ws)
     if not new:
         raise RuntimeError("черновиков каркасов нет — сначала постройте их (`konveyer каркас`).")
     merged = {(c.scope, c.key): c for c in canon_circles(ws)}
     for c in new:
         merged[(c.scope, c.key)] = c
-    acts = act_list(ws)
     existing = exporter.docs_of_type(library, "каркасы", ws.volume, ws.root)
     path = existing[0] if existing else library / canon_doc_name(ws.volume, ws.root)
-    text = render_canon_doc(list(merged.values()), acts, ws.volume, ws)
+    text = render_canon_doc(list(merged.values()), act_list(ws), ws.volume, ws)
+    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    lines = list(difflib.unified_diff(current.splitlines(), text.splitlines(), "в каноне", "после внесения", lineterm="", n=2))
+    return path, text, lines
+
+
+def commit_to_canon(ws: Workspace, cfg: Config, library: Path) -> tuple[Path, str]:
+    """Вносит черновики каркасов в документ каркасов библиотеки (только по подтверждению автора, FR-DR-4)."""
+    new = drafts(ws)
+    existing = exporter.docs_of_type(library, "каркасы", ws.volume, ws.root)  # документа ещё нет → записать в манифест
+    path, text, _ = canon_preview(ws, library)
     message = f"[каркасы] внесено каркасов: {len(new)} (драматургия тома {ws.volume})"
     result = canonchange.canon_change(
         ws, cfg, library, lambda: guard.write_text(path, text), message,

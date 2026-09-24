@@ -889,6 +889,16 @@ class PanelAPI:
             "volume": self.ws.volume,
         }
 
+    def circles_preview(self) -> dict:
+        """Дифф документа каркасов до внесения в канон (FR-DR-4) — GET ничего не пишет."""
+        from . import circles as circles_mod
+
+        try:
+            path, _, lines = circles_mod.canon_preview(self.ws, self.library)
+        except RuntimeError as e:
+            raise ValueError(str(e)) from None
+        return {"doc": path.relative_to(self.library).as_posix(), "lines": lines, "changed": bool(lines)}
+
     def circle_prompt(self, stem: str) -> dict:
         path = self.ws.root / "драматургия" / "промпты" / f"{stem}.md"
         if not path.exists():
@@ -1250,9 +1260,10 @@ class PanelAPI:
 
 # действия панели помимо фоновых команд (POST-пути и синхронные операции) — для сверки с CLI (FR-PN-7)
 PANEL_ACTIONS = {
-    "state", "chapter", "draft", "diff", "window", "prompt", "find", "circles", "lint", "canon", "log", "job",
-    "project", "onboarding", "journals", "regression", "resolve", "resolve-all", "edits", "canon-batch", "canon-doc",
-    "lint-fix", "circles-manual", "manual-draft", "manual-flags", "accept", "rollback", "onboarding-decision", "job-cancel",
+    "state", "chapter", "draft", "diff", "window", "prompt", "find", "circles", "circles-preview", "lint", "canon",
+    "canon-history", "log", "job", "project", "onboarding", "journals", "regression", "quality", "volume", "types", "metrics",
+    "resolve", "resolve-all", "edits", "canon-batch", "canon-doc", "lint-fix", "circles-manual", "manual-draft",
+    "manual-flags", "accept", "rollback", "onboarding-decision", "job-cancel", "add-golden",
 }
 
 
@@ -1455,6 +1466,8 @@ def make_handler(api: PanelAPI):
                     return self._json(api.find(q1("q")))
                 if path == "/api/circles":
                     return self._json(api.circles())
+                if path == "/api/circles/preview":
+                    return self._json(api.circles_preview())
                 m = re.fullmatch(r"/api/circles/prompt/([\w\-]+)", path)
                 if m:
                     return self._json(api.circle_prompt(m.group(1)))

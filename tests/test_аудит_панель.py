@@ -487,3 +487,19 @@ def test_cli_решение_все_линтер_исправить_каркас_
     assert r.exit_code == 1 and "книга" in r.output
     r = runner.invoke(app, ["каркас", "--принять", "акт_1"])
     assert r.exit_code == 1 and "файл" in r.output
+
+
+# ------------------------------------------------------------- C4-14: предпросмотр внесения каркасов (FR-DR-4)
+
+
+def test_предпросмотр_внесения_каркасов_в_канон(panel, ws):
+    code, body = _get(f"{panel}/api/circles/preview")
+    assert code == 400 and "черновиков каркасов нет" in body["error"]
+    d = ws.root / "драматургия"
+    d.mkdir()
+    (d / "книга.json").write_text(json.dumps({"scope": "книга", "key": None, "title": "Круг книги",
+                                              "steps": [{"n": i, "name": f"шаг {i}", "text": f"текст {i}"} for i in range(1, 9)]},
+                                             ensure_ascii=False), encoding="utf-8")
+    code, body = _get(f"{panel}/api/circles/preview")
+    assert code == 200 and body["changed"] and body["doc"].endswith(".md") and any(line.startswith("+") for line in body["lines"])
+    assert not any(str(ws.root) in line for line in body["lines"])
