@@ -156,8 +156,7 @@ def norms(calibrate_files: list[Path] | None = None, approve: bool = False, yes:
     if calibrate_files is None and not from_corpus:
         secho("Нормы стиля (из выгрузок):", bold=True)
         for nid, n in current.items():
-            m = metrics_mod.REGISTRY.get(nid)
-            echo(f"  {nid}: {metrics_mod.corridor(n)} — {m.description if m else '⚠ неизвестная метрика'}")
+            echo(f"  {nid}: {metrics_mod.corridor(n)} — {metrics_mod.describe(nid, n) or '⚠ неизвестная метрика'}")
         echo("Калибровка: `konveyer нормы --калибровать <файлы…>` или `--калибровать` без файлов (по принятым главам).")
         return {"нормы": {k: v.model_dump() for k, v in current.items()}}
     samples = calibrate.samples_from_files(calibrate_files) if calibrate_files else calibrate.samples_from_corpus(ws, lib)

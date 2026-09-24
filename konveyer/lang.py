@@ -146,12 +146,21 @@ class Language:
                 stems.append(m.group(1) + m.group(2))
         return stems
 
+    def _unnormalized(self, fragment: str) -> str:
+        """Фрагмент регэкспа по нормализованной основе, совпадающий и с исходными буквами («е» → «[её]»):
+        основы нормализуются (`нормализация`), а проза — нет."""
+        for a, b in self.normalization.items():
+            if a != b and len(a) == 1 and len(b) == 1:
+                fragment = fragment.replace(b, f"[{b}{a}]")
+        return fragment
+
     def item_pattern(self, item: str) -> re.Pattern:
         """Регэксп словосочетания из стоп-листа: каждое слово — по основе с допустимыми окончаниями."""
         parts = []
+        inflections = self._unnormalized(self.inflections)
         for w in item.split():
-            alts = "|".join(re.escape(s) for s in self.stems(w))
-            parts.append(rf"(?:{alts})(?:{self.inflections})?")
+            alts = "|".join(self._unnormalized(re.escape(s)) for s in self.stems(w))
+            parts.append(rf"(?:{alts})(?:{inflections})?")
         return re.compile(r"(?<![А-Яа-яЁёA-Za-z])" + r"\s+".join(parts) + r"(?![А-Яа-яЁёA-Za-z])", re.IGNORECASE)
 
     # ---------------------------------------------------------------- лексемы и вставки

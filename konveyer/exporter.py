@@ -392,11 +392,14 @@ def _postprocess(col: Collected, volume: int, library: Path, root: Path) -> None
             del d["norms.json"][norm_id]
     from . import metrics as metrics_mod
 
-    metrics_mod.register_lexeme_norms(d["norms.json"])
     for norm_id in metrics_mod.unknown_norms(d["norms.json"]):
         src = d["norms.json"][norm_id].source.split(" (")[0]
         col.errors.append(MarkupError(library / src, 1, f"норма «{norm_id}» не соответствует ни одной метрике реестра Э1; "
                                       f"доступные: {', '.join(metrics_mod.available())}"))
+    # норма принята, но проверяться не будет или будет проверяться неверно (брак без стороны, нет параметра) — тоже ошибка
+    for norm_id, problem in metrics_mod.norm_problems(d["norms.json"]):
+        src = d["norms.json"][norm_id].source.split(" (")[0]
+        col.errors.append(MarkupError(library / src, 1, f"норма «{norm_id}»: {problem}"))
 
 
 def _month(date: str) -> int | None:
