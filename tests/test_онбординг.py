@@ -330,9 +330,16 @@ def test_cli_импорт_и_онбординг(proj):
     ws, lib, src = proj
     (src / "план глав.md").write_text(PLAN, encoding="utf-8")
     (src / "заметки.txt").write_text("заметки", encoding="utf-8")
+    # несколько источников за один вызов (файл + папка, как в примерах Запуск.md): один индекс, сводный отчёт
+    extra = src.parent / "ещё.md"
+    extra.write_text("# Ещё\n\nзаметка\n", encoding="utf-8")
+    r = runner.invoke(app, ["импорт", str(src), str(extra)])
+    assert r.exit_code == 0 and "новых 3" in r.output, r.output
     r = runner.invoke(app, ["импорт", str(src)])
-    assert r.exit_code == 0 and "новых 2" in r.output, r.output
-    r = runner.invoke(app, ["онбординг", "--решение", "заметки.txt=сырьё"])
+    assert r.exit_code == 0 and "уже были 2" in r.output, r.output
+    r = runner.invoke(app, ["импорт", str(src / "нет такого.md")])
+    assert r.exit_code == 1 and "не найден" in r.output
+    r = runner.invoke(app, ["онбординг", "--решение", "заметки.txt=сырьё", "--решение", "ещё.md=сырьё"])
     assert r.exit_code == 0 and "план глав.md → план_глав" in r.output and "решение: сырьё" in r.output, r.output
     assert (ws.root / "онбординг" / "предложение.md").exists() and (ws.root / "онбординг" / "отчёт.md").exists()
     r = runner.invoke(app, ["онбординг", "--решение", "заметки.txt=чушь"])

@@ -190,7 +190,8 @@ def test_backup_архив_создаёт_zip_и_ротирует(ws, library, t
     assert len(archives) == 2  # backup_keep = 2
     assert all(p.name.startswith("рабочая_область_") and p.suffix == ".zip" for p in archives)
     names = zipfile.ZipFile(archives[-1]).namelist()
-    assert "главы/001/черновик_1.md" in names and "конфиг.yaml" in names
+    assert "главы/001/черновик_1.md" in names and "конфиг.yaml" in names and "проект.yaml" in names  # манифест — в архиве
+    assert "Восстановление:" in r.output  # процедура восстановления называется в выводе бэкапа
     assert any(n.startswith("регрессия/золотые/") for n in names)
     assert not any(n.endswith(".tmp") for n in names)
     assert not list(dest.glob("*.tmp"))

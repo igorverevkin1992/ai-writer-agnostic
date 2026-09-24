@@ -416,6 +416,9 @@ def backup(
             f"Архив рабочей области: {arch_age:.1f} дн. назад ({backup_mod.latest_archive(arch_dir)})." if arch_age is not None
             else f"Архив рабочей области ещё не делался ({arch_dir}): `konveyer backup --архив`."
         )
+    echo("Восстановление: распакуйте zip в новую папку проекта, склонируйте библиотеку из любого места хранения "
+         "(`git clone <bare-папка или url> Библиотека`), проверьте library_dir в конфиг.yaml, затем `konveyer экспорт` и "
+         "`konveyer доктор` (подробно — Запуск.md, «Восстановление»).")
     if push:
         if not remotes:
             raise StepError("нет удалённых репозиториев — добавьте git remote.")

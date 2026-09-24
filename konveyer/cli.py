@@ -588,10 +588,12 @@ def cmd_init(
 
 @app.command("импорт", rich_help_panel="Онбординг")
 @_friendly
-def cmd_import(source: str = typer.Argument(..., help="Файл, папка или .zip с материалами автора.")) -> None:
+def cmd_import(
+    sources: list[str] = typer.Argument(..., help="Файлы, папки или .zip с материалами автора (можно несколько)."),
+) -> None:
     """Импортировать материалы в сырьё/: копии оригиналов, извлечения в Markdown, индекс (§5.1)."""
     try:
-        onboarding_steps.import_materials(source)
+        onboarding_steps.import_materials(sources)
     except FileNotFoundError as e:
         _fail(str(e))
 
