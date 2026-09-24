@@ -805,3 +805,22 @@ def test_доктор_отличает_не_найдена_от_не_прове�
     r = runner.invoke(app, ["доктор"])
     assert "~ модель claude-sonnet-4-5" in r.output and "не проверено: ConnectionError" in r.output
     assert "✗ модель gemini-3.1-pro (Писатель): модель «gemini-3.1-pro» не найдена" in r.output
+
+
+def test_демо_корпус_э2_по_каждому_чек_листу(ws):
+    """A4-29 (§7.6): в демо есть золотой тест Э2 на каждый включённый чек-лист и «зелёный» контроль фактуры;
+    промпт теста несёт срез канона и «НЕ знает» фокала, так что тест самодостаточен."""
+    from konveyer import catalog, regression
+    from konveyer.config import Config
+
+    tests = {t.test_id: t for t in regression.load_tests(ws) if t.echelon == "Э2"}
+    types = {"фокализация", "эпистемика", "информрежим", "закладка", "континуити", "анахронизм", "самоволка", "бриф"}
+    assert types <= {f for t in tests.values() for f in t.expected_flags}
+    assert tests["зелёный_э2_фактура"].expected_flags == []
+    mods = catalog.load_modules(ws.root)
+    checks = {c for m in mods.values() for c in m.e2_checks}
+    assert {"фокализация", "эпистемика", "информрежим", "закладки", "континуити", "анахронизмы", "самоволки", "бриф"} <= checks
+    system, user = regression.e2_prompt(ws, Config(), tests["красный_э2_эпистемика"])
+    assert "Фокал НЕ знает: что сторож жив" in user and "<текст_главы>" in user
+    _, user = regression.e2_prompt(ws, Config(), tests["красный_э2_континуити"])
+    assert "## СРЕЗ КАНОНА" in user and "шрам на левой брови" in user

@@ -127,13 +127,17 @@ def test_find_corpus_file_границы_номера(ws):
 
 
 def test_регрессия_э2_через_llm(ws, monkeypatch):
+    expected = {t.test_id: t.expected_flags for t in regression.load_tests(ws)}  # демо: тест Э2 на каждый чек-лист
+
     def fake_call(system, user, mc, api, logs_dir, *, role, chapter=None):
         assert "Регрессионный тест" in user
+        test_id = user.splitlines()[0].removeprefix("# Регрессионный тест ").strip()
+        flags = expected[test_id]
         return json.dumps([{
-            "flag_id": "F-001", "type": "бриф", "severity": "важно",
+            "flag_id": "F-001", "type": flags[0], "severity": "важно",
             "quote": "Жизнь", "rule": "сентенция вне брифа",
-            "recommendation": "вычеркнуть", "kind": "violation",
-        }], ensure_ascii=False)
+            "recommendation": "вычеркнуть", "kind": "samovolka" if flags[0] == "самоволка" else "violation",
+        }] if flags else [], ensure_ascii=False)
 
     monkeypatch.setattr(adapters, "call_anthropic", fake_call)
     report = regression.run_regression(ws, llm=True, cfg=Config())

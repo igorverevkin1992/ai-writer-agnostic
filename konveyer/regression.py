@@ -167,22 +167,24 @@ def e2_prompt(ws: Workspace, cfg: Config, test: GoldenTest) -> tuple[str, str]:
     """(system, user) Верификатора-2 для золотого теста Э2."""
     system = verifier2.system_prompt(ws, cfg)
     ctx = test.context_slice
-    user = "\n".join(
-        [
-            f"# Регрессионный тест {test.test_id}",
-            f"- Фокал: {ctx.get('focal', '')}",
-            f"- Год: {ctx.get('year', '')}",
-            "- Бриф: фрагмент вне брифа; любые факты, мотивировки и сентенции, "
-            "отсутствующие в этом контексте, — самоволка или нарушение брифа.",
-            "",
-            "## ТЕКСТ",
-            "",
-            verifier2.FENCE_OPEN,
-            test.fragment,
-            verifier2.FENCE_CLOSE,
-        ]
+    lines = [
+        f"# Регрессионный тест {test.test_id}",
+        f"- Фокал: {ctx.get('focal', '')}",
+        f"- Год: {ctx.get('year', '')}",
+    ]
+    not_knows = [str(x) for x in (ctx.get("not_knows") or [])]
+    if not_knows:
+        lines.append("- Фокал НЕ знает: " + "; ".join(not_knows))
+    lines.append(
+        "- Бриф: фрагмент вне брифа; любые факты, мотивировки и сентенции, "
+        "отсутствующие в этом контексте и в срезе канона ниже, — самоволка или нарушение брифа."
     )
-    return system, user
+    window = str(ctx.get("window") or "").strip()
+    if window:
+        # срез канона золотого теста (реестры, запреты, закладки, континуити): тест самодостаточен
+        lines += ["", "## СРЕЗ КАНОНА", "", verifier2.FENCE_OPEN, window, verifier2.FENCE_CLOSE]
+    lines += ["", "## ТЕКСТ", "", verifier2.FENCE_OPEN, test.fragment, verifier2.FENCE_CLOSE]
+    return system, "\n".join(lines)
 
 
 def _flags_raised(raw: str, cfg: Config) -> set[str]:
