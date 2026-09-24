@@ -1,7 +1,6 @@
 """Тесты локального сервера панели (этап 3): API, защита, статика, задачи."""
 
 import json
-import threading
 import time
 import urllib.error
 import urllib.request
@@ -9,29 +8,18 @@ import urllib.parse
 
 import pytest
 
-from konveyer import review, server, verifier2
-from konveyer.config import Config
+from konveyer import review, verifier2
 from konveyer.fsm import ChapterState
 from konveyer.schemas import Flag, Resolution
-
-
-@pytest.fixture(autouse=True)
-def _no_api_keys(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+from tests.общие import panel_server
 
 
 @pytest.fixture
 def panel(ws, library, monkeypatch):
     """Живой сервер панели на свободном порту; cwd — рабочая область (для команд)."""
     monkeypatch.chdir(ws.root)
-    srv = server.serve(ws, Config(), library, port=0)
-    port = srv.server_address[1]
-    thread = threading.Thread(target=srv.serve_forever, daemon=True)
-    thread.start()
-    yield f"http://127.0.0.1:{port}"
-    srv.shutdown()
-    srv.server_close()
+    with panel_server(ws, library) as (port, srv):
+        yield f"http://127.0.0.1:{port}"
 
 
 def _get(url: str):

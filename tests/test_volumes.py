@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from tests.test_stage6_reliability import _accepted_chapter, _git, _init_repo
+from tests.общие import _accepted_chapter, _git, _init_repo
 from konveyer import apilog, circles, exporter, volume as volume_mod
 from konveyer.cli import app
 from konveyer.config import Config, load_config, set_volume
@@ -96,8 +96,6 @@ def _restore_volume2(library: Path) -> None:
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch, ws):
     monkeypatch.chdir(ws.root)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     apilog.current_volume = 1
     yield
     apilog.current_volume = 1
@@ -173,7 +171,7 @@ def test_экспорт_текущего_тома(ws, library):
 
 def test_экспорт_тома_без_документов_отказывает(ws, library):
     _hide_volume2(library)
-    with pytest.raises(Exception) as e:
+    with pytest.raises(exporter.ExportErrors) as e:
         exporter.run_export(library, ws.exports, ws.logs, 2)
     assert "план_глав" in str(e.value) and "Том2" in str(e.value)
 

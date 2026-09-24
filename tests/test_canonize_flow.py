@@ -13,16 +13,7 @@ from konveyer import canonist, compiler, gitops, review
 from konveyer.config import Config
 from konveyer.fsm import ChapterState
 from konveyer.schemas import Flag, Resolution
-
-
-@pytest.fixture(autouse=True)
-def _no_api_keys(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-
-
-def _git(lib, *args):
-    subprocess.run(["git", "-C", str(lib), *args], check=True, capture_output=True)
+from tests.общие import _git
 
 
 def test_полный_такт_с_коммитом(ws, library):

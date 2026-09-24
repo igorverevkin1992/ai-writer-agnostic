@@ -2,19 +2,20 @@
 guard для всех потоков), FR-E3 (цикл правок от базы приёмки), защита разметки от flag_id."""
 
 import json
-import subprocess
 import threading
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 from typer.testing import CliRunner
 
-from konveyer import compiler, gitops, guard, verifier2
+from konveyer import compiler, exporter, gitops, guard, verifier2
 from tests import профиль
 from tests.профиль import realcanon
 from konveyer.cli import app
 from konveyer.fsm import ChapterState
 from konveyer.schemas import Flag, Resolution
+from tests.общие import _git, _init_repo
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -92,9 +93,9 @@ def test_сопоставление_тайны_с_фактом_матрицы():
 
 
 def test_flag_id_только_безопасные_символы():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError, match="flag_id"):
         Flag(flag_id='x" onmouseover="alert(1)', type="т", quote="q", rule="r")
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError, match="target_registry"):
         Resolution(flag_id="F-001", decision="канонизировать", target_registry="3.1<script>")
     raw = json.dumps([{"flag_id": 'F"><img src=x onerror=alert(1)>', "type": "т", "quote": "q", "rule": "r",
                        "severity": "важно", "recommendation": "", "kind": "violation"}], ensure_ascii=False)
@@ -117,17 +118,6 @@ def test_guard_действует_во_всех_потоках(ws, library):
     t = threading.Thread(target=worker)
     t.start(); t.join()
     assert errors and not (library / "взлом.md").exists()
-
-
-def _git(repo: Path, *args: str) -> str:
-    return subprocess.run(["git", "-c", "core.quotepath=off", "-C", str(repo), *args],
-                          capture_output=True, text=True, encoding="utf-8", check=True).stdout.strip()
-
-
-def _init_repo(root: Path) -> None:
-    for args in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"], ["add", "-A"],
-                 ["commit", "-q", "-m", "init"]):
-        subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
 
 
 def test_git_только_в_пределах_библиотеки(ws, library):
@@ -250,11 +240,18 @@ def test_откат_зафиксированной_главы_по_sha_из_ст
     assert st.state == "зафиксировано" and sha == gitops.head(library)
     assert (library / "Проза" / "Том1_Глава01.md").exists()
 
+    assert (ws.corpus / "Том1_Глава01.txt").exists()  # принятая проза попала в корпус
     r = runner.invoke(app, ["rollback", str(chapter), "-y"])
     assert r.exit_code == 0, r.output
     st = ChapterState(ws, chapter)
     assert st.state == "принято" and "коммит_приёмки" not in st.data
     assert not (library / "Проза" / "Том1_Глава01.md").exists()
+    # FR-SC-4: откат пересчитывает выгрузки и корпус, сбрасывает счётчики
+    assert not (ws.corpus / "Том1_Глава01.txt").exists()
+    index = json.loads((ws.corpus / exporter.CORPUS_INDEX).read_text(encoding="utf-8"))
+    assert "Том1_Глава01.txt" not in index
+    assert "Том1_Глава01" not in (ws.exports / "индекс.json").read_text(encoding="utf-8")
+    assert st.data["авто_повторов"] == 0 and st.data["итераций_правок"] == 0
     # повторный откат из «принято» — обычный FSM-откат, реверт реверта невозможен
     r = runner.invoke(app, ["rollback", str(chapter), "--to", "собрано", "-y"])
     assert r.exit_code == 0, r.output

@@ -3,7 +3,6 @@
 import json
 import subprocess
 
-import pytest
 from typer.testing import CliRunner
 
 from konveyer import adapters, exporter, regression, review, textutils
@@ -13,12 +12,6 @@ from konveyer.fsm import ChapterState
 from konveyer.schemas import Flag
 
 runner = CliRunner()
-
-
-@pytest.fixture(autouse=True)
-def _no_api_keys(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
 
 # --- баг: typer.OptionInfo истинен → run шёл по веткам --manual/--авторская-правка

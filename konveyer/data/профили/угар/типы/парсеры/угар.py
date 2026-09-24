@@ -23,7 +23,7 @@ from pathlib import Path
 from konveyer import mdparse
 from konveyer.mdparse import MarkupError, cell
 from konveyer.schemas import (
-    Act, Arc, Brief, ChronicleEvent, ChronologyEvent, CircleStep, ContinuityEvent, DocumentSpec, Dose, Dossier,
+    Act, Arc, Brief, ChronicleEvent, ChronologyEvent, CircleStep, ContinuityEvent, Dossier,
     InfoBan, MatrixFact,
     Norm, Plant, Scene,
     StopRule, StoryCircle,
@@ -620,158 +620,6 @@ def enrich_from_poglavnik(briefs: list[Brief], path: Path, known_names: set[str]
                     current.participants.append(name)
 
 
-# --------------------------------------------- дозы прошлого (§5) и документы (§6)
-
-_SENT_RE = re.compile(r"(?<=[.!?»])\s+(?=[А-ЯЁ«])")
-_DOSE_REF_RE = re.compile(r"доз[аеуы]?\s*№\s*(\d+)", re.IGNORECASE)
-_SCALE_ITEM_RE = re.compile(r"№\s*(\d+)\s*[–-]\s*(\d+)\s*[—–-]\s*(.+?)(?=;\s*№|\.\s|\.$|$)")
-
-
-def _section_parts(path: Path, title_pattern: str) -> tuple[str, str, list[mdparse.Table], list[str]] | None:
-    """Секция реестра по заголовку: (уточнение в скобках заголовка, вводный абзац до таблицы,
-    таблицы, абзацы после таблицы)."""
-    sec = mdparse.find_section(mdparse.parse_sections(path), title_pattern)
-    if sec is None:
-        return None
-    kind_m = re.search(r"\(([^)]*)\)", sec.title)
-    tables = mdparse.parse_tables(path, sec.body, start_line=sec.line + 1)
-    intro: list[str] = []
-    after: list[str] = []
-    seen_table = False
-    for line in sec.body.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("|"):
-            seen_table = True
-            continue
-        if not stripped or stripped == "---":
-            continue
-        (after if seen_table else intro).append(stripped)
-    return (kind_m.group(1).strip() if kind_m else ""), " ".join(intro), tables, after
-
-
-def _sentences(text: str) -> list[str]:
-    return [t.strip() for t in _SENT_RE.split(text) if t.strip()]
-
-
-def parse_doses(path: Path) -> list[Dose]:
-    """§5 реестра «Три дозы 1913 года»: | Доза | Глава | Триггер | Что получает читатель | Чего НЕ получает |
-    и абзац «Правило доз: …» после таблицы. Фраза правила с адресом «в дозе №N» относится только к дозе N,
-    остальные фразы — к каждой (так «печь в мае» не попадает в окна доз №2–3)."""
-    found = _section_parts(path, r"[Дд]оз[аы]")
-    if found is None:
-        return []
-    _, intro, tables, after = found
-    _, volume = registry_year_volume(path)
-    rule_text = next((a.split(":", 1)[1].strip() for a in after if a.lower().startswith("правило доз")), "")
-    rule_sentences = _sentences(rule_text)
-    doses: list[Dose] = []
-    for table in tables:
-        headers = " ".join(table.headers).lower()
-        if "доза" not in headers or "триггер" not in headers:
-            continue
-        for row in table.rows:
-            ch = mdparse.parse_number(cell(row, "Глав"))
-            if ch is None:
-                continue
-            dose_id = cell(row, "Доза")
-            num = re.search(r"\d+", dose_id)
-            own = [
-                st for st in rule_sentences
-                if not _DOSE_REF_RE.search(st) or (num and int(num.group()) in {int(x) for x in _DOSE_REF_RE.findall(st)})
-            ]
-            doses.append(
-                Dose(
-                    dose_id=dose_id, chapter=int(ch), volume=volume,
-                    trigger=cell(row, "Триггер"),
-                    reader_gets=cell(row, "получает читатель"),
-                    reader_not_gets=cell(row, "НЕ получает"),
-                    form=intro,
-                    rule=" ".join(own),
-                )
-            )
-    return doses
-
-
-def parse_documents(path: Path) -> list[DocumentSpec]:
-    """§6 реестра «Реестр документов»: | № | После гл. | Стиль | Расхождение с правдой … | и абзац
-    «Языковая шкала рапортов …: №1–3 — …; №4–6 — …» — документу достаётся строка шкалы своего диапазона."""
-    found = _section_parts(path, r"[Рр]еестр документов")
-    if found is None:
-        return []
-    kind, intro, tables, after = found
-    _, volume = registry_year_volume(path)
-    scale_text = next((a.split(":", 1)[1] for a in after if a.lower().startswith("языковая шкала")), "")
-    scale_items = [
-        (int(m.group(1)), int(m.group(2)), f"№{m.group(1)}–{m.group(2)} — {m.group(3).strip()}")
-        for m in _SCALE_ITEM_RE.finditer(scale_text)
-    ]
-    docs: list[DocumentSpec] = []
-    for table in tables:
-        headers = " ".join(table.headers).lower()
-        if "после гл" not in headers or "стиль" not in headers:
-            continue
-        for row in table.rows:
-            num = mdparse.parse_number(cell(row, "№"))
-            ch = mdparse.parse_number(cell(row, "После гл"))
-            if num is None or ch is None:
-                continue
-            docs.append(
-                DocumentSpec(
-                    number=int(num), after_chapter=int(ch), volume=volume, kind=kind,
-                    style=cell(row, "Стиль"),
-                    divergence=cell(row, "Расхождение"),
-                    form=intro,
-                    scale=next((text for lo, hi, text in scale_items if lo <= int(num) <= hi), ""),
-                )
-            )
-    return docs
-
-
-# ------------------------------------------------------------- матрица 31
-
-
-def parse_wide_matrix(path: Path) -> list[MatrixFact]:
-    """Широкая матрица: строки — факты, колонки — субъекты."""
-    for table in mdparse.parse_tables(path):
-        if "Факт" not in table.headers or len(table.headers) < 5:
-            continue
-        subject_cols = [h for h in table.headers if h not in ("#", "Факт")]
-        facts: list[MatrixFact] = []
-        for row in table.rows:
-            num = mdparse.parse_number(row.get("#", "")) or len(facts) + 1
-            fact_text = row.get("Факт", "")
-            for subj in subject_cols:
-                raw = row.get(subj, "").strip()
-                if not raw:
-                    continue
-                # курсив *…* = частичное/неверное знание; жирный **…** — просто выделение
-                partial = raw.startswith("*") and raw.endswith("*") and not raw.startswith("**")
-                clean = raw.strip("*").strip()
-                if clean in ("—", "-", ""):
-                    from_ch: int | None = None
-                elif clean.lower().startswith("всегда") or clean.lower().startswith("пролог"):
-                    from_ch = 0
-                elif subj == "Читатель":
-                    from_ch = reveal_chapter(clean)  # «улики с гл.4; расчётная разгадка ≈гл.20» → 20
-                else:
-                    chm = CH_RE.search(clean)
-                    from_ch = int(chm.group(1)) if chm else None
-                source = clean.split("/", 1)[1].strip() if "/" in clean else ""
-                facts.append(
-                    MatrixFact(
-                        fact_id=f"М-{int(num):02d}",
-                        fact=fact_text,
-                        subject=subj,
-                        from_chapter=from_ch,
-                        source=source,
-                        note=("частично/неверно: " + clean) if partial else ("" if from_ch is not None else clean),
-                    )
-                )
-        if facts:
-            return facts
-    raise MarkupError(path, 1, "не найдена матрица (широкая таблица с колонкой «Факт»)")
-
-
 # ---------------------------------------------------------- закладки (§7)
 
 
@@ -1303,16 +1151,10 @@ def parse_arcs(path: Path) -> list[Arc]:
     return arcs
 
 
-
 # ------------------------------------------------------------------ обёртки для форматов «плагин» профиля УГАР
 # Движок вызывает функцию формата с путём документа и (по сигнатуре) `known_names`, `library`, `ctx`, `volume`;
 # всё знание о раскладке библиотеки УГАРа (реестр информрежима как источник брифов, тайн и закладок; журнал
 # как источник словаря усилителей) живёт здесь, в профиле, а не в движке (П-1).
-
-
-def _registry_of(library: Path) -> Path | None:
-    cands = sorted(library.glob("*Реестр_информационного_режима*.md")) or sorted(library.glob("УГАР_Том*_Реестр*.md"))
-    return cands[0] if cands else None
 
 
 def _journal_of(library: Path) -> Path | None:

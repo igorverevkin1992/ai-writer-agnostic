@@ -2,61 +2,23 @@
 сброс счётчиков FSM, повреждённые файлы не роняют панель."""
 
 import json
-import shutil
 import subprocess
 import threading
 import urllib.request
-from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
-from konveyer import canonist, compiler, gitops, review, server, verifier1, verifier2
+from konveyer import canonist, gitops, server
 from konveyer.cli import app
 from konveyer.config import Config
 from konveyer.fsm import ChapterState, StatusFileError
-
-
-def _git(root: Path, *args: str) -> str:
-    return subprocess.run(["git", "-c", "core.quotepath=off", "-C", str(root), *args], check=True,
-                          capture_output=True, text=True, encoding="utf-8").stdout.strip()
-
-
-def _init_repo(root: Path) -> None:
-    for args in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"], ["add", "-A"],
-                 ["commit", "-q", "-m", "init"]):
-        subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
-
-
-def _accepted_chapter(ws, library, chapter: int = 1) -> ChapterState:
-    """Глава доведена до «принято» с пакетом Канониста (без моделей)."""
-    compiler.compile_window(ws, library, chapter)
-    st = ChapterState(ws, chapter)
-    st.transition("собрано", "compile")
-    ws.draft_path(chapter, 1).parent.mkdir(parents=True, exist_ok=True)
-    ws.draft_path(chapter, 1).write_text("Каширин нашёл записку утром возле хлебницы.", encoding="utf-8")
-    st.set_draft(1)
-    for state, cmd in (("сгенерировано", "write"), ("верифицировано-1", "verify1"), ("верифицировано-2", "verify2")):
-        st.transition(state, cmd)
-    verifier2.save_flags(ws, chapter, [])
-    review.build_review_pack(ws, chapter, 1)
-    st.transition("на-приёмке", "review")
-    review.save_edits(ws, chapter, [])
-    shutil.copyfile(ws.draft_path(chapter, 1), ws.draft_path(chapter, 2))
-    st.set_draft(2)
-    st.transition("правки", "apply-edits")
-    verifier1.diff_check(ws, chapter, 1, 2, [])
-    st.transition("дифф-контроль", "diff-check")
-    st.transition("принято", "accept")
-    canonist.build_batch(ws, Config(), chapter, 2)
-    return ChapterState(ws, chapter)
+from tests.общие import _accepted_chapter, _git, _init_repo
 
 
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch, ws):
     monkeypatch.chdir(ws.root)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
 
 # ------------------------------------------------------------- 4.1 идемпотентная приёмка

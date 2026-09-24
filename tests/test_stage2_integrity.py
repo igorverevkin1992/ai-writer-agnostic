@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 import types
 from pathlib import Path
@@ -22,28 +21,10 @@ from konveyer.fsm import STATES, ChapterState, TransitionError
 from konveyer.mdparse import MarkupError
 from konveyer.paths import Workspace
 from konveyer.schemas import Edit, Flag, GoldenTest, Resolution
+from tests.общие import _git, _init_repo
 
 runner = CliRunner()
 REPO = Path(__file__).resolve().parent.parent
-
-
-@pytest.fixture(autouse=True)
-def _no_api_keys(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-
-
-def _git(path: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", "-C", str(path), *args], check=True, capture_output=True, text=True, encoding="utf-8"
-    ).stdout
-
-
-def _init_repo(root: Path) -> None:
-    for args in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"], ["add", "-A"],
-                 ["commit", "-q", "-m", "init"]):
-        _git(root, *args)
 
 
 def _chapter(ws: Workspace, n: int, *states: str, draft: int = 1) -> ChapterState:

@@ -17,7 +17,7 @@ from konveyer.cli import app
 from konveyer.config import Config, ModelConfig
 from konveyer.fsm import ChapterState
 
-from tests.test_stage6_reliability import _accepted_chapter, _git, _init_repo
+from tests.общие import _accepted_chapter, _git, _init_repo
 
 runner = CliRunner()
 
@@ -25,9 +25,6 @@ runner = CliRunner()
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch, ws):
     monkeypatch.chdir(ws.root)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
 
 
 def _with_spec(mod: types.ModuleType) -> types.ModuleType:

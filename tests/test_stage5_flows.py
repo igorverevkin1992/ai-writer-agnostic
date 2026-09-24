@@ -3,34 +3,24 @@
 
 import json
 import shutil
-import threading
 import urllib.error
 import urllib.request
 
 import pytest
 from typer.testing import CliRunner
 
-from konveyer import review, server, verifier2, writer
+from konveyer import review, verifier2, writer
 from konveyer.cli import app
 from konveyer.config import Config
 from konveyer.fsm import ChapterState
-
-
-@pytest.fixture(autouse=True)
-def _offline(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+from tests.общие import panel_server
 
 
 @pytest.fixture
 def panel(ws, library, monkeypatch):
     monkeypatch.chdir(ws.root)
-    srv = server.serve(ws, Config(), library, port=0)
-    port = srv.server_address[1]
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{port}"
-    srv.shutdown()
-    srv.server_close()
+    with panel_server(ws, library) as (port, srv):
+        yield f"http://127.0.0.1:{port}"
 
 
 def _get(url: str):

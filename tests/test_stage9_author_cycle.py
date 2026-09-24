@@ -17,8 +17,6 @@ runner = CliRunner()
 
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     cancel.clear()
     timing.current_job = None
 

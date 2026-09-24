@@ -1,7 +1,6 @@
 """Линтер канона: проверки противоречий (демо и реальная библиотека), исправления, наблюдатель, API панели, CLI."""
 
 import json
-import threading
 import time
 import urllib.error
 import urllib.parse
@@ -15,12 +14,7 @@ from konveyer import canonwatch, guard, lint, server
 from konveyer.cli import app
 from konveyer.config import Config
 from konveyer.schemas import LintFix
-
-
-@pytest.fixture(autouse=True)
-def _offline(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+from tests.общие import panel_server
 
 
 def _edit(path: Path, old: str, new: str) -> None:
@@ -116,12 +110,8 @@ def test_наблюдатель_замечает_изменение(library):
 @pytest.fixture
 def panel(ws, library, monkeypatch):
     monkeypatch.chdir(ws.root)
-    srv = server.serve(ws, Config(), library, port=0, watch=False)
-    port = srv.server_address[1]
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{port}", srv.api  # type: ignore[attr-defined]
-    srv.shutdown()
-    srv.server_close()
+    with panel_server(ws, library, watch=False) as (port, srv):
+        yield f"http://127.0.0.1:{port}", srv.api
 
 
 def _get(url: str):

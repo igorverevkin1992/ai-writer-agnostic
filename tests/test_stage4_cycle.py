@@ -11,27 +11,17 @@ import time
 import pytest
 
 from konveyer import cancel, review, server, verifier2
-from konveyer.config import Config
 from konveyer.fsm import ChapterState
 from konveyer.schemas import Flag, Resolution
-
-
-@pytest.fixture(autouse=True)
-def _no_api_keys(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+from tests.общие import panel_server
 
 
 @pytest.fixture
 def panel(ws, library, monkeypatch):
     """Живой сервер на свободном порту; возвращает (порт, PanelAPI) — задачи можно подменять напрямую."""
     monkeypatch.chdir(ws.root)
-    srv = server.serve(ws, Config(), library, port=0, watch=False)
-    port = srv.server_address[1]
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield port, srv.api  # type: ignore[attr-defined]
-    srv.shutdown()
-    srv.server_close()
+    with panel_server(ws, library, watch=False) as (port, srv):
+        yield port, srv.api
 
 
 def _req(port: int, method: str, path: str, body: dict | None = None):
