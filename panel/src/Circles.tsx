@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { apiGet, apiPost } from "./api";
+import { apiGet, apiPost, errText } from "./api";
 import type { Notify, RunCommand } from "./App";
 import type { Confirm } from "./Confirm";
 import { RestoredNote, useDraft } from "./drafts";
@@ -16,6 +16,9 @@ interface CirclesData {
   prompts: string[];
   canon_status: Record<string, string>;
   in_canon: number;
+  /** документ канона, в который вносятся каркасы текущего тома (имя — из каталога типов, П-1) */
+  canon_doc: string;
+  volume: number;
 }
 
 const SCOPE_LABEL: Record<string, string> = { книга: "Книга", акт: "Акты", глава: "Главы" };
@@ -46,7 +49,7 @@ export function Circles(props: {
   const busy = jobBusy || pending;
 
   const load = useCallback(() => {
-    apiGet<CirclesData>("/api/circles").then(setData).catch((e) => notify(String(e)));
+    apiGet<CirclesData>("/api/circles").then(setData).catch((e) => notify(errText(e)));
   }, [notify]);
   useEffect(load, [load, refreshTick]);
 
@@ -65,8 +68,8 @@ export function Circles(props: {
   const toCanon = () =>
     run(async () => {
       const ok = await confirm(
-        `Внести ${data.circles.length} круг(ов) в документ 2.1 библиотеки (21_Круги_истории_Том1.md) и закоммитить канон? ` +
-        "После этого окна глав получат секцию «Драматургия», а Э2 — проверку 4.4. (Д-8)",
+        `Внести ${data.circles.length} каркас(ов) в документ «${data.canon_doc}» библиотеки (том ${data.volume}) и закоммитить канон? ` +
+        "После этого окна глав получат секцию «Драматургия», а Э2 — проверку драматургии. (Д-8)",
       );
       if (!ok) return;
       await runCommand("circles-canon");
@@ -75,12 +78,12 @@ export function Circles(props: {
   const copyPrompt = (stem: string) =>
     run(async () => {
       try {
-        const r = await apiGet<{ text: string }>(`/api/circles/prompt/${stem}`);
+        const r = await apiGet<{ text: string }>(`/api/circles/prompt/${encodeURIComponent(stem)}`);
         await navigator.clipboard.writeText(r.text);
         notify(`Промпт «${stem}» скопирован — вставьте ответ модели ниже.`, "ok");
         setManualStem(stem);
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
 
@@ -94,7 +97,7 @@ export function Circles(props: {
         ds.discard(); // принято сервером — черновик больше не нужен
         load();
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
 
@@ -104,9 +107,9 @@ export function Circles(props: {
     <>
       <h1>Круги истории — каркас драматургии</h1>
       <p className="muted">
-        Круг истории (Р-020) — несущий каркас драматургии и темпа: круг тома → круги {nActs} актов (Р-021) →
-        круги глав; каждый уровень строится внутри шага уровня выше. Черновики лежат в <code>драматургия/</code>;
-        после внесения в канон (документ 2.1) они попадают в окно Писателя («Драматургия главы») и в проверку Э2 (4.4).
+        Каркас драматургии по методике проекта: каркас тома → каркасы {nActs} актов → каркасы глав; каждый уровень
+        строится внутри шага уровня выше. Черновики лежат в <code>драматургия/</code>; после внесения в канон
+        (документ «{data.canon_doc}») они попадают в окно Писателя («Драматургия главы») и в проверку Э2.
         {" "}В каноне сейчас: <strong>{data.in_canon}</strong> круг(ов)
         {pendingCanon > 0 && <>, не внесено или изменено: <strong>{pendingCanon}</strong></>}.
       </p>

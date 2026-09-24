@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiGet, apiPost, isConflict } from "./api";
+import { apiGet, apiPost, errText, isConflict } from "./api";
 import type { Notify, RunCommand } from "./App";
 import type { Confirm } from "./Confirm";
 import { compactDiff, lineDiff } from "./diff";
@@ -9,7 +9,13 @@ import type { LintFinding, LintReport } from "./types";
 
 interface CanonDoc { path: string; name: string; mtime: number; size: number }
 interface Doc { path: string; text: string; version: string }
-interface LintData { report: LintReport | null; changed: string[]; running: boolean; pending: boolean }
+interface LintData {
+  report: LintReport | null; changed: string[]; running: boolean; pending: boolean;
+  /** сколько документов проверит модельный слой и каким провайдером — считает сервер, не панель */
+  llm_docs?: number; llm_provider?: string;
+}
+interface HistoryCommit { sha: string; date: string; author: string; message: string }
+interface HistoryData { path: string; git: boolean; commits: HistoryCommit[]; uncommitted: boolean }
 
 const SEV_CLASS: Record<string, string> = { ошибка: "b-BRAK", предупреждение: "b-FLAG", заметка: "" };
 
@@ -38,6 +44,9 @@ export function Canon(props: {
   const [pending, run] = usePending();
   const editor = useRef<HTMLTextAreaElement>(null);
   const busy = jobBusy || pending;
+  // история документа (FR-PN-2 «Канон»: история): коммиты git по файлу, дифф коммита по запросу
+  const [history, setHistory] = useState<HistoryData | null>(null);
+  const [histDiff, setHistDiff] = useState<{ sha: string; lines: string[] } | null>(null);
   // черновик документа: переживает перезагрузку (localStorage) и регистрируется в App как «не сохранено»
   const draftKey = current ? `канон:${current.path}` : null;
   const ds = useDraft(draftKey, current?.text ?? "", `в документе «${current?.path ?? ""}»`, current?.version);
@@ -53,13 +62,32 @@ export function Canon(props: {
   }, [draftKey]);
 
   const loadDocs = useCallback(() => {
-    apiGet<{ docs: CanonDoc[] }>("/api/canon").then((r) => setDocs(r.docs)).catch((e) => notify(String(e)));
+    apiGet<{ docs: CanonDoc[] }>("/api/canon").then((r) => setDocs(r.docs)).catch((e) => notify(errText(e)));
   }, [notify]);
   const loadLint = useCallback(() => {
     apiGet<LintData>("/api/lint").then(setLint).catch(() => undefined);
   }, []);
 
   useEffect(() => { loadDocs(); loadLint(); }, [loadDocs, loadLint, refreshTick]);
+  const loadHistory = useCallback((path: string) => {
+    apiGet<HistoryData>(`/api/canon/history?path=${encodeURIComponent(path)}`).then(setHistory).catch(() => setHistory(null));
+  }, []);
+  useEffect(() => {
+    setHistDiff(null);
+    if (current) loadHistory(current.path);
+    else setHistory(null);
+  }, [current?.path, current?.version, refreshTick, loadHistory]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const showCommit = (sha: string) =>
+    run(async () => {
+      if (!current) return;
+      if (histDiff?.sha === sha) return setHistDiff(null);
+      try {
+        const r = await apiGet<{ lines: string[] }>(`/api/canon/history/diff?path=${encodeURIComponent(current.path)}&sha=${sha}`);
+        setHistDiff({ sha, lines: r.lines });
+      } catch (e) {
+        notify(errText(e));
+      }
+    });
   useEffect(() => {
     const id = window.setInterval(loadLint, 3000); // наблюдатель сервера перепроверяет канон при правке файлов
     return () => window.clearInterval(id);
@@ -82,7 +110,7 @@ export function Canon(props: {
           setCurrent(d);
           if (line) window.setTimeout(() => jumpTo(editor.current?.value ?? d.text, line), 50);
         } catch (e) {
-          notify(String(e));
+          notify(errText(e));
         }
       }),
     [run, dirty, current, draft, ds, confirm, notify],
@@ -123,11 +151,11 @@ export function Canon(props: {
           const disk = await apiGet<Doc>(`/api/canon/doc?path=${encodeURIComponent(doc.path)}`);
           setConflict(disk);
         } catch (e2) {
-          notify(String(e2));
+          notify(errText(e2));
         }
         return;
       }
-      notify(String(e));
+      notify(errText(e));
     }
   };
 
@@ -208,7 +236,7 @@ export function Canon(props: {
           notify("Правки отменены.", "ok");
         }
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
 
@@ -229,14 +257,15 @@ export function Canon(props: {
           setCurrent(d);
         }
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
 
   const lintLlm = () =>
     run(async () => {
-      const n = current ? 1 : docs.filter((d) => !d.path.startsWith("ИНСТРУМЕНТ_") && !d.path.startsWith("ТЗ_") && !d.path.startsWith("Тест_Писателя/")).length;
-      const ok = await confirm(`Проверить моделью ${current ? `документ «${current.path}»` : `все документы (${n} вызовов Anthropic)`} на смысловые противоречия?`);
+      const n = current ? 1 : lint?.llm_docs ?? docs.length;
+      const provider = lint?.llm_provider ? ` провайдером «${lint.llm_provider}»` : "";
+      const ok = await confirm(`Проверить моделью ${current ? `документ «${current.path}»` : `все документы (${n} вызовов${provider})`} на смысловые противоречия?`);
       if (!ok) return;
       await runCommand("lint-llm", undefined, { files: current ? [current.path] : [] });
     });
@@ -374,6 +403,31 @@ export function Canon(props: {
               )}
               <textarea ref={editor} className="canon-text" value={draft} spellCheck={false}
                 onChange={(e) => ds.setText(e.target.value)} onKeyDown={onKey} aria-label={`Документ ${current.path}`} />
+              <details className="card" data-testid="canon-history" open={false}>
+                <summary>
+                  История документа{history ? (history.git ? ` (${history.commits.length})` : " — библиотека не под git") : ""}
+                  {history?.uncommitted && <span className="bad"> · есть незакоммиченные правки</span>}
+                </summary>
+                {history && history.git && history.commits.length === 0 && <p className="muted">Файл ещё не коммитился.</p>}
+                {history?.commits.map((c) => (
+                  <div key={c.sha} className="editrow">
+                    <span className="muted">{c.date.slice(0, 16).replace("T", " ")}</span>
+                    <span>{c.message}</span>
+                    <span className="muted">{c.author}</span>
+                    <button type="button" className="h2btn" disabled={busy} onClick={() => showCommit(c.sha)}>
+                      {histDiff?.sha === c.sha ? "скрыть дифф" : "показать дифф"}
+                    </button>
+                  </div>
+                ))}
+                {histDiff && (
+                  <div className="diff">
+                    {histDiff.lines.map((l, i) => (
+                      <div key={i} className={l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : ""}>{l}</div>
+                    ))}
+                    {histDiff.lines.length === 0 && "изменений документа в этом коммите нет"}
+                  </div>
+                )}
+              </details>
             </>
           ) : (
             <p className="muted">Выберите документ слева. Находки справа ведут к нужной строке.</p>

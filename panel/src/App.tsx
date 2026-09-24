@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { apiGet, apiPost, isOffline, OFFLINE_MESSAGE } from "./api";
+import { apiGet, apiPost, errText, isOffline, OFFLINE_MESSAGE } from "./api";
 import { ChapterView } from "./ChapterView";
 import { Canon } from "./Canon";
 import { Circles } from "./Circles";
-import { JournalsView, OnboardingView, ProjectView, RegressionView } from "./Views";
+import { JournalsView, OnboardingView, ProjectView, QualityView, RegressionView, VolumeView } from "./Views";
 import { useConfirm } from "./Confirm";
 import { createDirtyRegistry, DirtyContext } from "./drafts";
 import { useOnline, usePending } from "./hooks";
 import { JobCard } from "./JobCard";
-import type { Tab } from "./nextstep";
+import { QUEUE_NEXT, type Tab } from "./nextstep";
 import type { AppState, Job } from "./types";
 
 type View =
@@ -20,6 +20,8 @@ type View =
   | { kind: "проект" }
   | { kind: "онбординг" }
   | { kind: "регрессия" }
+  | { kind: "качество" }
+  | { kind: "том" }
   | { kind: "поиск"; q: string };
 
 export type Notify = (text: string, kind?: "ok" | "err") => void;
@@ -62,7 +64,7 @@ export default function App() {
 
   const notify: Notify = useCallback((text, kind = "err") => {
     window.clearTimeout(toastTimer.current);
-    setToast({ text: text.replace(/^Error:\s*/, ""), kind });
+    setToast({ text: text.replace(/^(Api)?Error:\s*/, ""), kind });
     if (kind === "ok") toastTimer.current = window.setTimeout(() => setToast(null), 3500);
   }, []);
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
@@ -87,7 +89,7 @@ export default function App() {
     } catch (e) {
       // обрыв связи — баннер (useOnline), не тост каждые 2,5 с; прочие ошибки опроса — один раз
       if (isOffline(e)) return;
-      const msg = String(e);
+      const msg = errText(e);
       if (lastPollError.current !== msg) {
         lastPollError.current = msg;
         notify(msg);
@@ -142,7 +144,7 @@ export default function App() {
         // более старый ответ опроса её не перезапишет (newerJob по started)
         setState((s) => (s ? { ...s, job: newerJob(s.job, r.job) } : s));
       } catch (e) {
-        if (!isOffline(e)) notify(String(e));
+        if (!isOffline(e)) notify(errText(e));
       }
     },
     [notify],
@@ -182,7 +184,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="brand">КОНВЕЙЕР</div>
         <div className="muted">
-          <span title="текущий том рабочей области (конфиг.yaml: volume; сменить — `konveyer volume open N`)">
+          <span title="текущий том рабочей области; сменить — вид «Том»">
             Том {state.volume ?? 1}
           </span>
           <br />
@@ -221,6 +223,12 @@ export default function App() {
           <button className={view?.kind === "регрессия" ? "primary" : ""} onClick={() => go({ kind: "регрессия" })}>
             Регрессия
           </button>
+          <button className={view?.kind === "качество" ? "primary" : ""} onClick={() => go({ kind: "качество" })}>
+            Качество
+          </button>
+          <button className={view?.kind === "том" ? "primary" : ""} onClick={() => go({ kind: "том" })}>
+            Том
+          </button>
           <button className={view?.kind === "круги" ? "primary" : ""} onClick={() => go({ kind: "круги" })}>
             Драматургия
           </button>
@@ -257,6 +265,7 @@ export default function App() {
                 черновик {c.draft} · Э1: {c.e1} · Э2: {c.e2}
                 {c.author_min > 0 && <> · автор {c.author_min} мин</>}
               </div>
+              <div className="muted" title={c.next}>→ {QUEUE_NEXT[c.state] ?? c.next}</div>
             </QueueItem>
           ))}
           {notStarted.map((b) => (
@@ -266,6 +275,7 @@ export default function App() {
                 <span className="badge">не начата</span>
               </div>
               <div className="muted">том {b.volume} · фокал {b.focal}</div>
+              <div className="muted">→ {QUEUE_NEXT["не-начато"]}</div>
             </QueueItem>
           ))}
         </div>
@@ -285,6 +295,12 @@ export default function App() {
           <OnboardingView refreshTick={refreshTick} notify={notify} busy={busy} runCommand={runCommand} confirm={confirm} />
         )}
         {view?.kind === "регрессия" && <RegressionView refreshTick={refreshTick} notify={notify} busy={busy} runCommand={runCommand} />}
+        {view?.kind === "качество" && (
+          <QualityView refreshTick={refreshTick} notify={notify} busy={busy} runCommand={runCommand} confirm={confirm} />
+        )}
+        {view?.kind === "том" && (
+          <VolumeView refreshTick={refreshTick} notify={notify} busy={busy} runCommand={runCommand} confirm={confirm} />
+        )}
         {view?.kind === "круги" && (
           <Circles
             busy={running || offline}
@@ -363,7 +379,7 @@ function SearchView({ q, notify }: { q: string; notify: Notify }) {
   useEffect(() => {
     apiGet<Record<string, { ref: string; text: string }[]>>(`/api/find?q=${encodeURIComponent(q)}`)
       .then(setGroups)
-      .catch((e) => notify(String(e)));
+      .catch((e) => notify(errText(e)));
   }, [q, notify]);
   if (!groups) return <p>Поиск «{q}»…</p>;
   const kinds = Object.keys(groups);

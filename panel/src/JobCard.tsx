@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { apiGet, apiPost } from "./api";
+import { apiGet, apiPost, errText } from "./api";
 import type { Notify } from "./App";
 import { fmtElapsed, useElapsed, usePending } from "./hooks";
 import { JOB_LABEL, MANUAL_JOBS } from "./nextstep";
@@ -45,7 +45,7 @@ export function JobCard(props: {
         await apiPost("/api/job/cancel");
         notify("Остановка запрошена — задача завершится после текущего вызова модели.", "ok");
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
 

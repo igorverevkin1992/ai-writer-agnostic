@@ -64,7 +64,9 @@ export interface AppState {
   chapters: QueueChapter[];
   briefs: Brief[];
   regression_green: boolean | null;
-  models: { writer: string; verifier2: string };
+  models: { writer: string; verifier2: string; [role: string]: string };
+  /** провайдер каждой роли из конфига (писатель, верификатор2, линтер, …) */
+  providers?: Record<string, string>;
   job: Job | null;
   lint: LintSummary | null;
   /** минуты авторских пауз всех глав за сегодня (5.7, только отображение) */
@@ -96,9 +98,14 @@ export interface Flag {
 
 export interface Resolution {
   flag_id: string;
-  decision: "вычеркнуть" | "канонизировать" | null;
+  decision: "вычеркнуть" | "канонизировать" | "отклонить" | null;
   target_registry: string | null;
+  /** причина отклонения флага (FR-RV-2) — уходит в журнал отклонённых флагов */
+  reason?: string;
 }
+
+/** Реестр, принимающий строки Канониста (тип с табличным извлечением) — список отдаёт сервер (П-1). */
+export interface Registry { name: string; purpose: string }
 
 export interface DiffReport {
   applied_share: number;
@@ -136,11 +143,15 @@ export interface ChapterDetail {
   text: string | null;
   drafts: number[];
   edits_md: string | null;
+  /** версия правки.md (хэш текста) для проверки конфликта при сохранении; null — файла нет */
+  edits_version: string | null;
   edits_parsed: EditParsed[];
   canon_batch: string | null;
+  batch_version: string | null;
   author_min: number;
   machine_min: number;
   next: string;
+  registries: Registry[];
 }
 
 export interface ApiLogRow {

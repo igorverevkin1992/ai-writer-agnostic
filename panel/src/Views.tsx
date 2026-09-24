@@ -1,7 +1,8 @@
-// Виды панели по этапам жизненного цикла (FR-PN-2): «Проект», «Онбординг», «Журналы», «Регрессия».
+// Виды панели по этапам жизненного цикла (FR-PN-2, FR-LC-4): «Проект», «Онбординг», «Журналы», «Регрессия»,
+// «Качество» (нормы, калибровка, пере-тест, золотые тесты), «Том» (сводка, закрытие, переключение, снапшот).
 // Все данные — из локального API; действия — теми же функциями ядра, что и команды CLI (FR-PN-7).
 import { useCallback, useEffect, useState } from "react";
-import { apiGet, apiPost } from "./api";
+import { apiGet, apiPost, errText } from "./api";
 import type { Notify, RunCommand } from "./App";
 import type { Confirm } from "./Confirm";
 import { usePending } from "./hooks";
@@ -32,7 +33,7 @@ export function ProjectView({ refreshTick, notify, busy, runCommand }: ViewProps
   const [data, setData] = useState<ProjectData | null>(null);
   const [pending, run] = usePending();
   const load = useCallback(() => {
-    apiGet<ProjectData>("/api/project").then(setData).catch((e) => notify(String(e)));
+    apiGet<ProjectData>("/api/project").then(setData).catch((e) => notify(errText(e)));
   }, [notify]);
   useEffect(load, [load, refreshTick]);
   if (!data) return <p>Загрузка…</p>;
@@ -105,7 +106,8 @@ interface Proposal {
   колонки: { mapping: Record<string, string>; missing: string[]; generated: string } | null;
   разбить: { heading: string; type: string }[];
 }
-interface OnboardingData { сырьё: RawEntry[]; предложения: Proposal[]; отчёт: string; решения: string[] }
+interface TypeRow { имя: string; назначение: string; множественность: string; имя_по_умолчанию: string; для_такта: boolean; источник: string }
+interface OnboardingData { сырьё: RawEntry[]; предложения: Proposal[]; отчёт: string; решения: string[]; типы: TypeRow[] }
 
 export function OnboardingView({ refreshTick, notify, busy, runCommand, confirm }: ViewProps & { confirm: Confirm }) {
   const [data, setData] = useState<OnboardingData | null>(null);
@@ -113,7 +115,7 @@ export function OnboardingView({ refreshTick, notify, busy, runCommand, confirm 
   const [open, setOpen] = useState<string | null>(null);
   const [pending, run] = usePending();
   const load = useCallback(() => {
-    apiGet<OnboardingData>("/api/onboarding").then(setData).catch((e) => notify(String(e)));
+    apiGet<OnboardingData>("/api/onboarding").then(setData).catch((e) => notify(errText(e)));
   }, [notify]);
   useEffect(load, [load, refreshTick]);
   if (!data) return <p>Загрузка…</p>;
@@ -123,7 +125,7 @@ export function OnboardingView({ refreshTick, notify, busy, runCommand, confirm 
         await apiPost("/api/onboarding/decision", { file, decision });
         load();
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
   const toApply = data.предложения.filter((p) => (p.решение && p.решение !== "сырьё" && p.решение !== "отклонить") || (!p.решение && p.тип !== "сырьё"));
@@ -195,9 +197,18 @@ export function OnboardingView({ refreshTick, notify, busy, runCommand, confirm 
               onChange={(e) => e.target.value && decide(p.файл, `тип:${e.target.value}`)}
             >
               <option value="">Другой тип…</option>
-              {p.гипотезы.map((h) => (
-                <option key={h.тип} value={h.тип}>{h.тип}</option>
-              ))}
+              {p.гипотезы.length > 0 && (
+                <optgroup label="гипотезы машины">
+                  {p.гипотезы.map((h) => (
+                    <option key={h.тип} value={h.тип}>{h.тип} ({Math.round(h.уверенность * 100)}%)</option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label="все типы каталога">
+                {data.типы.map((t) => (
+                  <option key={t.имя} value={t.имя} title={t.назначение}>{t.имя} — {t.назначение}</option>
+                ))}
+              </optgroup>
             </select>
             {p.разбить.length > 0 && <button disabled={busy || pending} onClick={() => decide(p.файл, "разбить")}>Разбить ({p.разбить.length})</button>}
             <button disabled={busy || pending} onClick={() => decide(p.файл, "сырьё")}>Оставить сырьём</button>
@@ -257,7 +268,7 @@ export function JournalsView({ refreshTick, notify, busy, runCommand }: ViewProp
   const [data, setData] = useState<JournalsData | null>(null);
   const [pending, run] = usePending();
   const load = useCallback(() => {
-    apiGet<JournalsData>("/api/journals").then(setData).catch((e) => notify(String(e)));
+    apiGet<JournalsData>("/api/journals").then(setData).catch((e) => notify(errText(e)));
   }, [notify]);
   useEffect(load, [load, refreshTick]);
   if (!data) return <p>Загрузка…</p>;
@@ -331,7 +342,7 @@ export function RegressionView({ refreshTick, notify, busy, runCommand }: ViewPr
   const [data, setData] = useState<RegressionData | null>(null);
   const [pending, run] = usePending();
   const load = useCallback(() => {
-    apiGet<RegressionData>("/api/regression").then(setData).catch((e) => notify(String(e)));
+    apiGet<RegressionData>("/api/regression").then(setData).catch((e) => notify(errText(e)));
   }, [notify]);
   useEffect(load, [load, refreshTick]);
   if (!data) return <p>Загрузка…</p>;
@@ -367,7 +378,221 @@ export function RegressionView({ refreshTick, notify, busy, runCommand }: ViewPr
           <div className="muted">{t.фрагмент}</div>
         </div>
       ))}
-      <p className="muted">Пополнить корпус: `konveyer золотой &lt;id&gt; &lt;файл&gt; --expect &lt;флаг&gt;` (из ошибки, пойманной автором).</p>
+      <p className="muted">Пополнить корпус из ошибки, пойманной автором, — в виде «Качество» (или `konveyer золотой`).</p>
+    </>
+  );
+}
+
+// ------------------------------------------------------------------ Качество (FR-LC-4, этап 8)
+
+interface NormRow { id: string; коридор: string; описание: string; min?: number | null; max?: number | null; brak?: number | null }
+interface QualityData { нормы: NormRow[]; калибровка: string; регрессия: boolean | null; пере_тест: string[] }
+interface MetricRow { id: string; проверка: string; описание: string; единица: string; область: string; вид: string; параметры: string[] }
+
+export function QualityView({ refreshTick, notify, busy, runCommand, confirm }: ViewProps & { confirm: Confirm }) {
+  const [data, setData] = useState<QualityData | null>(null);
+  const [metrics, setMetrics] = useState<MetricRow[] | null>(null);
+  const [showMetrics, setShowMetrics] = useState(false);
+  const [retestChapter, setRetestChapter] = useState("1");
+  const [golden, setGolden] = useState({ id: "", fragment: "", expect: "", echelon: "Э1" });
+  const [pending, run] = usePending();
+  const load = useCallback(() => {
+    apiGet<QualityData>("/api/quality").then(setData).catch((e) => notify(errText(e)));
+  }, [notify]);
+  useEffect(load, [load, refreshTick]);
+  useEffect(() => {
+    if (showMetrics && metrics === null) {
+      apiGet<{ метрики: MetricRow[] }>("/api/metrics").then((r) => setMetrics(r.метрики)).catch((e) => notify(errText(e)));
+    }
+  }, [showMetrics, metrics, notify]);
+  if (!data) return <p>Загрузка…</p>;
+  const locked = busy || pending;
+
+  const calibrate = (approve: boolean) =>
+    run(async () => {
+      const q = approve
+        ? "Калибровать нормы по принятым главам и ЗАПИСАТЬ предложенные коридоры в документ стиля и журнал решений? (Д-8)"
+        : "Посчитать метрики по принятым главам и предложить коридоры норм (отчёт — журналы/калибровка.md, канон не меняется)?";
+      if (!(await confirm(q))) return;
+      await runCommand("calibrate", undefined, { approve });
+    });
+  const retest = () =>
+    run(async () => {
+      const n = Number(retestChapter);
+      if (!Number.isInteger(n) || n < 1) return notify("Номер главы для пере-теста — целое число ≥ 1.");
+      if (!(await confirm(`Пере-тест моделей на главе ${n}: собрать пакет промптов и прогнать доступные модели?`))) return;
+      await runCommand("retest", undefined, { chapter: n });
+    });
+  const addGolden = () =>
+    run(async () => {
+      try {
+        const expect = golden.expect.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
+        const r = await apiPost<{ path: string }>("/api/regression/golden",
+          { id: golden.id.trim(), fragment: golden.fragment, expect, echelon: golden.echelon });
+        notify(`Золотой тест добавлен: ${r.path}`, "ok");
+        setGolden({ id: "", fragment: "", expect: "", echelon: "Э1" });
+        load();
+      } catch (e) {
+        notify(errText(e));
+      }
+    });
+
+  return (
+    <>
+      <h1>Качество — нормы стиля, калибровка, пере-тест</h1>
+      <p className="muted">
+        Пороги Э1 берутся только из документа стиля (таблица норм). Калибровка считает метрики по принятым главам и
+        предлагает коридоры; утверждение записывает их в канон с решением в журнале. Регрессия:{" "}
+        {data.регрессия === null ? "не запускалась" : data.регрессия ? "зелёная ✓" : "КРАСНАЯ ✗"}.
+      </p>
+      <div className="actions">
+        <button disabled={locked} onClick={() => calibrate(false)}>Калибровать нормы (предложить)</button>
+        <button className="primary" disabled={locked} onClick={() => calibrate(true)}>Калибровать и утвердить</button>
+        <button disabled={locked} onClick={() => run(() => runCommand("regress"))}>Прогнать регрессию Э1</button>
+        <input className="search" style={{ width: 90 }} aria-label="Глава для пере-теста" value={retestChapter}
+          onChange={(e) => setRetestChapter(e.target.value)} />
+        <button disabled={locked} onClick={retest}>Пере-тест моделей</button>
+      </div>
+      <h2>Нормы стиля ({data.нормы.length})</h2>
+      {data.нормы.length === 0 && <p className="muted">Норм в выгрузках нет — заполните таблицу норм в документе стиля или калибруйте.</p>}
+      <table>
+        <thead><tr><th>id нормы</th><th>Коридор</th><th>Что считает</th></tr></thead>
+        <tbody>
+          {data.нормы.map((n) => (
+            <tr key={n.id}><td>{n.id}</td><td>{n.коридор}</td><td className="muted">{n.описание}</td></tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted">
+        <button type="button" className="link" onClick={() => setShowMetrics(!showMetrics)}>
+          {showMetrics ? "скрыть реестр метрик" : "показать реестр метрик Э1"}
+        </button>
+      </p>
+      {showMetrics && metrics && (
+        <table>
+          <thead><tr><th>id нормы</th><th>Проверка</th><th>Что считает</th><th>Единица</th><th>Применимость</th></tr></thead>
+          <tbody>
+            {metrics.map((m) => (
+              <tr key={m.id}><td>{m.id}</td><td>{m.вид === "параметр" ? "параметр" : m.проверка}</td><td className="muted">{m.описание}</td><td>{m.единица}</td><td>{m.область}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {data.калибровка && (
+        <>
+          <h2>Последняя калибровка (журналы/калибровка.md)</h2>
+          <pre className="prose">{data.калибровка}</pre>
+        </>
+      )}
+      {data.пере_тест.length > 0 && (
+        <>
+          <h2>Пере-тест ({data.пере_тест.length})</h2>
+          <p className="muted">{data.пере_тест.join(", ")} — результаты в папке пере-тест/.</p>
+        </>
+      )}
+      <h2>Золотой тест из ошибки, пойманной автором (FR-R1)</h2>
+      <div className="card" data-testid="golden-form">
+        <div className="actions">
+          <input className="search" style={{ maxWidth: 220 }} placeholder="id теста (например, повтор-3)" aria-label="id золотого теста"
+            value={golden.id} onChange={(e) => setGolden({ ...golden, id: e.target.value })} />
+          <input className="search" style={{ maxWidth: 260 }} placeholder="ожидаемые флаги через запятую (V1.2, …)" aria-label="Ожидаемые флаги"
+            value={golden.expect} onChange={(e) => setGolden({ ...golden, expect: e.target.value })} />
+          <select aria-label="Эшелон" value={golden.echelon} onChange={(e) => setGolden({ ...golden, echelon: e.target.value })}>
+            <option>Э1</option><option>Э2</option>
+          </select>
+        </div>
+        <textarea aria-label="Фрагмент текста" style={{ minHeight: 100 }} placeholder="Фрагмент прозы, на котором эшелон обязан поймать ошибку"
+          value={golden.fragment} onChange={(e) => setGolden({ ...golden, fragment: e.target.value })} />
+        <div className="actions">
+          <button className="primary" disabled={locked || !golden.id.trim() || !golden.fragment.trim()} onClick={addGolden}>Добавить золотой тест</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ------------------------------------------------------------------ Том (FR-LC-4, этап 11)
+
+interface VolumeData {
+  том: number; глав_в_плане: number; зафиксировано: number[]; в_работе: Record<string, string>; слов: number;
+  метрики: Record<string, number>; стоимость: number; вызовов: number; нет_документов: string[];
+  тома: { volume: number; period: string; theme: string; chapters: string }[]; снапшоты: string[];
+}
+
+export function VolumeView({ refreshTick, notify, busy, runCommand, confirm }: ViewProps & { confirm: Confirm }) {
+  const [data, setData] = useState<VolumeData | null>(null);
+  const [next, setNext] = useState("");
+  const [pending, run] = usePending();
+  const load = useCallback(() => {
+    apiGet<VolumeData>("/api/volume").then(setData).catch((e) => notify(errText(e)));
+  }, [notify]);
+  useEffect(load, [load, refreshTick]);
+  if (!data) return <p>Загрузка…</p>;
+  const locked = busy || pending;
+  const inWork = Object.entries(data.в_работе);
+  const closeVolume = (again = false) =>
+    run(async () => {
+      const q = `Закрыть том ${data.том}: снапшот тома в канон, тег в git, рукопись и статистика` +
+        `${again ? " (снапшот переписать заново)" : ""}? Незавершённых глав: ${inWork.length}. (Д-8)`;
+      if (!(await confirm(q))) return;
+      await runCommand("volume-close", undefined, { volume: data.том, again });
+    });
+  const openVolume = () =>
+    run(async () => {
+      const n = Number(next || data.том + 1);
+      if (!Number.isInteger(n) || n < 1) return notify("Номер тома — целое число ≥ 1.");
+      if (!(await confirm(`Переключить рабочую область на том ${n}? Очередь и главы панели станут главами тома ${n}.`))) return;
+      await runCommand("volume-open", undefined, { volume: n });
+    });
+  return (
+    <>
+      <h1>Том {data.том}</h1>
+      <p className="muted">
+        глав в плане {data.глав_в_плане} · зафиксировано {data.зафиксировано.length} · в работе {inWork.length} · слов в принятых главах {data.слов}
+        {" "}· вызовов моделей {data.вызовов} · стоимость ${data.стоимость.toFixed(2)}
+      </p>
+      <div className="actions">
+        <button disabled={locked} onClick={() => run(() => runCommand("snapshot", undefined, { volume: data.том }))}>Черновик снапшота тома</button>
+        <button className="primary" disabled={locked} onClick={() => closeVolume(false)}>Закрыть том</button>
+        <button disabled={locked} onClick={() => closeVolume(true)}>Закрыть заново (переписать снапшот)</button>
+        <input className="search" style={{ width: 90 }} aria-label="Номер тома" placeholder={String(data.том + 1)} value={next}
+          onChange={(e) => setNext(e.target.value)} />
+        <button disabled={locked} onClick={openVolume}>Открыть том</button>
+      </div>
+      {data.нет_документов.length > 0 && (
+        <p className="warn">⚠ В библиотеке нет документов тома: {data.нет_документов.join("; ")}</p>
+      )}
+      {inWork.length > 0 && (
+        <>
+          <h2>Главы в работе</h2>
+          {inWork.map(([n, st]) => <div key={n} className="editrow"><strong>Глава {n}</strong> <span className={`badge b-${st}`}>{st}</span></div>)}
+        </>
+      )}
+      {Object.keys(data.метрики).length > 0 && (
+        <>
+          <h2>Метрики Э1 принятых глав (средние)</h2>
+          <table>
+            <tbody>{Object.entries(data.метрики).map(([k, v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody>
+          </table>
+        </>
+      )}
+      {data.снапшоты.length > 0 && (
+        <>
+          <h2>Снапшоты</h2>
+          <p className="muted">{data.снапшоты.join(", ")}</p>
+        </>
+      )}
+      {data.тома.length > 0 && (
+        <>
+          <h2>План томов ({data.тома.length})</h2>
+          {data.тома.map((v) => (
+            <div key={v.volume} className="editrow">
+              <strong>том {v.volume}</strong> <span>{v.theme}</span>
+              <span className="muted">{[v.period, v.chapters && `главы ${v.chapters}`].filter(Boolean).join(" · ")}</span>
+            </div>
+          ))}
+        </>
+      )}
     </>
   );
 }
