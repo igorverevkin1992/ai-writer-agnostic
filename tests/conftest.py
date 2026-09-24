@@ -29,3 +29,9 @@ def ws(tmp_path: Path) -> Workspace:
 @pytest.fixture
 def library(ws: Workspace) -> Path:
     return ws.root / "Библиотека"
+
+
+@pytest.fixture
+def passing_draft() -> str:
+    """Текст, проходящий Э1 демо-проекта без брака (объём, длины фраз, лексика по нормам 02_Стиль_и_голос.md)."""
+    return (Path(__file__).parent / "данные" / "черновик_э1.md").read_text(encoding="utf-8")

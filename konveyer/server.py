@@ -300,7 +300,7 @@ class PanelAPI:
 
     def _chapter_summary(self, n: int) -> tuple[dict, list[tuple]]:
         """Карточка главы для обзора + авторские интервалы (локальная дата конца, секунды) для «сегодня»."""
-        from .steps.common import NEXT_STEP, _chapter_flags_summary
+        from .steps.common import _chapter_flags_summary, next_step
 
         st = ChapterState(self.ws, n)
         e1, e2 = _chapter_flags_summary(self.ws, n)
@@ -319,7 +319,7 @@ class PanelAPI:
             "e2": e2,
             "author_min": round(author_s / 60, 1),
             "machine_min": round(machine_s / 60, 1),
-            "next": NEXT_STEP.get(st.state, "").format(n=n),
+            "next": next_step(self.ws, st, self.cfg),
         }, author_days
 
     def _chapters_cached(self) -> tuple[list[dict], float]:
@@ -438,7 +438,7 @@ class PanelAPI:
             )
         machine_s, author_s = timing.chapter_times(st.data.get("история", []))
         canon_batch = chdir / "пакет_канона.md"
-        from .steps.common import NEXT_STEP
+        from .steps.common import next_step
 
         return {
             "chapter": n,
@@ -460,7 +460,7 @@ class PanelAPI:
             "canon_batch": canon_batch.read_text(encoding="utf-8") if canon_batch.exists() else None,
             "author_min": round(author_s / 60, 1),
             "machine_min": round(machine_s / 60, 1),
-            "next": NEXT_STEP.get(st.state, "").format(n=n),
+            "next": next_step(self.ws, st, self.cfg),
         }
 
     def draft(self, n: int, k: int) -> dict:

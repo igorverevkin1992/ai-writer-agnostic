@@ -9,7 +9,7 @@ from .. import adapters, backup as backup_mod, dashboard as dashboard_mod, gitop
 from .. import review as review_mod, timing, verifier2
 from ..fsm import ChapterState, all_states
 from ..paths import Workspace
-from .common import NEXT_STEP, _chapter_flags_summary, _ctx, _print_verdict, colors, echo, secho
+from .common import _chapter_flags_summary, _ctx, _print_verdict, cmd, colors, echo, next_step, secho
 
 
 def status(chapter: int | None = None, volume: int | None = None) -> list:
@@ -19,23 +19,23 @@ def status(chapter: int | None = None, volume: int | None = None) -> list:
     if volume is not None and volume != ws.volume:
         ws = ws.for_volume(volume)
     if chapter is not None:
-        return [_status_detail(ws, chapter)]
+        return [_status_detail(ws, chapter, cfg)]
     states = all_states(ws)
     if not states:
-        echo(f"Глав тома {ws.volume} в работе нет. Начните: `konveyer compile N`.")
+        echo(f"Глав тома {ws.volume} в работе нет. Начните: `{cmd('compile', 'N')}`.")
         return states
     echo(f"Том {ws.volume} · главы в {ws.chapters_root().relative_to(ws.root).as_posix()}/")
     echo(f"{'Глава':>6} | {'Состояние':<18} | {'Чернов.':>7} | {'Э1':<16} | {'Э2':<22} | Дальше")
     echo("-" * 110)
     for st in states:
         e1, e2 = _chapter_flags_summary(ws, st.chapter)
-        hint = NEXT_STEP.get(st.state, "").format(n=st.chapter)
+        hint = next_step(ws, st, cfg)
         echo(f"{st.chapter:>6} | {st.state:<18} | {st.draft:>7} | {e1:<16} | {e2:<22} | {hint}")
     echo(f"Сегодня: {timing.today_author_minutes(ws):g} мин автора (ожидание действий автора по всем главам).")
     return states
 
 
-def _status_detail(ws: Workspace, chapter: int) -> ChapterState:
+def _status_detail(ws: Workspace, chapter: int, cfg=None) -> ChapterState:
     """Карточка главы: метрики вердикта, флаги, самоволки, следующий шаг."""
     st = ChapterState(ws, chapter)
     secho(f"Глава {chapter} · состояние «{st.state}» · черновик {st.draft}", bold=True)
@@ -64,10 +64,10 @@ def _status_detail(ws: Workspace, chapter: int) -> ChapterState:
     unresolved = review_mod.unresolved_samovolki(ws, chapter)
     if unresolved:
         secho(
-            f"\nБез решения автора: {', '.join(unresolved)} — `konveyer resolve {chapter} <флаг> <решение>`",
+            f"\nБез решения автора: {', '.join(unresolved)} — `{cmd('resolve', chapter, '<флаг> <решение>')}`",
             fg=colors.YELLOW,
         )
-    hint = NEXT_STEP.get(st.state, "").format(n=chapter)
+    hint = next_step(ws, st, cfg)
     secho(f"\nДальше: {hint}", fg=colors.GREEN)
     return st
 
@@ -118,10 +118,10 @@ def find(query: str) -> dict:
 
 
 def doctor() -> None:
-    """Диагностика установки и готовности конвейера (NFR-1)."""
+    """Диагностика установки и готовности конвейера (NFR-1); работает и вне проекта."""
     import importlib.util
 
-    ws, cfg, lib = _ctx()
+    ws, cfg, lib = _ctx(require_project=False)
 
     def item(ok: bool | None, label: str, hint: str = "") -> None:
         mark, color = {True: ("✓", colors.GREEN), False: ("✗", colors.RED), None: ("~", colors.YELLOW)}[ok]

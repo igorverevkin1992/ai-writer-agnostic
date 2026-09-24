@@ -248,8 +248,9 @@ def test_author_today_min_в_state(panel, ws):
     st = ChapterState(ws, 1)
     for s in ["собрано", "сгенерировано", "верифицировано-1", "верифицировано-2", "на-приёмке", "правки"]:
         st.transition(s)
-    # переписываем историю: 5 минут авторской паузы «на-приёмке» сегодня, 30 минут — вчера
-    now = datetime.now(timezone.utc)
+    # переписываем историю: 5 минут авторской паузы «на-приёмке» сегодня, 30 минут — позавчера.
+    # «Сейчас» — полдень местной даты: интервал не уедет во «вчера» при запуске около полуночи
+    now = datetime.now(timezone.utc).astimezone().replace(hour=12, minute=0, second=0, microsecond=0)
     hist = st.data["история"]
     hist[-2]["время"] = (now - timedelta(minutes=5)).isoformat()   # в: на-приёмке
     hist[-1]["время"] = now.isoformat()                               # в: правки

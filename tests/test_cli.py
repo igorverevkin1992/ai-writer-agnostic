@@ -23,7 +23,7 @@ def test_ошибка_структуры_читаемая(ws, library, monkeypat
     path.write_text(path.read_text(encoding="utf-8") + "| x |\n", encoding="utf-8")
     r = runner.invoke(app, ["export"])
     assert r.exit_code == 1
-    assert "Д-1" in r.output or "Д-1" in (r.stderr or "")
+    assert "соглашениями" in r.output or "соглашениями" in (r.stderr or "")
 
 
 def test_verify1_требует_состояния(ws, monkeypatch):

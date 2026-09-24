@@ -248,7 +248,11 @@ def load_flags_again(ws: Workspace, chapter: int) -> tuple[int | None, list[Flag
     path = ws.chapter_dir(chapter) / AGAIN_FLAGS
     if not path.exists():
         return None, []
-    data = json.loads(path.read_text(encoding="utf-8"))
+    raw = path.read_text(encoding="utf-8")
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return None, parse_flags(raw)  # ответ модели «как есть» (ручной ввод)
     if isinstance(data, list):
         return None, [Flag.model_validate(r) for r in data]
     return data.get("черновик"), [Flag.model_validate(r) for r in data.get("флаги", [])]
@@ -290,11 +294,24 @@ def run_taste(ws: Workspace, cfg: Config, chapter: int, draft: int) -> list[Flag
     return flags
 
 
+def _load_flag_file(path) -> list[Flag]:
+    """Файл флагов: чистый JSON-массив либо ответ модели «как есть» (проза вокруг JSON, ```-ограждение) —
+    ручной ввод автора не должен ронять статус и приёмку (FR-AD-3, FR-TK-6)."""
+    raw = path.read_text(encoding="utf-8")
+    try:
+        data = json.loads(raw)
+        if isinstance(data, list):
+            return [Flag.model_validate(r) for r in data]
+    except ValueError:
+        pass
+    return parse_flags(raw)
+
+
 def load_taste(ws: Workspace, chapter: int) -> list[Flag]:
     path = ws.chapter_dir(chapter) / "вкус.json"
     if not path.exists():
         return []
-    return [Flag.model_validate(r) for r in json.loads(path.read_text(encoding="utf-8"))]
+    return _load_flag_file(path)
 
 
 def save_flags(ws: Workspace, chapter: int, flags: list[Flag]) -> None:
@@ -305,4 +322,4 @@ def load_flags(ws: Workspace, chapter: int) -> list[Flag]:
     path = ws.chapter_dir(chapter) / "флаги.json"
     if not path.exists():
         return []
-    return [Flag.model_validate(f) for f in json.loads(path.read_text(encoding="utf-8"))]
+    return _load_flag_file(path)

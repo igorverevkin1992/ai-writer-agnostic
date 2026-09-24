@@ -1,16 +1,35 @@
-"""Настройка: init — каркас рабочей области (NFR-1), `demo` — демо-библиотека и золотые тесты."""
+"""Настройка: init — каркас рабочей области (NFR-3), `demo` — демо-библиотека и золотые тесты."""
 
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
 
+from .. import guard
 from ..paths import Workspace
-from .common import colors, echo, secho
+from .common import cmd, colors, echo, secho
+
+
+# что не должно попадать в git рабочей области: ключи (FR-AD-6, Д-18) и производные артефакты
+GITIGNORE_ENTRIES = (".env", "выгрузки/", "журналы/", "архивы/")
+
+
+def ensure_gitignore(root: Path) -> list[str]:
+    """Создаёт .gitignore или дописывает недостающие строки (`.env` — обязательно: ключ не должен уехать в
+    репозиторий). Возвращает добавленные строки."""
+    path = root / ".gitignore"
+    existing = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    present = {ln.strip() for ln in existing}
+    added = [e for e in GITIGNORE_ENTRIES if e not in present and e.rstrip("/") not in present]
+    if added:
+        text = "\n".join(existing).rstrip("\n")
+        text = (text + "\n" if text else "") + "\n".join(added) + "\n"
+        guard.write_text(path, text)
+    return added
 
 
 def init(demo: bool = False) -> Workspace:
-    """Создать каркас рабочей области: конфиг.yaml, .env.example, папки (NFR-1). Возвращает рабочую область."""
+    """Создать каркас рабочей области: конфиг.yaml, .env.example, .gitignore, папки (NFR-3). Возвращает рабочую область."""
     ws = Workspace(Path.cwd())
     if not (ws.root / "конфиг.yaml").exists():
         shutil.copyfile(Path(__file__).parent.parent / "data" / "конфиг.пример.yaml", ws.root / "конфиг.yaml")
@@ -19,6 +38,7 @@ def init(demo: bool = False) -> Workspace:
     env_example = ws.root / ".env.example"
     if not env_example.exists():
         env_example.write_text("GEMINI_API_KEY=\nANTHROPIC_API_KEY=\n", encoding="utf-8")
+    ensure_gitignore(ws.root)
     if demo:
         from importlib import resources
 
@@ -30,13 +50,13 @@ def init(demo: bool = False) -> Workspace:
             if not target.exists():
                 shutil.copyfile(f, target)
         secho(
-            "Демо развёрнуто. Попробуйте: `konveyer export` → `konveyer compile 1` → `konveyer status` → `konveyer regress`.",
+            f"Демо развёрнуто. Попробуйте: `{cmd('export')}` → `{cmd('compile', 1)}` → `{cmd('status')}` → `{cmd('regress')}`.",
             fg=colors.GREEN,
         )
-        echo("Ключи API не обязательны: без них каждый шаг подскажет ручной режим (NFR-3).")
+        echo("Ключи API не обязательны: без них каждый шаг подскажет ручной режим.")
         return ws
-    secho("Рабочая область готова. Заполните конфиг.yaml и .env (Д-9), положите Библиотека/.", fg=colors.GREEN)
-    echo("Хотите пощупать конвейер на примере — `konveyer init --демо`. Диагностика: `konveyer doctor`.")
+    secho("Рабочая область готова. Заполните конфиг.yaml и .env (ключи — только там, .env в .gitignore), положите Библиотека/.", fg=colors.GREEN)
+    echo(f"Хотите пощупать конвейер на примере — `{cmd('init', '--демо')}`. Диагностика: `{cmd('doctor')}`.")
     return ws
 
 
@@ -45,7 +65,7 @@ def project_create(
     methodic: str | None = None, profile: str | None = None, starter: bool = True, git: bool = True,
     yes: bool = False, prompt=None,
 ):
-    """Мастер создания проекта (этап 1, сценарии Б и Д). Ответы можно передать флагами; остальное спрашивается
+    """Мастер создания проекта (FR-LC-1). Ответы можно передать флагами; остальное спрашивается
     (`prompt(вопрос, умолчание) -> str`), а с `yes` берутся умолчания."""
     from .. import catalog, project as project_mod
 
@@ -79,5 +99,5 @@ def project_create(
         echo(f"  git библиотеки: первый коммит {created.commit[:7]}")
     for n in created.notes:
         secho(f"  ~ {n}", fg=colors.YELLOW)
-    echo("Дальше: заполните каркасы (строки «⚠ заполнить»), затем в папке проекта — `konveyer doctor` и `konveyer export`.")
+    echo(f"Дальше: заполните каркасы (строки «⚠ заполнить»), затем в папке проекта — `{cmd('doctor')}` и `{cmd('export')}`.")
     return created

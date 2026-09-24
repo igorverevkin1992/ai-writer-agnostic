@@ -278,7 +278,7 @@ def test_кэш_state_видит_правку_status_yaml_на_диске(ws, li
         p.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
         s2 = api.state()
         assert [c["state"] for c in s2["chapters"]] == ["собрано", "сгенерировано"]
-        assert s2["chapters"][1]["draft"] == 1 and s2["chapters"][1]["next"] == "konveyer verify1 2"
+        assert s2["chapters"][1]["draft"] == 1 and s2["chapters"][1]["next"].startswith("konveyer проверить1 2 — ")
         # повреждённый файл — карточка «повреждено», остальные главы живы; починка — снова видна
         p.write_text("", encoding="utf-8")
         s3 = api.state()

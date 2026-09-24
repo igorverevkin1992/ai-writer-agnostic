@@ -25,7 +25,7 @@ def test_status_подсказывает_следующий_шаг(ws, monkeypat
     st = ChapterState(ws, 1)
     st.transition("собрано")
     r = runner.invoke(app, ["status"])
-    assert r.exit_code == 0 and "konveyer write 1" in r.output
+    assert r.exit_code == 0 and "konveyer написать 1" in r.output
 
 
 def test_status_карточка_главы(ws, monkeypatch):
@@ -40,7 +40,7 @@ def test_status_карточка_главы(ws, monkeypatch):
     r = runner.invoke(app, ["status", "1"])
     assert r.exit_code == 0
     assert "F-001" in r.output and "Без решения автора" in r.output
-    assert "konveyer verify1 1" in r.output
+    assert "konveyer проверить1 1" in r.output
 
 
 def test_resolve_список_и_решение(ws, monkeypatch):

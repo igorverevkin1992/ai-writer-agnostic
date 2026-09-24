@@ -110,7 +110,7 @@ def test_apply_edits_смешанные_промпт_от_промежуточн
     )
     r = runner.invoke(app, ["apply-edits", "1"])  # без ключа — ручной режим, код 2
     assert r.exit_code == 2, r.output
-    assert "Правок кодом: 1" in r.output and "Писателю: 2" in r.output
+    assert "правок кодом: 1" in r.output.lower() and "Писателю: 2" in r.output
     prompt = (ws.chapter_dir(1) / "промпт_правок.md").read_text(encoding="utf-8")
     assert "Другая фраза." in prompt and "Вторая фраза." not in prompt.split("## ЧЕРНОВИК")[1]
     assert "оживить финал" in prompt and "Нет такой." in prompt
@@ -144,7 +144,7 @@ def test_apply_edits_лимит_итераций_не_мешает_правка�
     st._save()
     (ws.chapter_dir(1) / "правки.md").write_text("УКАЗАНИЕ: переписать\n", encoding="utf-8")
     r = runner.invoke(app, ["apply-edits", "1"])
-    assert r.exit_code == 1 and "FR-E3" in r.output + (r.stderr or "")
+    assert r.exit_code == 1 and "лимит" in r.output + (r.stderr or "")
 
 
 # ------------------------------------------------------------ п. 23: время такта
@@ -181,7 +181,8 @@ def test_run_объединяет_шаги_в_одну_задачу(ws, monkeypa
 
 
 def test_сегодняшнее_авторское_время_по_всем_главам(ws):
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    # «сейчас» — полдень местной даты: «сегодня» считается по местной дате, и интервал не уедет во «вчера»
+    now = datetime.now(timezone.utc).astimezone().replace(hour=12, minute=0, second=0, microsecond=0)
     for n, minutes in ((1, 10), (2, 5)):
         st = ChapterState(ws, n)
         ws.chapter_dir(n).mkdir(parents=True, exist_ok=True)
@@ -323,14 +324,15 @@ def test_отмена_между_вариантами(ws, monkeypatch):
 # ------------------------------------------------------------ отмена в cmd_run
 
 
-def test_отмена_такта_между_шагами(ws, monkeypatch):
+def test_отмена_такта_между_шагами(ws, monkeypatch, passing_draft):
     monkeypatch.chdir(ws.root)
     _chapter_generated(ws, 1)
 
     calls = []
+    good = passing_draft  # проходит Э1
 
     def fake_write(ws_, cfg, chapter, k):
-        writer._save_draft(ws_, chapter, k, "Первая фраза. Вторая фраза.\n", cfg, mode="генерация")
+        writer._save_draft(ws_, chapter, k, good, cfg, mode="генерация")
         if not calls:
             cancel.request()  # автор нажал «Остановить» во время первой генерации
         calls.append(k)
@@ -340,10 +342,10 @@ def test_отмена_такта_между_шагами(ws, monkeypatch):
     assert r.exit_code == 2, r.output
     assert "остановлено автором" in r.output and "сгенерировано" in r.output and "Traceback" not in r.output
     assert ChapterState(ws, 1).state == "сгенерировано"  # write завершён, verify1 не начат
-    # флаг сброшен: следующая команда идёт нормально
+    # флаг сброшен: следующая команда идёт нормально — ровно успех, без «любого из двух исходов»
     r = runner.invoke(app, ["verify1", "1"])
-    assert r.exit_code in (0, 1), r.output
-    assert ChapterState(ws, 1).state in ("верифицировано-1", "сгенерировано")
+    assert r.exit_code == 0 and "остановлено" not in r.output, r.output
+    assert ChapterState(ws, 1).state == "верифицировано-1" and not cancel.requested()
 
 
 def test_запрос_отмены_до_старта_команды_не_действует(ws, monkeypatch):

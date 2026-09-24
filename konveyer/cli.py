@@ -18,7 +18,7 @@ import typer
 
 from . import cancel, steps
 from .steps import canon, edits as edits_mod, onboarding as onboarding_steps, overview, quality, setup, tact, volume as volume_steps
-from .steps.common import NEXT_STEP as NEXT_STEP  # noqa: F401 — совместимость: `from konveyer.cli import NEXT_STEP`
+from .steps.common import COMMAND_NAMES, NEXT_STEP as NEXT_STEP  # noqa: F401 — совместимость: `from konveyer.cli import NEXT_STEP`
 from .steps.common import _chapter_flags_summary as _chapter_flags_summary  # noqa: F401
 from .steps.common import _ctx, _ensure_dir as _ensure_dir, _is_git_url as _is_git_url  # noqa: F401
 from .steps.common import _print_variants as _print_variants, _print_verdict as _print_verdict  # noqa: F401
@@ -92,30 +92,33 @@ def _friendly(fn):
     def wrapper(*args, **kwargs):
         # сервер панели живёт часами — сам он не задача: задачи заводят команды, которые он вызывает
         job_name = None if fn.__name__ in _NOT_A_JOB else fn.__name__.removeprefix("cmd_")
-        with steps.job_context(job_name) as outermost:
-            try:
-                return fn(*args, **kwargs)
-            except (typer.Exit, typer.Abort):
-                raise  # собственные коды выхода — не ошибка
-            except steps.Rejected as e:  # автор не подтвердил (Д-8)
-                raise typer.Abort() if e.abort else typer.Exit()
-            except steps.StepExit as e:  # шаг сам всё напечатал и просит код возврата
-                raise typer.Exit(code=e.code)
-            except steps.ManualMode as e:
-                if os.environ.get("KONVEYER_DEBUG") == "1":
-                    raise
-                _manual(e)
-            except cancel.Cancelled as e:
-                if not outermost:
-                    raise  # до внешней команды: она печатает и завершает
-                typer.secho(f"⏹ {e}", fg=typer.colors.YELLOW)
-                raise typer.Exit(code=2)
-            except steps.StepError as e:  # ожидаемая ошибка шага — всегда без трейсбека
-                _fail(str(e))
-            except steps.EXPECTED_ERRORS as e:
-                if os.environ.get("KONVEYER_DEBUG") == "1":
-                    raise
-                _fail(str(e))
+        try:
+            with steps.job_context(job_name) as outermost:
+                try:
+                    return fn(*args, **kwargs)
+                except (typer.Exit, typer.Abort):
+                    raise  # собственные коды выхода — не ошибка
+                except steps.Rejected as e:  # автор не подтвердил (Д-8)
+                    raise typer.Abort() if e.abort else typer.Exit()
+                except steps.StepExit as e:  # шаг сам всё напечатал и просит код возврата
+                    raise typer.Exit(code=e.code)
+                except steps.ManualMode as e:
+                    if os.environ.get("KONVEYER_DEBUG") == "1":
+                        raise
+                    _manual(e)
+                except cancel.Cancelled as e:
+                    if not outermost:
+                        raise  # до внешней команды: она печатает и завершает
+                    typer.secho(f"⏹ {e}", fg=typer.colors.YELLOW)
+                    raise typer.Exit(code=2)
+                except steps.StepError as e:  # ожидаемая ошибка шага — всегда без трейсбека
+                    _fail(str(e))
+                except steps.EXPECTED_ERRORS as e:
+                    if os.environ.get("KONVEYER_DEBUG") == "1":
+                        raise
+                    _fail(str(e))
+        except steps.StepError as e:  # замок проекта занят другой задачей (FR-TK-7)
+            _fail(str(e))
 
     return wrapper
 
@@ -158,9 +161,16 @@ def cmd_write(
 
 @app.command("verify1", rich_help_panel="Такт главы")
 @_friendly
-def cmd_verify1(chapter: int) -> None:
-    """Формальные проверки Э1 (FR-V1.*). Брак метрик → авто-повтор генерации (≤2, §5.4)."""
-    tact.verify1(chapter)
+def cmd_verify1(
+    chapter: int,
+    accept_brak: bool = typer.Option(
+        False, "--принять-брак", "--accept-brak",
+        help="Решение автора: принять текст вопреки браку Э1 (после исчерпания авто-повторов); нужна --причина.",
+    ),
+    reason: str = typer.Option("", "--причина", "--reason", help="Причина решения автора (пишется в историю главы и журнал решений)."),
+) -> None:
+    """Машинные проверки Э1 (FR-V1-5). Брак метрик → авто-повтор генерации (лимит в конфиге), затем вердикт автору."""
+    tact.verify1(chapter, accept_brak=accept_brak, reason=reason)
 
 
 @app.command("verify2", rich_help_panel="Такт главы")
@@ -653,16 +663,7 @@ def cmd_project_create(
 
 # основное имя — русское (видно в справке), латинское — скрытый синоним; команды, объявленные по-русски, получают
 # латинский синоним из этой же таблицы
-SYNONYMS = {
-    "export": "экспорт", "compile": "собрать", "write": "написать", "verify1": "проверить1", "verify2": "проверить2",
-    "review": "приёмка", "apply-edits": "правки-внести", "diff-check": "дифф-контроль", "accept": "принять",
-    "canonize": "канон", "status": "статус", "resolve": "решение", "edits": "правки", "check": "проверка",
-    "diff": "дифф", "log": "журнал", "panel": "панель", "find": "найти", "circles": "каркас", "lint": "линтер",
-    "snapshot": "снапшот", "doctor": "доктор", "rollback": "откат", "regress": "регрессия", "add-golden": "золотой",
-    "dashboard": "дашборд", "run": "такт", "canon-commit": "канон-коммит", "library-split": "библиотека-отделить",
-    "backup": "бэкап", "init": "начать", "нормы": "norms", "метрики": "metrics", "учёт": "accounting",
-    "импорт": "import", "онбординг": "onboarding", "пере-тест": "retest", "типы": "types",
-}
+SYNONYMS = COMMAND_NAMES
 
 
 def _register_synonyms(typer_app: typer.Typer) -> None:
