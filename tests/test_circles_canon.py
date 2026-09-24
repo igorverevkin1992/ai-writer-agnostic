@@ -3,7 +3,7 @@
 import json
 import subprocess
 
-from konveyer import circles, compiler, exporter, verifier2
+from konveyer import circles, compiler, exporter, manifest as manifest_mod, verifier2
 from tests.профиль import realcanon
 from konveyer.config import Config
 from konveyer.schemas import Act, CircleStep, StoryCircle
@@ -60,8 +60,19 @@ def test_окно_и_э2_без_каркаса(ws, library):
     assert exporter.load_circles(ws.exports) == []
 
 
+def _drop_acts_doc(ws, library) -> None:
+    """Сценарий «каркас тома приносит свою таблицу актов»: отдельный документ актов демо (тип «акты») убираем,
+    чтобы источник актов был один."""
+    man = manifest_mod.load(ws.root)
+    for e in [e for e in man.библиотека if e.тип == "акты"]:
+        (library / e.файл).unlink()
+        man.библиотека.remove(e)
+    manifest_mod.save(ws.root, man)
+
+
 def test_окно_и_э2_с_каркасом(ws, library):
     sample = _sample()
+    _drop_acts_doc(ws, library)
     (library / "21_Круги_истории_Том1.md").write_text(circles.render_canon_doc(sample, ACTS), encoding="utf-8")
     exporter.run_export(library, ws.exports, ws.logs)
     assert len(exporter.load_circles(ws.exports)) == 3 and len(exporter.load_acts(ws.exports)) == 1
@@ -137,10 +148,10 @@ def test_вложенность_материалов(ws, library):
     assert "Круг главы" not in material  # свой круг главы в материал не входит
 
 
-def test_без_таблицы_актов_акты_равны_частям(ws, library):
-    """Демо-библиотека без документа каркасов: актов нет, окно собирается без каркаса;
-    строки таблицы актов разбираются в акты с границами глав."""
-    assert exporter.load_acts(ws.exports) == []
+def test_акты_демо_из_документа_актов_и_разбор_строк(ws, library):
+    """Демо-библиотека без каркаса тома 1, но с документом актов (тип «акты»): акты тома — из него,
+    окно собирается без каркаса; строки таблицы актов разбираются в акты с границами глав."""
+    assert [(a.act, a.from_chapter, a.to_chapter) for a in exporter.load_acts(ws.exports)] == [(1, 1, 3), (2, 4, 6)]
     from konveyer.dramaturgy_doc import acts_from_rows
     rows = [{"act": 1, "title": "«А»", "parts": "I", "chapters_text": "1–3"},
             {"act": 2, "title": "Б", "parts": "II", "chapters_text": "4–6"},
