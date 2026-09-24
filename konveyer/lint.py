@@ -532,11 +532,16 @@ def check_matrix(ctx: LintContext) -> list[LintFinding]:
                       f"{f.fact_id} ({f.subject}): узнаёт в гл. {f.from_chapter}, но это глава фокала {b.focal or '?'}, и "
                       f"{f.subject} не значится среди участников", "добавьте участника в план главы или пометьте источник «за кадром»"))
     markers_of = {ban.ban_id: ban.markers for ban in ctx.infobans}
+    by_text: dict[str, list[MatrixFact]] = {}
+    for f in ctx.matrix:
+        by_text.setdefault(f.fact.strip().lower(), []).append(f)
     for fid, rows in by_fact.items():
         reader = next((x for x in rows if x.subject in ctx.pseudo), None)
         if reader and reader.from_chapter and not DEDUCTION_RE.search(reader.note or ""):
             b = by_ch.get(reader.from_chapter)
-            focal = next((x for x in rows if b and x.subject == b.focal), None)
+            # тот же факт у фокала: под тем же id (широкая таблица) или с тем же текстом факта (строка на субъект)
+            same = rows + [x for x in by_text.get(reader.fact.strip().lower(), []) if x not in rows]
+            focal = next((x for x in same if b and x.subject == b.focal), None)
             if b and focal is not None and not _document_reveals(b, markers_of.get(fid, [])) \
                     and (focal.from_chapter is None or focal.from_chapter > reader.from_chapter):
                 knows = "не знает его до конца тома" if focal.from_chapter is None else f"узнаёт только в гл. {focal.from_chapter}"

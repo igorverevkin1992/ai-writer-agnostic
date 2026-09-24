@@ -651,3 +651,60 @@ def test_методика_арки_исполняема_черновик_кан�
     circles.accept_manual(ws2, "акт", 2, '{"rows": [{"character": "Зоя", "act": 2, "visible": "тише"}]}')
     with pytest.raises(ValueError, match="не число"):
         circles.accept_manual(ws2, "акт", 2, '{"rows": [{"character": "Зоя", "act": "два"}]}')
+
+
+# ------------------------------------------------------------------ 14.3.4: выключение модулей без следов
+
+
+def _norm(name: str) -> str:
+    import re
+
+    return re.sub(r"[^а-яё]", "", name.lower())
+
+
+def _module_sets():
+    from konveyer import catalog
+
+    mods = catalog.load_modules(None)
+    optional = sorted(n for n, m in mods.items() if not m.base)
+    return mods, optional
+
+
+@pytest.mark.parametrize("off", [*_module_sets()[1], "все"])
+def test_выключение_модуля_без_следов_в_окне_э2_и_линтере(ws, library, off):
+    """Критерий приёмки 14.3.4: выключенный модуль (каждый по одному и все сразу) не оставляет в окне своих секций
+    и пустых заголовков, в промпте Э2 — своего чек-листа, в линтере — своих кодов."""
+    import re
+
+    from konveyer import catalog, compiler, verifier2
+
+    mods, optional = _module_sets()
+    targets = optional if off == "все" else [off]
+    man = manifest_mod.load(ws.root)
+    for name in targets:
+        man.модули[name] = "выкл"
+    manifest_mod.save(ws.root, man)
+    exporter.run_export(library, ws.exports, ws.logs)
+    path, breakdown = compiler.compile_window(ws, library, 1)
+    w = path.read_text(encoding="utf-8")
+    present = {_norm(k) for k in breakdown}
+    for name in targets:
+        for section in mods[name].window_sections:
+            assert _norm(section) not in present, (name, section, breakdown)
+    # пустых заголовков нет: за «## …» до следующей секции есть содержательные строки
+    for chunk in re.split(r"<!-- СЕКЦИЯ: [^>]+ -->", w)[1:]:
+        lines = [ln for ln in chunk.strip().splitlines() if ln.strip()]
+        head = next((i for i, ln in enumerate(lines) if ln.startswith("## ")), None)
+        assert head is not None and len(lines) > head + 1, chunk[:120]
+    ws.chapter_dir(1).mkdir(parents=True, exist_ok=True)
+    ws.draft_path(1, 1).write_text("Текст.\n", encoding="utf-8")
+    system, _user = verifier2.build_prompt(ws, 1, 1)
+    for name in targets:
+        for check in mods[name].e2_checks:
+            text = verifier2._checklist_text(ws, check)
+            head = text.split(".")[0][:60]
+            assert not head or head not in system, (name, check)
+    report = lint.run_lint(library, ws.exports, ws.logs, use_cache=False)
+    off_codes = catalog.enabled_lint_codes(mods, set(mods) - set(targets))
+    assert not {f.code for f in report.findings} - off_codes, [f.message for f in report.findings]
+    assert report.errors == 0 and report.warnings == 0 and report.notes == 0
