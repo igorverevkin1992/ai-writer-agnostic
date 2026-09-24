@@ -456,3 +456,186 @@ def test_архивы_одной_секунды_упорядочены(ws, tmp_p
     assert first != second and backup_mod.latest_archive(dest) == second
     removed = backup_mod.rotate(dest, 1)
     assert removed == [first] and backup_mod.list_archives(dest) == [second]
+
+
+# ------------------------------------------------------------- регрессия
+
+
+def test_регрессия_поймано_пропущено_лишние(ws):
+    """FR-RG-2 / B2-27: три множества отчёта; `ignore_flags` убирает шум норм длин из «лишних»."""
+    from konveyer import regression
+    from konveyer.schemas import GoldenTest
+
+    for f in regression.golden_dir(ws).glob("*.json"):
+        f.unlink()
+    frag = "Вечер был долгим. Небо было низким. В доме было холодно. Каширин был мрачен. Все были об одном."
+    regression.add_test(ws, GoldenTest(test_id="без_игнора", fragment=frag, context_slice={"focal": "Каширин", "year": 1995},
+                                       expected_flags=["V1.3_был", "V1.5_стоп_лексика"]))
+    regression.add_test(ws, GoldenTest.model_validate({
+        "id": "с_игнором", "фрагмент": frag, "срез_контекста": {"focal": "Каширин", "year": 1995},
+        "ожидаемые_флаги": ["V1.3_был"], "игнорировать_флаги": ["V1.2a_средняя_длина", "V1.2b_доля_коротких", "V1.2e_объём"],
+    }))
+    report = regression.run_regression(ws)
+    by_id = {r["test_id"]: r for r in report["результаты"]}
+    assert by_id["без_игнора"]["поймано"] == ["V1.3_был"] and by_id["без_игнора"]["пропущено"] == ["V1.5_стоп_лексика"]
+    assert "V1.2b_доля_коротких" in by_id["без_игнора"]["лишние"]
+    assert by_id["с_игнором"] == {"test_id": "с_игнором", "поймано": ["V1.3_был"], "пропущено": [], "лишние": []}
+    assert not report["зелёная"] and report["провалено"] == ["без_игнора"]
+
+
+def test_демо_корпус_без_лишних_флагов(ws):
+    """D2-21: у стартового корпуса «лишние» пусты — золотой тест различает «поймал ровно то» и «сработало всё подряд»."""
+    from konveyer import regression
+
+    report = regression.run_regression(ws)
+    assert report["зелёная"]
+    assert all(r["лишние"] == [] for r in report["результаты"] if not r.get("skipped")), report["результаты"]
+
+
+def test_регрессия_красная_блокирует_смену_модели(ws):
+    """D1-15 / B2-28: свежий, но КРАСНЫЙ отчёт запрещает `пере-тест --зафиксировать`; доктор говорит «КРАСНАЯ»."""
+    from konveyer import regression
+    from konveyer.schemas import GoldenTest
+
+    regression.add_test(ws, GoldenTest(test_id="ложный", fragment="Он вышел из дома и пошёл к станции.",
+                                       context_slice={"focal": "Каширин", "year": 1995}, expected_flags=["V1.5_стоп_лексика"]))
+    r = runner.invoke(app, ["регрессия"])
+    assert r.exit_code == 1 and "КРАСНАЯ" in r.output, r.output
+    assert regression.is_green(ws) is False and not regression.is_stale(ws)
+    r = runner.invoke(app, ["пере-тест", "--зафиксировать", "--без-пакета"])
+    assert r.exit_code == 1 and "КРАСНАЯ" in r.output, r.output
+    assert not (ws.logs / "пины.json").exists()
+    r = runner.invoke(app, ["доктор"])
+    assert "регрессия КРАСНАЯ" in r.output
+
+
+def test_регрессия_отпечаток_только_конфигурация_проверок(ws):
+    """B2-6: переключение тома, папка архива, пороги расходов отчёт не устаревают; модели, e2-параметры, лимит окна — да."""
+    from konveyer import regression
+    from konveyer.config import set_volume
+
+    regression.run_regression(ws)
+    assert regression.is_green(ws) is True
+    set_volume(ws, 2)
+    assert regression.is_green(ws) is True and not regression.is_stale(ws)
+    (ws.root / "конфиг.yaml").write_text("library_dir: Библиотека\nvolume: 2\nbackup_dir: ../архивы\n"
+                                          "пороги: {стоимость_главы: 1.0}\n", encoding="utf-8")
+    assert regression.is_green(ws) is True
+    (ws.root / "конфиг.yaml").write_text("library_dir: Библиотека\nvolume: 2\ne2_max_flags: 5\n", encoding="utf-8")
+    assert regression.is_green(ws) is None and regression.is_stale(ws)
+    regression.run_regression(ws)
+    (ws.root / "конфиг.yaml").write_text("library_dir: Библиотека\nvolume: 2\ne2_max_flags: 5\n"
+                                          "writer: {provider: gemini, model: другая}\n", encoding="utf-8")
+    assert regression.is_stale(ws)
+
+
+def test_регрессия_э2_без_api_промпт_и_ответ_файлом(ws):
+    """B4-32: без API промпт Э2 сохраняется, ответ файлом принимается, нечитаемый ответ — «не разобран» с сырым файлом."""
+    from konveyer import regression
+
+    report = regression.run_regression(ws, llm=True)
+    e2 = next(r for r in report["результаты"] if r["test_id"] == "красный_дс_сентенции_э2")
+    assert "API недоступен" in e2["skipped"] and "промпты" in e2["skipped"]
+    prompt = ws.regression / "промпты" / "красный_дс_сентенции_э2.md"
+    assert prompt.exists() and "<текст_главы>" in prompt.read_text(encoding="utf-8")
+    answers = ws.regression / "ответы"
+    answers.mkdir()
+    (answers / "красный_дс_сентенции_э2.json").write_text("тут не JSON", encoding="utf-8")
+    report = regression.run_regression(ws)  # ответ есть — тест выполняется и без --llm
+    e2 = next(r for r in report["результаты"] if r["test_id"] == "красный_дс_сентенции_э2")
+    assert "не разобран" in e2["skipped"] and (answers / "красный_дс_сентенции_э2_сырой.md").exists()
+    (answers / "красный_дс_сентенции_э2.json").write_text(json.dumps([
+        {"flag_id": "F-001", "type": "бриф", "kind": "violation", "quote": "Жизнь, думал Каширин", "rule": "сентенция вне брифа"}
+    ], ensure_ascii=False), encoding="utf-8")
+    report = regression.run_regression(ws)
+    e2 = next(r for r in report["результаты"] if r["test_id"] == "красный_дс_сентенции_э2")
+    assert e2["поймано"] == ["бриф"] and not e2["пропущено"] and report["зелёная"]
+
+
+# ------------------------------------------------------------- пере-тест
+
+
+def _fake_models(monkeypatch, *, e2_json: str | None = None):
+    from konveyer import adapters
+
+    seen = []
+
+    def fake(mc, api, system, user, logs, *, role, chapter=None):
+        seen.append((mc.model, role, mc.params.get("t")))
+        if mc.provider == "gemini":
+            raise adapters.ManualModeNeeded("нет ключа", "прогоните вручную")
+        if role.startswith("верификатор-2"):
+            return e2_json if e2_json is not None else "[]"
+        return "Каширин шёл по перрону. Ветер гнал обрывки газет.\n"
+
+    monkeypatch.setattr(adapters, "call_model", fake)
+    return seen
+
+
+def test_перетест_флаги_э2_в_сводке(ws, library, monkeypatch):
+    """B2-13: флаги Э2 по ответам считаются автоматически; без API сохраняется промпт Э2."""
+    from konveyer.steps import canon as canon_steps
+
+    seen = _fake_models(monkeypatch, e2_json=json.dumps([
+        {"flag_id": "F-001", "type": "бриф", "kind": "samovolka", "quote": "Ветер гнал", "rule": "вне брифа"}]))
+    dest = canon_steps.retest(chapter=1)
+    assert dest.name.endswith("_гл1") and (dest / "пакет.json").exists()
+    assert any(r.startswith("верификатор-2") for _, r, _ in seen)
+    flags = json.loads((dest / "флаги_claude-sonnet-4-5.json").read_text(encoding="utf-8"))
+    assert flags[0]["type"] == "бриф"
+    summary = (dest / "СВОДКА.md").read_text(encoding="utf-8")
+    assert "флаги Э2" in summary and "1 (самоволок 1)" in summary
+    # ответ ручного прогона положен — при повторе для него тоже считается Э2 (тут API «ручной» → промпт)
+    (dest / "ответ_gemini-3.1-pro.md").write_text("Короткая фраза. Ещё одна.\n", encoding="utf-8")
+    monkeypatch.setattr("konveyer.adapters.call_model", lambda *a, **k: (_ for _ in ()).throw(
+        __import__("konveyer.adapters", fromlist=["ManualModeNeeded"]).ManualModeNeeded("нет ключа", "вручную")))
+    dest2 = canon_steps.retest(chapter=1)
+    assert dest2 == dest and (dest / "э2_промпт_gemini-3.1-pro.md").exists()
+    assert "вручную (э2_промпт)" in (dest / "СВОДКА.md").read_text(encoding="utf-8")
+
+
+def test_перетест_папка_по_главе_и_дедупликация_по_пину(ws, library, monkeypatch):
+    """B2-21: пакеты разных глав одного дня не смешиваются; одна модель с разными параметрами — два ответа."""
+    from konveyer.steps import canon as canon_steps
+
+    (ws.root / "конфиг.yaml").write_text(
+        "library_dir: Библиотека\nwriter: {provider: anthropic, model: m, params: {t: 1}}\n"
+        "verifier2: {provider: anthropic, model: m, params: {t: 2}}\ncanonist: {provider: anthropic, model: m, params: {t: 2}}\n",
+        encoding="utf-8",
+    )
+    seen = _fake_models(monkeypatch)
+    d1 = canon_steps.retest(chapter=1)
+    d2 = canon_steps.retest(chapter=2)
+    assert d1 != d2 and d1.name.endswith("_гл1") and d2.name.endswith("_гл2")
+    assert sorted(p.name for p in d1.glob("ответ_*.md")) == ["ответ_m.md", "ответ_m_верификатор2.md"]
+    writer_calls = [s for s in seen if s[1].startswith("пере-тест")]
+    assert {s[2] for s in writer_calls} == {1, 2} and len([s for s in writer_calls if s[1] == "пере-тест (писатель)"]) == 2
+
+
+def test_перетест_фиксация_требует_пакет_и_пишет_приватность(ws, library, monkeypatch):
+    """B2-22 / A5-22: фиксация без пакета с ответом Писателя — отказ; с пакетом — пины, приватность, ссылка на сводку."""
+    from konveyer.steps import canon as canon_steps
+
+    assert runner.invoke(app, ["регрессия"]).exit_code == 0
+    r = runner.invoke(app, ["пере-тест", "--зафиксировать"])
+    assert r.exit_code == 1 and "нет пакета" in r.output, r.output
+    _fake_models(monkeypatch)
+    dest = canon_steps.retest(chapter=1)
+    r = runner.invoke(app, ["пере-тест", "--зафиксировать"])
+    assert r.exit_code == 1, r.output  # ответ есть только у anthropic-ролей, Писатель — gemini (ручной прогон не сделан)
+    (dest / "ответ_gemini-3.1-pro.md").write_text("Ответ ручного прогона.\n", encoding="utf-8")
+    r = runner.invoke(app, ["пере-тест", "--зафиксировать"])
+    assert r.exit_code == 0, r.output
+    pins = json.loads((ws.logs / "пины.json").read_text(encoding="utf-8"))
+    assert pins["пакет"] == dest.name and pins["приватность"]["писатель"]["провайдер"] == "gemini"
+    assert pins["приватность"]["писатель"]["режим_без_обучения"] is True
+    entry = (dest / "журнал_запись.md").read_text(encoding="utf-8")
+    assert "СВОДКА.md" in entry and "режим без обучения — да" in entry and "gemini/gemini-3.1-pro" in entry
+    # без пакета — только явно, и это видно в черновике журнала
+    import shutil
+
+    shutil.rmtree(ws.root / "пере-тест")
+    r = runner.invoke(app, ["пере-тест", "--зафиксировать", "--без-пакета"])
+    assert r.exit_code == 0, r.output
+    entry = next((ws.root / "пере-тест").rglob("журнал_запись.md")).read_text(encoding="utf-8")
+    assert "без пакета сравнения" in entry

@@ -168,47 +168,55 @@ def rollback(chapter: int, to: str | None = None, yes: bool = False, confirm: Co
     return to
 
 
-def retest(chapter: int = 1, fix: bool = False) -> Path:
-    """Пере-тест моделей (сценарий В, Д-10): пакет раунда 1 протокола отбора; прогон полуручной.
-    Возвращает папку пакета (или черновика записи журнала при `fix`)."""
+RETEST_DIR = "пере-тест"
+
+
+def _retest_packs(ws: Workspace) -> list[Path]:
+    """Папки пакетов пере-теста по возрастанию (имя = дата[_глN]); старые пакеты «<дата>» тоже считаются."""
+    root = ws.root / RETEST_DIR
+    if not root.exists():
+        return []
+    return sorted(p for p in root.iterdir() if p.is_dir() and (p / "ПРОМПТ_раунд1.md").exists())
+
+
+def _latest_pack_with_answers(ws: Workspace, cfg: Config) -> Path | None:
+    """Свежий пакет, где есть ответ модели-Писателя текущего пина (или хотя бы один ответ, если Писатель ручной)."""
+    for pack in reversed(_retest_packs(ws)):
+        answers = list(pack.glob("ответ_*.md"))
+        if not answers:
+            continue
+        if cfg.writer.manual or (pack / f"ответ_{cfg.writer.model}.md").exists():
+            return pack
+    return None
+
+
+def retest(chapter: int = 1, fix: bool = False, no_pack: bool = False) -> Path:
+    """Пере-тест моделей (FR-RT-1, Д-19): пакет сравнения на свежем брифе главы `chapter` в
+    `пере-тест/<дата>_гл<N>/` — ответы доступных моделей, флаги Э2 по ним, сводка метрик; прогон полуручной.
+    `fix` — зафиксировать пины (FR-RT-2): нужна зелёная регрессия и пакет с ответом модели-Писателя
+    (`no_pack` — по решению автора без пакета, это записывается в черновик журнала). Возвращает папку пакета."""
     ws, cfg, lib = _ctx()
     if fix:
-        green = regression_mod.is_green(ws)
-        if green is not True:
-            why = (
-                "регрессия КРАСНАЯ" if green is False
-                else "отчёт регрессии устарел (изменились конфиг.yaml, шаблоны или нормы)"
-                if regression_mod.is_stale(ws) else "регрессия не запускалась"
-            )
-            raise StepError(f"фиксация retest запрещена: {why} (FR-R3). Сначала `konveyer regress` с непустым корпусом.")
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
-        from .. import pins
-
-        pins.record(ws, cfg, note=f"пере-тест {stamp}")
-        guard.write_text(
-            ws.root / "пере-тест" / stamp / "журнал_запись.md",
-            f"# Запись в журнал решений (внесите в библиотеку через правку канона)\n\n"
-            f"- Дата: {stamp}\n- Решение: пере-тест моделей, результаты приняты автором.\n"
-            f"- Конфигурация: " + "; ".join(f"{r} — {m.provider}/{m.model}" for r, m in cfg.roles().items()) + "\n",
-        )
-        secho(f"Пины зафиксированы (журналы/{pins.PINS}). Черновик записи журнала: пере-тест/{stamp}/журнал_запись.md — "
-              f"внесите в журнал решений.", fg=colors.GREEN)
-        return ws.root / "пере-тест" / stamp
+        return _retest_fix(ws, cfg, no_pack)
     exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
-    dest = ws.root / "пере-тест" / stamp
-    # 2.10: окно собирается во временную рабочую область — окно.md главы в работе не трогается
+    dest = ws.root / RETEST_DIR / f"{stamp}_гл{chapter}"
+    # окно собирается во временную рабочую область — окно.md главы в работе не трогается
     prompt_path = _compile_window_to(ws, cfg, lib, chapter, _ensure_dir(dest / "ПРОМПТ_раунд1.md"))
+    guard.write_text(dest / "пакет.json", json.dumps({"глава": chapter, "том": ws.volume, "дата": stamp}, ensure_ascii=False) + "\n")
     ran, skipped = retest_run_models(ws, cfg, chapter, prompt_path, dest)
+    e2_done, e2_manual = retest_run_e2(ws, cfg, chapter, dest)
     summary = retest_summary(ws, chapter, dest)
     guard.write_text(dest / "СВОДКА.md", summary)
     guard.write_text(
         dest / "РЕЗУЛЬТАТЫ.md",
-        "# Результаты раунда 1\n\n"
+        f"# Результаты раунда 1 · глава {chapter}\n\n"
         + (f"Прогнано автоматически: {', '.join(ran)}.\n" if ran else "Автоматический прогон не состоялся — ключей/моделей нет.\n")
         + (f"Ручной прогон: {'; '.join(skipped)}.\n" if skipped else "")
+        + (f"Флаги Э2 получены: {', '.join(e2_done)}.\n" if e2_done else "")
+        + (f"Э2 вручную (промпт сохранён): {'; '.join(e2_manual)}.\n" if e2_manual else "")
         + "Ответы других моделей положите файлами `ответ_<модель>.md` в эту папку и повторите `konveyer пере-тест` —\n"
-        "сводка метрик Э1 пересчитается (СВОДКА.md); решение — записью в журнал решений "
+        "флаги Э2 и сводка метрик Э1 пересчитаются (СВОДКА.md); решение — записью в журнал решений "
         "(`konveyer пере-тест --зафиксировать`).\n",
     )
     secho(f"Пакет пере-теста готов: {dest}/ — сводка в СВОДКА.md" + (f"; ручной прогон: {len(skipped)}" if skipped else ""),
@@ -216,41 +224,127 @@ def retest(chapter: int = 1, fix: bool = False) -> Path:
     return dest
 
 
+def _retest_fix(ws: Workspace, cfg: Config, no_pack: bool) -> Path:
+    green = regression_mod.is_green(ws)
+    if green is not True:
+        why = (
+            "регрессия КРАСНАЯ" if green is False
+            else "отчёт регрессии устарел (изменились конфиг.yaml, шаблоны или нормы)"
+            if regression_mod.is_stale(ws) else "регрессия не запускалась"
+        )
+        raise StepError(f"фиксация retest запрещена: {why} (FR-RG-3). Сначала `konveyer регрессия` с непустым корпусом.")
+    pack = _latest_pack_with_answers(ws, cfg)
+    if pack is None and not no_pack:
+        raise StepError(
+            f"нет пакета пере-теста с ответом модели-Писателя ({cfg.writer.model}) — сначала `konveyer пере-тест` "
+            "(ответы ручного прогона положите в папку пакета файлами `ответ_<модель>.md`); зафиксировать без пакета "
+            "по решению автора — `--без-пакета`."
+        )
+    from .. import pins
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    dest = pack or (ws.root / RETEST_DIR / f"{stamp}_фиксация")
+    basis = f"пакет {pack.name}" if pack else "без пакета сравнения (решение автора, --без-пакета)"
+    pins.record(ws, cfg, note=f"пере-тест {stamp}: {basis}", extra={"пакет": pack.name if pack else None})
+    roles = "\n".join(
+        f"  - {r}: {p['провайдер']}/{p['модель']}, режим без обучения — {'да' if p['режим_без_обучения'] else 'НЕТ'}"
+        for r, p in pins.privacy(cfg).items()
+    )
+    guard.write_text(
+        dest / "журнал_запись.md",
+        "# Запись в журнал решений (внесите в библиотеку через правку канона и `konveyer канон-коммит`)\n\n"
+        f"- Дата: {stamp}\n- Решение: пере-тест моделей, результаты приняты автором ({basis}).\n"
+        + (f"- Основание: {RETEST_DIR}/{pack.name}/СВОДКА.md\n" if pack else "- Основание: пакет сравнения не собирался.\n")
+        + f"- Конфигурация (провайдер/модель, приватность — FR-SC-10):\n{roles}\n",
+    )
+    secho(f"Пины зафиксированы (журналы/{pins.PINS}). Черновик записи журнала: {RETEST_DIR}/{dest.name}/журнал_запись.md — "
+          f"внесите в журнал решений.", fg=colors.GREEN)
+    return dest
+
+
+def _answer_name(model: str, role: str, taken: dict[str, str], fp: str) -> str:
+    """Имя файла ответа: `<модель>`; та же модель с другими параметрами у другой роли — `<модель>_<роль>`."""
+    if model not in taken or taken[model] == fp:
+        return model
+    return f"{model}_{role}"
+
+
 def retest_run_models(ws: Workspace, cfg: Config, chapter: int, prompt_path: Path, dest: Path) -> tuple[list[str], list[str]]:
-    """Прогон пакета по доступным моделям ролей (Писатель и все роли с отличающимся пином): ответ — `ответ_<модель>.md`;
-    без ключа/SDK — модель остаётся для ручного прогона (FR-RT-1)."""
-    from .. import adapters
+    """Прогон пакета по доступным моделям ролей: одна модель с одними параметрами — один ответ `ответ_<модель>.md`
+    (дедупликация по отпечатку пина, не по имени); без ключа/SDK — модель остаётся для ручного прогона (FR-RT-1)."""
+    from .. import adapters, pins
 
     prompt = prompt_path.read_text(encoding="utf-8")
+    fps = pins.fingerprint(cfg)
     seen: set[str] = set()
+    taken: dict[str, str] = {}
     ran: list[str] = []
     skipped: list[str] = []
     for role, mc in cfg.roles().items():
-        if mc.manual or mc.model in seen:
+        fp = fps[role]
+        if mc.manual or fp in seen:
             continue
-        seen.add(mc.model)
-        target = dest / f"ответ_{mc.model}.md"
+        seen.add(fp)
+        name = _answer_name(mc.model, role, taken, fp)
+        taken.setdefault(mc.model, fp)
+        target = dest / f"ответ_{name}.md"
         if target.exists():
-            ran.append(f"{mc.model} (уже есть)")
+            ran.append(f"{name} (уже есть)")
             continue
         try:
             text = adapters.call_model(mc, cfg.api, "", prompt, ws.logs, role=f"пере-тест ({role})", chapter=chapter)
         except adapters.ManualModeNeeded as e:
-            skipped.append(f"{mc.model} — {e.reason}")
+            skipped.append(f"{name} — {e.reason}")
             continue
         except Exception as e:  # noqa: BLE001 — сбой одной модели не срывает пакет
-            skipped.append(f"{mc.model} — {adapters.explain_error(e, role)}")
+            skipped.append(f"{name} — {adapters.explain_error(e, role)}")
             continue
         guard.write_text(target, text)
-        ran.append(mc.model)
+        ran.append(name)
     return ran, skipped
 
 
-def retest_summary(ws: Workspace, chapter: int, dest: Path) -> str:
-    """Сводная таблица метрик Э1 по ответам моделей (`ответ_<модель>.md`) и флаги Э2, если сохранены
-    (`флаги_<модель>.json`) — FR-RT-1."""
-    import json
+def retest_run_e2(ws: Workspace, cfg: Config, chapter: int, dest: Path) -> tuple[list[str], list[str]]:
+    """Флаги Э2 по каждому ответу пакета (FR-RT-1): Верификатор-2 по тому же брифу → `флаги_<модель>.json`;
+    без API — промпт `э2_промпт_<модель>.md` для ручного прогона (ответ положите как `флаги_<модель>.json`);
+    нечитаемый ответ — `э2_сырой_<модель>.md`. Возвращает (получены, вручную)."""
+    from .. import adapters, verifier2
 
+    done: list[str] = []
+    manual: list[str] = []
+    for answer in sorted(dest.glob("ответ_*.md")):
+        model = answer.stem[len("ответ_"):]
+        flags_path = dest / f"флаги_{model}.json"
+        if flags_path.exists():
+            continue
+        try:
+            system, user = verifier2.build_prompt_text(ws, chapter, answer.read_text(encoding="utf-8"), cfg)
+        except FileNotFoundError as e:  # нет выгрузок главы — Э2 по пакету невозможен, пакет при этом цел
+            manual.append(f"{model} — {e}")
+            continue
+        try:
+            raw = adapters.call_role(cfg, "верификатор2", system, user, ws.logs, role="верификатор-2 (пере-тест)", chapter=chapter)
+        except adapters.ManualModeNeeded as e:
+            guard.write_text(dest / f"э2_промпт_{model}.md", f"<!-- system -->\n{system}\n\n<!-- user -->\n{user}\n")
+            manual.append(f"{model} — {e.reason}; промпт: э2_промпт_{model}.md")
+            continue
+        except Exception as e:  # noqa: BLE001 — сбой Э2 по одному ответу не срывает пакет
+            manual.append(f"{model} — {adapters.explain_error(e, 'верификатор2')}")
+            continue
+        try:
+            flags = verifier2.parse_flags(raw, cfg.e2_quote_words)
+        except ValueError as e:
+            guard.write_text(dest / f"э2_сырой_{model}.md", raw)
+            manual.append(f"{model} — ответ Э2 не разобран ({e}); сырой ответ: э2_сырой_{model}.md")
+            continue
+        guard.write_text(flags_path, json.dumps([f.model_dump() for f in flags], ensure_ascii=False, indent=2) + "\n")
+        done.append(model)
+    return done, manual
+
+
+def retest_summary(ws: Workspace, chapter: int, dest: Path) -> str:
+    """Сводная таблица метрик Э1 по ответам моделей (`ответ_<модель>.md`) и флагов Э2
+    (`флаги_<модель>.json`: всего / самоволок) — FR-RT-1."""
     from .. import verifier1
 
     answers = sorted(dest.glob("ответ_*.md"))
@@ -274,14 +368,21 @@ def retest_summary(ws: Workspace, chapter: int, dest: Path) -> str:
         if flags_path.exists():
             try:
                 flags = json.loads(flags_path.read_text(encoding="utf-8"))
-                rows[model]["флаги Э2"] = str(len(flags)) if isinstance(flags, list) else "?"
+                if isinstance(flags, list):
+                    sam = sum(1 for f in flags if isinstance(f, dict) and f.get("kind") == "samovolka")
+                    rows[model]["флаги Э2"] = f"{len(flags)} (самоволок {sam})"
+                else:
+                    rows[model]["флаги Э2"] = "?"
             except ValueError:
                 rows[model]["флаги Э2"] = "не разобраны"
+        elif (dest / f"э2_промпт_{model}.md").exists():
+            rows[model]["флаги Э2"] = "вручную (э2_промпт)"
     cols = ids + (["флаги Э2"] if any("флаги Э2" in r for r in rows.values()) else [])
     lines += ["| модель | " + " | ".join(cols) + " |", "|---|" + "---|" * len(cols)]
     for model, r in rows.items():
         lines.append(f"| {model} | " + " | ".join(r.get(c, "—") for c in cols) + " |")
-    lines += ["", "Флаги Э2: сохраните ответ Верификатора-2 по каждому тексту как `флаги_<модель>.json`, и столбец появится."]
+    lines += ["", "Флаги Э2 считаются Верификатором-2 по каждому ответу; без API — ответ по `э2_промпт_<модель>.md` "
+              "сохраните как `флаги_<модель>.json`, и столбец заполнится при следующем `konveyer пере-тест`."]
     return "\n".join(lines) + "\n"
 
 

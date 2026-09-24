@@ -129,15 +129,16 @@ def regress(llm: bool = False) -> dict:
 
 def add_golden(
     test_id: str, fragment_file: Path, expect: list[str] | None = None, focal: str = "", year: int | None = None,
-    echelon: str = "Э1",
+    echelon: str = "Э1", ignore: list[str] | None = None,
 ) -> Path:
-    """Добавить золотой тест из пойманной автором ошибки (FR-R1). Возвращает путь теста."""
+    """Добавить золотой тест из пойманной автором ошибки (FR-RG-1). Возвращает путь теста."""
     ws, cfg, lib = _ctx()
     test = GoldenTest(
         test_id=test_id,
         fragment=fragment_file.read_text(encoding="utf-8"),
         context_slice={"focal": focal, "year": year},
         expected_flags=list(expect or []),
+        ignore_flags=list(ignore or []),
         echelon=echelon,  # type: ignore[arg-type]
     )
     path = regression_mod.add_test(ws, test)

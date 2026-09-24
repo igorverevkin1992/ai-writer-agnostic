@@ -497,13 +497,14 @@ def cmd_regress(llm: bool = typer.Option(False, "--llm", help="Включить 
 def cmd_add_golden(
     test_id: str,
     fragment_file: Path,
-    expect: list[str] = typer.Option([], "--expect", help="Ожидаемый флаг (check_id), можно несколько раз."),
-    focal: str = typer.Option("", "--focal"),
-    year: int | None = typer.Option(None, "--year"),
-    echelon: str = typer.Option("Э1", "--echelon"),
+    expect: list[str] = typer.Option([], "--expect", "--ожидать", help="Ожидаемый флаг (check_id), можно несколько раз."),
+    ignore: list[str] = typer.Option([], "--ignore", "--игнорировать", help="Флаг, срабатывание которого не считать «лишним» (нормы длин на коротком фрагменте)."),
+    focal: str = typer.Option("", "--focal", "--фокал"),
+    year: int | None = typer.Option(None, "--year", "--год"),
+    echelon: str = typer.Option("Э1", "--echelon", "--эшелон"),
 ) -> None:
-    """Добавить золотой тест из пойманной автором ошибки (FR-R1)."""
-    quality.add_golden(test_id, fragment_file, expect=expect, focal=focal, year=year, echelon=echelon)
+    """Добавить золотой тест из пойманной автором ошибки (FR-RG-1)."""
+    quality.add_golden(test_id, fragment_file, expect=expect, focal=focal, year=year, echelon=echelon, ignore=ignore)
 
 
 @app.command("dashboard", rich_help_panel="Обзор")
@@ -529,11 +530,13 @@ def cmd_run(chapter: int) -> None:
 @app.command("пере-тест", rich_help_panel="Канон и бэкап")
 @_friendly
 def cmd_retest(
-    chapter: int = typer.Option(1, "--chapter", help="Глава для свежего брифа пакета."),
-    fix: bool = typer.Option(False, "--зафиксировать", "--fix", help="Зафиксировать результаты (требует зелёной регрессии, FR-R3)."),
+    chapter: int = typer.Option(1, "--chapter", "--глава", help="Глава для свежего брифа пакета."),
+    fix: bool = typer.Option(False, "--зафиксировать", "--fix", help="Зафиксировать пины по результатам (требует зелёной регрессии и пакета с ответами, FR-RG-3, FR-RT-2)."),
+    no_pack: bool = typer.Option(False, "--без-пакета", "--no-pack", help="С --зафиксировать: зафиксировать пины без пакета сравнения (решение автора записывается в черновик журнала)."),
 ) -> None:
-    """Пере-тест моделей (сценарий В, Д-10): пакет раунда 1 протокола отбора; прогон полуручной."""
-    canon.retest(chapter=chapter, fix=fix)
+    """Пере-тест моделей (FR-RT-1, Д-19): пакет сравнения на свежем брифе главы — ответы доступных моделей,
+    метрики Э1 и флаги Э2 в сводке; недоступные модели — промпт для ручного прогона."""
+    canon.retest(chapter=chapter, fix=fix, no_pack=no_pack)
 
 
 @app.command("canon-commit", rich_help_panel="Канон и бэкап")
