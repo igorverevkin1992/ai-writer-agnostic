@@ -2,8 +2,13 @@
 
 Здесь живут ТОЛЬКО технологические параметры: провайдеры и модели по ролям, цены, повторы, лимиты, пути бэкапа.
 Нормы прозы — только в выгрузках из канона (П-1, FR-V1-2). Роли привязываются к моделям независимо:
-Писатель, Верификатор-2, Канонист, аналитик, линтер, архивариус — каждая может иметь свою модель; не заданная
-роль наследует модель Канониста (проверки) или Писателя (генерация). Провайдер «ручной» — всегда ручной режим.
+Писатель, Верификатор-2, Канонист, аналитик, линтер, архивариус — каждая может иметь свою модель; не заданные
+аналитик, линтер и архивариус наследуют модель Канониста (`Config.role`). Провайдер «ручной» — всегда ручной режим;
+неизвестный провайдер не отказ при загрузке (П-5): вызов уходит в ручной режим, `доктор` показывает его.
+
+Русские ключи (П-8) равноправны латинским: `библиотека`, `модели: {писатель: …}`, `пороги`, `текущий_том`,
+`лимит_окна`, `пауза_автора_мин`, `папка_архива`, `хранить_архивов`, `мест_хранения_мин`, `автор_коммита`,
+`ориентиры`; у модели — `цена_вход_1м`, `цена_выход_1м`, `режим_без_обучения`.
 """
 
 from __future__ import annotations
@@ -27,6 +32,15 @@ ROLE_ALIASES = {"writer": "писатель", "verifier2": "верификато
 PROVIDERS = ("gemini", "anthropic", "ручной", "manual")
 
 
+MODEL_KEY_SYNONYMS = {"цена_вход_1м": "price_in_per_1m", "цена_выход_1м": "price_out_per_1m", "параметры": "params",
+                      "провайдер": "provider", "модель": "model"}
+CONFIG_KEY_SYNONYMS = {
+    "библиотека": "library_dir", "текущий_том": "volume", "лимит_окна": "window_soft_limit_chars",
+    "пауза_автора_мин": "author_pause_min", "папка_архива": "backup_dir", "хранить_архивов": "backup_keep",
+    "мест_хранения_мин": "backup_remotes_min", "автор_коммита": "commit_author", "ориентиры": "guidelines",
+}
+
+
 class ModelConfig(BaseModel):
     provider: str
     model: str
@@ -35,9 +49,32 @@ class ModelConfig(BaseModel):
     price_out_per_1m: float = 0.0
     no_training: bool = True   # FR-SC-10: режим без обучения на данных пользователя (фиксируется в журнале решений)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _russian_model_keys(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+        for ru, en in MODEL_KEY_SYNONYMS.items():
+            if ru in d:
+                d.setdefault(en, d.pop(ru))
+        if "режим_без_обучения" in d:
+            d.setdefault("no_training", d.pop("режим_без_обучения") in (True, "да", "вкл", "yes"))
+        return d
+
+    @field_validator("provider")
+    @classmethod
+    def _provider_normalized(cls, v: str) -> str:
+        """Регистр и пробелы не значимы («Ручной», « anthropic »); неизвестный провайдер допустим (П-5)."""
+        return str(v).strip().lower()
+
     @property
     def manual(self) -> bool:
         return self.provider in ("ручной", "manual")
+
+    @property
+    def known_provider(self) -> bool:
+        return self.provider in PROVIDERS
 
 
 class ApiConfig(BaseModel):
@@ -53,6 +90,26 @@ class Thresholds(BaseModel):
     daily_cost_usd: float = 0.0
 
 
+class GuidelineSizes(BaseModel):
+    """Размеры для ориентиров экономики (FR-EC-3), когда фактов ещё нет: окно Писателя в знаках, выход на
+    генерацию и на проверку в токенах. Факты (главы/*/окно.md, журнал API) сильнее этих значений."""
+
+    window_chars: int = 13_000
+    out_tokens: int = 1_200
+    check_out_tokens: int = 600
+
+    @model_validator(mode="before")
+    @classmethod
+    def _russian_keys(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+        for ru, en in (("окно_знаков", "window_chars"), ("выход_токенов", "out_tokens"), ("выход_проверки_токенов", "check_out_tokens")):
+            if ru in d:
+                d.setdefault(en, d.pop(ru))
+        return d
+
+
 class Config(BaseModel):
     library_dir: str = "Библиотека"
     writer: ModelConfig = ModelConfig(provider="gemini", model="gemini-3.1-pro")
@@ -63,6 +120,7 @@ class Config(BaseModel):
     archivist: ModelConfig | None = None
     api: ApiConfig = ApiConfig()
     thresholds: Thresholds = Thresholds()
+    guidelines: GuidelineSizes = GuidelineSizes()
     window_soft_limit_chars: int = 80_000
     auto_retries_verify1: int = 2
     edit_cycle_max_iterations: int = 3
@@ -81,12 +139,13 @@ class Config(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _russian_keys(cls, data: Any) -> Any:
-        """Русские ключи конфига: `библиотека`, `модели: {писатель: …}`, `пороги`, `текущий_том`."""
+        """Русские ключи конфига (П-8): см. докстринг модуля; латинские остаются скрытыми синонимами."""
         if not isinstance(data, dict):
             return data
         d = dict(data)
-        if "библиотека" in d:
-            d.setdefault("library_dir", d.pop("библиотека"))
+        for ru, en in CONFIG_KEY_SYNONYMS.items():
+            if ru in d:
+                d.setdefault(en, d.pop(ru))
         models = d.pop("модели", None) or {}
         for k, v in list(d.items()):
             if k in ROLES:
@@ -101,12 +160,6 @@ class Config(BaseModel):
             t = d.pop("пороги") or {}
             d.setdefault("thresholds", {"chapter_cost_usd": t.get("стоимость_главы", t.get("chapter_cost_usd", 0.0)),
                                         "daily_cost_usd": t.get("расход_за_сутки", t.get("daily_cost_usd", 0.0))})
-        if "текущий_том" in d:
-            d.setdefault("volume", d.pop("текущий_том"))
-        if "лимит_окна" in d:
-            d.setdefault("window_soft_limit_chars", d.pop("лимит_окна"))
-        if "пауза_автора_мин" in d:
-            d.setdefault("author_pause_min", d.pop("пауза_автора_мин"))
         return d
 
     @field_validator("volume")
@@ -191,11 +244,12 @@ def set_volume(ws: Workspace, volume: int) -> Path:
         manifest_mod.set_volume(ws.root, int(volume))
     path = config_path(ws)
     text = path.read_text(encoding="utf-8") if path.exists() else ""
-    line = f"volume: {int(volume)}"
-    if _VOLUME_LINE_RE.search(text):
-        text = _VOLUME_LINE_RE.sub(line, text, count=1)
+    m = _VOLUME_LINE_RE.search(text)
+    if m:
+        # ключ автора сохраняется: `текущий_том: 2` остаётся русским, `volume: 2` — латинским
+        text = _VOLUME_LINE_RE.sub(f"{m.group(1)}: {int(volume)}", text, count=1)
     else:
-        text = (text.rstrip("\n") + "\n" if text.strip() else "") + f"# Текущий том рабочей области (`konveyer том открыть N`).\n{line}\n"
+        text = (text.rstrip("\n") + "\n" if text.strip() else "") + f"# Текущий том рабочей области (`konveyer том открыть N`).\nтекущий_том: {int(volume)}\n"
     guard.write_text(path, text)
     return path
 

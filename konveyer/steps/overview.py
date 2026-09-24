@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .. import adapters, backup as backup_mod, dashboard as dashboard_mod, gitops, regression as regression_mod
+from .. import adapters, backup as backup_mod, dashboard as dashboard_mod, exporter, gitops, regression as regression_mod
 from .. import review as review_mod, timing, verifier2
 from ..fsm import ChapterState, all_states
 from ..paths import Workspace
@@ -221,8 +221,13 @@ def accounting(volume: int | None = None) -> str:
     from .. import accounting as accounting_mod
 
     ws, cfg, lib = _ctx()
-    acc = accounting_mod.volume_account(ws, volume)
-    text = accounting_mod.render(acc, cfg)
+    if volume is None or volume == ws.volume:
+        try:
+            exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)  # поглавник тома — для плана и прогноза
+        except Exception as e:  # noqa: BLE001 — сводка без поглавника, не отказ (П-5)
+            secho(f"⚠ выгрузки не пересобраны: {e}", fg=colors.YELLOW)
+    acc = accounting_mod.volume_account(ws, volume, library=lib)
+    text = accounting_mod.render(acc, cfg, ws)
     echo(text)
     path = accounting_mod.save(ws, acc, cfg)
     for w in accounting_mod.warnings(ws, cfg):
