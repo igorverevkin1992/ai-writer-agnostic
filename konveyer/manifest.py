@@ -78,6 +78,8 @@ class Methodics(BaseModel):
     акт: str | list[str] | None = None
     глава: str | list[str] | None = None
     обязательные_шаги: dict[str, list[int]] = Field(default_factory=dict)
+    # шаги «пустой» методики: список для всех уровней либо словарь уровень → список (FR-DR-2)
+    шаги_пустой: list[str] | dict[str, list[str]] = Field(default_factory=list)
 
     def for_level(self, level: str) -> list[str]:
         v = getattr(self, level, None)
@@ -87,6 +89,11 @@ class Methodics(BaseModel):
 
     def names(self) -> set[str]:
         return {n for lvl in ("серия", "том", "акт", "глава") for n in self.for_level(lvl)}
+    def empty_steps(self, level: str | None = None) -> list[str]:
+        v = self.шаги_пустой
+        if isinstance(v, dict):
+            return [str(x) for x in (v.get(level or "") or [])]
+        return [str(x) for x in v]
 
 
 class LibraryEntry(BaseModel):

@@ -326,12 +326,22 @@ def _record(row: dict[str, str], mapping: dict[str, str], columns: dict, fmt: di
     return rec
 
 
+def _rel_file(path: Path, ctx: ParseContext) -> str:
+    """Путь документа относительно библиотеки («Досье/Имя.md») — чтобы находки линтера и исправления вели к файлу."""
+    if ctx.library is not None:
+        try:
+            return path.resolve().relative_to(Path(ctx.library).resolve()).as_posix()
+        except ValueError:
+            pass
+    return path.name
+
+
 def _template(value: Any, ctx: ParseContext, path: Path, rec: dict | None = None) -> Any:
     """`"{файл} (нормы)"`, `"{том}"`, `"{поле}"` — подстановка из контекста и записи; поле записи с именем
     «файл»/«том» не конфликтует с контекстом (контекст в приоритете)."""
     if isinstance(value, str) and "{" in value:
         try:
-            return value.format(**{**(rec or {}), "файл": path.name, "том": ctx.volume})
+            return value.format(**{**(rec or {}), "файл": _rel_file(path, ctx), "том": ctx.volume})
         except (KeyError, IndexError, TypeError, ValueError, AttributeError):
             return value
     return value
@@ -355,6 +365,9 @@ def _apply_mapping(rec: dict, fmt: dict, ctx: ParseContext, path: Path) -> dict:
             continue  # служебный ключ не заполнен (например, ни одной секции) — умолчание схемы
         else:
             out[target] = _template(source, ctx, path, rec)
+    for key, value in rec.items():  # служебные поля разбора (строка записи) — для находок линтера
+        if key.startswith("_") and key not in out:
+            out[key] = value
     return out
 
 

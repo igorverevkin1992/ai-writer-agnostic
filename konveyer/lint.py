@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import re
 import sys
@@ -21,33 +22,61 @@ from importlib import resources
 from pathlib import Path
 from typing import Callable
 
-from . import adapters, catalog, exporter, guard, llmjson, manifest as manifest_mod, names, textutils, verifier1
+from jinja2 import Environment
+
+from . import adapters, cancel, catalog, exporter, guard, llmjson, manifest as manifest_mod, names, textutils, verifier1
 from .config import Config
 from .mdparse import MarkupError
 from .paths import Workspace
 from .schemas import Brief, InfoBan, LintFinding, LintFix, LintReport, MatrixFact
 
-MONTHS = {"янв": 1, "фев": 2, "мар": 3, "апр": 4, "мая": 5, "май": 5, "июн": 6, "июл": 7,
-          "авг": 8, "сен": 9, "окт": 10, "ноя": 11, "дек": 12}
+# основы месяцев — из языкового слоя (`языки/ru.yaml: месяцы`); запасной набор на случай урезанного файла языка
+_MONTHS_FALLBACK = {"январ": 1, "феврал": 2, "март": 3, "апрел": 4, "ма[йя]": 5, "июн": 6, "июл": 7,
+                    "август": 8, "сентябр": 9, "октябр": 10, "ноябр": 11, "декабр": 12}
+_MONTH_ENDINGS = r"(?:[аеуяюь]|ем|ом|ах|ям|ями)?"
 DATE_NUM_RE = re.compile(r"\b(\d{1,2})\.(\d{1,2})\b")
 DATE_WORD_RE = re.compile(r"\b(\d{1,2})\s+([а-яё]+)", re.IGNORECASE)
+YEAR_RE = re.compile(r"(?<!\d)(1\d{3}|20\d{2})(?!\d)")
+
+
+def _month_table() -> list[tuple[re.Pattern, int]]:
+    try:
+        raw = textutils._lang().raw.get("месяцы") or {}
+    except (ValueError, OSError, AttributeError):
+        raw = {}
+    stems = {str(k): int(v) for k, v in raw.items()} if raw else _MONTHS_FALLBACK
+    return [(re.compile(rf"(?<![а-яё])(?:{stem}){_MONTH_ENDINGS}(?![а-яё])", re.IGNORECASE), num) for stem, num in stems.items()]
+
+
+def parse_month(word: str) -> int | None:
+    """Слово — месяц? «июня» → 6, «мая» → 5; «Майор», «Маркиз», «Сенька» → None (только полная основа месяца)."""
+    for rx, num in _month_table():
+        if rx.fullmatch(word.strip()):
+            return num
+    return None
 
 
 def parse_date(text: str) -> tuple[int, int] | None:
-    """«12.04», «ночь 18.04», «12 июня 1995» → (месяц, день); «та же ночь» → None."""
+    """«12.04», «ночь 18.04», «12 июня 1995», «ночь с 12 на 13 июня» → (месяц, день); «та же ночь» → None."""
     m = DATE_NUM_RE.search(text or "")
     if m:
         return int(m.group(2)), int(m.group(1))
-    m = DATE_WORD_RE.search(text or "")
-    if m:
-        mon = MONTHS.get(m.group(2).lower()[:3])
+    for m in DATE_WORD_RE.finditer(text or ""):
+        mon = parse_month(m.group(2))
         if mon:
             return mon, int(m.group(1))
     return None
 
 
+def parse_year(text: str) -> int | None:
+    """Год, явно названный в дате («3 января 1996», «12.06.1995»); нет — None."""
+    m = YEAR_RE.search(text or "")
+    return int(m.group(1)) if m else None
+
+
 def _months(text: str) -> set[int]:
-    found = [MONTHS[w.lower()[:3]] for w in re.findall(r"[А-Яа-яЁё]{3,}", text) if w.lower()[:3] in MONTHS]
+    """Месяцы периода («май–июнь» → {5, 6}); имена собственные с похожим началом («Майор») месяцами не считаются."""
+    found = [num for _, num in sorted((m.start(), num) for rx, num in _month_table() for m in rx.finditer(text or ""))]
     if len(found) >= 2 and found[0] <= found[-1]:
         return set(range(found[0], found[-1] + 1))
     return set(found)
@@ -214,44 +243,65 @@ def _f(code: str, severity: str, file: str, line: int | None, message: str, hint
 
 @check("ХРОН-1", "ХРОН-2")
 def check_chronology(ctx: LintContext) -> list[LintFinding]:
+    """ХРОН-1 — дата вне календаря (день сверяется с месяцем и годом); ХРОН-2 — порядок глав против дат: при годах,
+    названных в датах, сравнение полное; без года — по месяцу и дню, а «декабрь → январь» считается сменой года."""
     out: list[LintFinding] = []
-    last: tuple[int, int] | None = None
+    last: tuple[int | None, int, int] | None = None
     last_ch = None
     for b in sorted((x for x in ctx.briefs if x.volume == ctx.volume), key=lambda b: b.chapter):
         d = parse_date(b.date)
         if d is None:
             continue
         mon, day = d
+        year = parse_year(b.date)
         file, line = ctx.brief_loc(b)
-        if not (1 <= mon <= 12 and 1 <= day <= 31):
+        try:
+            _date(year or b.year or 2000, mon, day)  # 2000 — високосный: без года 29 февраля допустимо
+        except ValueError:
             out.append(_f("ХРОН-1", "ошибка", file, line, f"гл. {b.chapter}: дата «{b.date}» вне календаря",
                           "исправьте дату главы в плане глав"))
             continue
-        if last is not None and d < last and not (last[0] == 12 and mon == 1):
-            out.append(_f("ХРОН-2", "ошибка", file, line,
-                          f"гл. {b.chapter} датирована «{b.date}» — раньше гл. {last_ch} ({last[1]:02d}.{last[0]:02d}); "
-                          "порядок глав нарушает хронологию тома", "переставьте главы или поправьте даты"))
-        last, last_ch = d, b.chapter
+        if last is not None:
+            ly, lm, ld = last
+            if year is not None and ly is not None:
+                earlier = (year, mon, day) < (ly, lm, ld)
+            else:
+                earlier = (mon, day) < (lm, ld) and not (lm == 12 and mon == 1)
+            if earlier:
+                when = f"{ld:02d}.{lm:02d}" + (f".{ly}" if ly else "")
+                out.append(_f("ХРОН-2", "ошибка", file, line,
+                              f"гл. {b.chapter} датирована «{b.date}» — раньше гл. {last_ch} ({when}); "
+                              "порядок глав нарушает хронологию тома", "переставьте главы или поправьте даты"))
+        last, last_ch = (year, mon, day), b.chapter
     return out
 
 
 @check("АКТ-1")
 def check_ranges(ctx: LintContext) -> list[LintFinding]:
+    """Акты идут подряд без разрывов и наложений и вместе покрывают ровно главы тома."""
     out: list[LintFinding] = []
     if not ctx.briefs or not ctx.acts:
         return out
     lo, hi = min(b.chapter for b in ctx.briefs), ctx.hi
     path = ctx.doc("каркасы") or ctx.doc("акты")
     expect = lo
+    last = None
     for a in sorted(ctx.acts, key=lambda a: a.from_chapter):
+        line = a.line or ctx.line_of(path, f"| {a.act} |") or (ctx.line_of(path, a.title[:20]) if a.title else None)
         if a.from_chapter != expect:
-            out.append(_f("АКТ-1", "ошибка", ctx.rel(path), ctx.line_of(path, a.title[:20]) if a.title else None,
+            out.append(_f("АКТ-1", "ошибка", ctx.rel(path), line,
                           f"акт «{a.title}» начинается с гл. {a.from_chapter}, ожидалась гл. {expect} (разрыв или наложение)",
                           "поправьте границы актов так, чтобы они шли подряд"))
         expect = a.to_chapter + 1
-    if expect - 1 != hi:
-        out.append(_f("АКТ-1", "предупреждение", ctx.rel(path), None, f"акты покрывают главы до {expect - 1}, а в томе {hi}",
-                      "добавьте главы в последний акт или заведите ещё акт"))
+        last = (a, line)
+    covered = expect - 1
+    if covered < hi:
+        out.append(_f("АКТ-1", "предупреждение", ctx.rel(path), last[1] if last else None,
+                      f"акты покрывают главы до {covered}, а в томе {hi}", "добавьте главы в последний акт или заведите ещё акт"))
+    elif covered > hi:
+        out.append(_f("АКТ-1", "предупреждение", ctx.rel(path), last[1] if last else None,
+                      f"акты покрывают главы до {covered}, а в томе {hi}",
+                      "сократите последний акт до глав плана или добавьте главы в план глав"))
     return out
 
 
@@ -343,21 +393,32 @@ def check_weekdays(ctx: LintContext) -> list[LintFinding]:
 
 # ------------------------------------------------------------------ фокалы и досье
 
-_FOCAL_VOL_RE = re.compile(r"фокал\w*\s*(?:[:—-]\s*)?(?:с\s+)?т\.?\s*(\d+)(?:\s*[–-]\s*(\d+))?", re.IGNORECASE)
+_FOCAL_WORD_RE = re.compile(r"фокал\w*", re.IGNORECASE)
+_VOL_SPAN_RE = re.compile(r"(?<![а-яё\w])т\.?\s*(\d+)(?:\s*[–-]\s*(\d+))?", re.IGNORECASE)
+_FOCAL_OPEN_MAX = 99  # «фокален с т.1» — до конца серии
 
 
 def _focal_volumes(status: str) -> set[int] | None:
-    """Из «Статуса» карточки: тома, где персонаж может быть фокалом; None — не разобрано; пусто — никогда."""
+    """Из «Статуса» карточки: тома, где персонаж может быть фокалом — все «т.N» и диапазоны после слова «фокал»
+    до конца предложения («фокальна т.1, т.3», «фокал: т.1 (гл. 1–9) и т.2», «фокален с т.1»);
+    None — не разобрано (не проверяется); пусто — никогда."""
     if not status:
         return None
     if re.search(r"фокала не имеет|не фокален|без фокала|никогда не фокал", status, re.IGNORECASE):
         return set()
-    m = _FOCAL_VOL_RE.search(status)
+    m = _FOCAL_WORD_RE.search(status)
     if not m:
         return None
-    a = int(m.group(1))
-    z = int(m.group(2)) if m.group(2) else (99 if re.search(r"\bс\s+т", status) else a)
-    return set(range(a, z + 1))
+    clause = re.split(r"[.;](?!\s*\d)|\n", status[m.end():], 1)[0]
+    vols: set[int] = set()
+    for vm in _VOL_SPAN_RE.finditer(clause):
+        a, z = int(vm.group(1)), int(vm.group(2) or vm.group(1))
+        vols.update(range(a, z + 1) if z >= a else [a])
+    if not vols:
+        return None
+    if re.search(r"\bс\s+т", clause):
+        vols.update(range(max(vols), _FOCAL_OPEN_MAX + 1))
+    return vols
 
 
 @check("ФОКАЛ-1", "ФОКАЛ-2")
@@ -375,7 +436,7 @@ def check_focals(ctx: LintContext) -> list[LintFinding]:
         d = ctx.dossier_of(b.focal)
         vols = _focal_volumes(d.status) if d else None
         if vols is not None and b.volume not in vols:
-            out.append(_f("ФОКАЛ-2", "ошибка", file, line, f"гл. {b.chapter}: фокал «{b.focal}», но по карточке ({d.file}) он не "
+            out.append(_f("ФОКАЛ-2", "предупреждение", file, line, f"гл. {b.chapter}: фокал «{b.focal}», но по карточке ({d.file}) он не "
                           f"фокален в т.{b.volume} (разрешено: {', '.join('т.' + str(v) for v in sorted(vols)) or 'нигде'})",
                           "смените фокал главы или поправьте статус карточки"))
     return out
@@ -399,6 +460,16 @@ def check_brief_epistemics(ctx: LintContext) -> list[LintFinding]:
     return out
 
 
+def _document_reveals(b: Brief, markers: list[str]) -> bool:
+    """Раскрытие через документ-вставку главы: у главы есть документ и он несёт маркеры тайны (без маркеров —
+    считается, что несёт: проверить нечем, ложной находки не будет)."""
+    if not b.documents:
+        return False
+    if not markers:
+        return True
+    return marker_hit(" ".join(b.documents), markers) is not None
+
+
 @check("ТАЙНА-3", "ТАЙНА-4", "ТАЙНА-5")
 def check_secrets(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
@@ -413,7 +484,7 @@ def check_secrets(ctx: LintContext) -> list[LintFinding]:
                           "очищаться от неё в окне Писателя", "заполните колонку маркеров (основы слов через «;»)"))
         if ban.until_chapter:
             b = by_ch.get(ban.until_chapter)
-            if b and not b.documents and not ban.known_to(b.focal, ban.until_chapter):
+            if b and not _document_reveals(b, ban.markers) and not ban.known_to(b.focal, ban.until_chapter):
                 who = ", ".join(f"{n} (гл. {c})" if c else f"{n} (всегда)" for n, c in sorted(ban.known_by.items()))
                 out.append(_f("ТАЙНА-4", "ошибка", ctx.rel(path), line, f"{ban.ban_id}: читатель узнаёт тайну в гл. {ban.until_chapter}, "
                               f"но её фокал {b.focal} тайны не знает (знают: {who or 'никто'}) — раскрывать нечем",
@@ -445,7 +516,7 @@ def check_matrix(ctx: LintContext) -> list[LintFinding]:
     for f in ctx.matrix:
         by_fact.setdefault(f.fact_id, []).append(f)
     for f in ctx.matrix:
-        line = ctx.line_of(path, f.fact_id) or ctx.line_of(path, f.fact[:30])
+        line = f.line or ctx.line_of(path, f.fact_id) or ctx.line_of(path, f.fact[:30])
         if f.from_chapter is not None and f.from_chapter > hi:
             out.append(_f("МАТР-1", "ошибка", ctx.rel(path), line, f"{f.fact_id} ({f.subject}): узнаёт в гл. {f.from_chapter}, "
                           f"а в томе {hi} глав", "поправьте главу или добавьте главу в план"))
@@ -461,14 +532,21 @@ def check_matrix(ctx: LintContext) -> list[LintFinding]:
         out.append(_f("МАТР-2", "ошибка" if f.subject in focal_lines else "предупреждение", ctx.rel(path), line,
                       f"{f.fact_id} ({f.subject}): узнаёт в гл. {f.from_chapter}, но это глава фокала {b.focal or '?'}, и "
                       f"{f.subject} не значится среди участников", "добавьте участника в план главы или пометьте источник «за кадром»"))
+    markers_of = {ban.ban_id: ban.markers for ban in ctx.infobans}
+    by_text: dict[str, list[MatrixFact]] = {}
+    for f in ctx.matrix:
+        by_text.setdefault(f.fact.strip().lower(), []).append(f)
     for fid, rows in by_fact.items():
         reader = next((x for x in rows if x.subject in ctx.pseudo), None)
         if reader and reader.from_chapter and not DEDUCTION_RE.search(reader.note or ""):
             b = by_ch.get(reader.from_chapter)
-            focal = next((x for x in rows if b and x.subject == b.focal), None)
-            if b and focal is not None and not b.documents and (focal.from_chapter is None or focal.from_chapter > reader.from_chapter):
+            # тот же факт у фокала: под тем же id (широкая таблица) или с тем же текстом факта (строка на субъект)
+            same = rows + [x for x in by_text.get(reader.fact.strip().lower(), []) if x not in rows]
+            focal = next((x for x in same if b and x.subject == b.focal), None)
+            if b and focal is not None and not _document_reveals(b, markers_of.get(fid, [])) \
+                    and (focal.from_chapter is None or focal.from_chapter > reader.from_chapter):
                 knows = "не знает его до конца тома" if focal.from_chapter is None else f"узнаёт только в гл. {focal.from_chapter}"
-                out.append(_f("МАТР-3", "предупреждение", ctx.rel(path), ctx.line_of(path, fid),
+                out.append(_f("МАТР-3", "предупреждение", ctx.rel(path), reader.line or ctx.line_of(path, fid),
                               f"{fid}: читатель узнаёт в гл. {reader.from_chapter}, а фокал этой главы ({b.focal}) {knows} — "
                               "читатель получает факт через голову фокала", "смените главу или фокал раскрытия"))
     return out
@@ -489,7 +567,7 @@ def check_plants(ctx: LintContext) -> list[LintFinding]:
     by_ch = {b.chapter: b for b in ctx.briefs}
     in_volume = {b.focal for b in ctx.briefs if b.focal} | {n for b in ctx.briefs for n in b.participants}
     for p in ctx.plants:
-        line = ctx.line_of(path, p.plant_id) or ctx.line_of(path, p.what[:30])
+        line = p.line or ctx.line_of(path, p.plant_id) or ctx.line_of(path, p.what[:30])
         chapters = list(p.chapters) or ([p.placed["ch"]] if p.placed.get("ch") else [])
         for ch in chapters:
             if ch > hi:
@@ -518,16 +596,26 @@ def check_plants(ctx: LintContext) -> list[LintFinding]:
     return out
 
 
+def _continuity_volumes(c) -> list[int]:
+    """Тома записи континуити — из поля даты/источника («т.1 гл.5»); пусто — запись без тома (общесерийная)."""
+    return names.volumes_listed(c.date or "")
+
+
 @check("КОНТ-1")
 def check_continuity(ctx: LintContext) -> list[LintFinding]:
+    """Ссылка континуити на главу, которой нет в томе: континуити — общесерийный реестр, поэтому проверяются
+    только записи текущего тома (или без тома)."""
     out: list[LintFinding] = []
     if not ctx.briefs:
         return out
     path = ctx.doc("континуити")
     for c in ctx.continuity:
+        vols = _continuity_volumes(c)
+        if vols and ctx.volume not in vols:
+            continue
         for ch in re.findall(r"\d+", c.chapters or ""):
             if int(ch) > ctx.hi:
-                out.append(_f("КОНТ-1", "предупреждение", ctx.rel(path), ctx.line_of(path, c.event[:30]),
+                out.append(_f("КОНТ-1", "предупреждение", ctx.rel(path), c.line or ctx.line_of(path, c.event[:30]),
                               f"континуити «{c.event[:50]}»: ссылка на гл. {ch}, а в томе {ctx.hi} глав", "поправьте главу"))
     return out
 
@@ -572,6 +660,38 @@ def _feature_values(text: str) -> dict[str, tuple[set[str], str]]:
     return out
 
 
+_HEADING_RE = re.compile(r"^#{2,6}\s*(.+?)\s*$")
+
+
+def _section_patterns(ctx: LintContext) -> list[tuple[str, re.Pattern]]:
+    """Обязательные секции карточки (тип «персонажи», `обязательные_секции`) с образцами заголовков из полей
+    извлечения того же типа («Физика» ↔ `[Фф]изик|[Вв]нешност`), иначе — по самому имени секции."""
+    spec = ctx.types.get("персонажи")
+    if spec is None:
+        return []
+    field_patterns: list[str] = []
+    for ext in spec.extractions:
+        for fmt in ext.get("форматы") or []:
+            for fspec in (fmt.get("поля") or {}).values():
+                pat = fspec.get("секция") if isinstance(fspec, dict) else fspec
+                if isinstance(pat, str) and pat:
+                    field_patterns.append(pat)
+    out: list[tuple[str, re.Pattern]] = []
+    for name in spec.required_sections:
+        pat = next((p for p in field_patterns if re.search(p, name)), None)
+        out.append((name, re.compile(pat or re.escape(name), re.IGNORECASE)))
+    return out
+
+
+def _physique_section(ctx: LintContext) -> str:
+    return next((name for name, rx in _section_patterns(ctx) if rx.search("Физика")), "")
+
+
+def _missing_sections(ctx: LintContext, d, path: Path | None) -> list[str]:
+    headings = [m.group(1) for line in _lines(path) if (m := _HEADING_RE.match(line.strip()))]
+    return [name for name, rx in _section_patterns(ctx) if not any(rx.search(h) for h in headings)]
+
+
 @check("ДОСЬЕ-1", "ДОСЬЕ-2", "ДОСЬЕ-3", "ДОСЬЕ-6")
 def check_dossiers(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
@@ -599,9 +719,10 @@ def check_dossiers(ctx: LintContext) -> list[LintFinding]:
                 out.append(_f("ДОСЬЕ-2", "заметка", d.file, ctx.line_of(path, f"[[{ref}]]") or head_line,
                               f"ссылка [[{ref}]] — такого персонажа нет ни среди карточек, ни среди известных имён",
                               "заведите карточку или исправьте ссылку"))
-        if not d.physique:
-            out.append(_f("ДОСЬЕ-6", "заметка", d.file, head_line, f"{d.name}: у карточки нет секции «Физика»: Писатель обязан выдумать внешность",
-                          "добавьте секцию «Физика»"))
+        for missing in _missing_sections(ctx, d, path):
+            out.append(_f("ДОСЬЕ-6", "заметка", d.file, head_line, f"{d.name}: у карточки нет обязательной секции «{missing}»"
+                          + (": Писатель выдумает то, чего в каноне нет" if not d.physique and missing == _physique_section(ctx) else ""),
+                          f"добавьте секцию «{missing}»"))
         card = _feature_values(" ".join([d.profile, d.physique, d.code]))
         for c in by_name.get(d.name, []):
             for feature, (values, _q) in _feature_values(c.event).items():
@@ -616,7 +737,8 @@ def check_dossiers(ctx: LintContext) -> list[LintFinding]:
 
 _DEATH_VOL_RE = re.compile(r"(?:гибнет|гибель|умирает|мёртв\w*|погибает)[^.;·|]{0,40}?т\.\s*(\d+)", re.I)
 _DEATH_EVENT_RE = re.compile(r"гибель|гибнут|смерть|умирает|погиб\w*", re.I)
-_AGE_ABS_RE = re.compile(r"(?<![\d.,–—-])(\d{2,3})(?:\s*[–-]\s*(\d{2,3}))?\s*(?:лет|года|год)?\s*(?:\(\s*(\d{4})|в\s+(\d{4}))")
+# «52 (1995)», «52 года в 1995»; не «№14 (1995 год)», «д.14 (1995)», «гл. 41 (1995)» — перед числом нет №/#/буквы/цифры
+_AGE_ABS_RE = re.compile(r"(?<![\d.,–—\-№#\w])(\d{2,3})(?:\s*[–-]\s*(\d{2,3}))?\s*(?:лет|года|год)?\s*(?:\(\s*(\d{4})|в\s+(\d{4}))")
 
 
 @check("ДОСЬЕ-4", "ДОСЬЕ-5")
@@ -736,13 +858,14 @@ def check_frames(ctx: LintContext) -> list[LintFinding]:
         except Exception:  # noqa: BLE001 — без методики каркас не проверяется по составу
             required, total = set(), set()
         present = {st.n for st in c.steps if not circles_mod.step_unset(st)}
+        head_line = c.line or ctx.line_of(path, c.title[:20])
         if required and not required <= present:
             missing = sorted(required - present)
-            out.append(_f("КРУГ-1", "предупреждение", ctx.rel(path), ctx.line_of(path, c.title[:20]),
+            out.append(_f("КРУГ-1", "предупреждение", ctx.rel(path), head_line,
                           f"{c.title}: не заданы обязательные шаги {missing} (методика «{m.title}»)",
                           "заполните шаги или снимите их обязательность в манифесте"))
         if total and any(st.n not in total for st in c.steps):
-            out.append(_f("КРУГ-1", "предупреждение", ctx.rel(path), ctx.line_of(path, c.title[:20]),
+            out.append(_f("КРУГ-1", "предупреждение", ctx.rel(path), head_line,
                           f"{c.title}: есть шаги вне методики «{m.title}» ({sorted(st.n for st in c.steps if st.n not in total)})",
                           "уберите лишние шаги"))
         if c.scope in ("книга", "акт"):
@@ -753,15 +876,22 @@ def check_frames(ctx: LintContext) -> list[LintFinding]:
                 if not act:
                     continue
                 a, z = act.from_chapter, act.to_chapter
-            expect = a
+            # шаги идут по порядку и лежат внутри границ; несколько шагов на одну главу — норма короткого тома
+            prev_from = a
             for st in c.steps:
                 if st.from_chapter is None:
                     continue
-                if st.from_chapter < expect or (st.to_chapter or st.from_chapter) > z:
-                    out.append(_f("КРУГ-2", "предупреждение", ctx.rel(path), ctx.line_of(path, st.text[:25]),
-                                  f"{c.title}, шаг {st.n} «{st.name}» ({st.chapters}) выходит за границы {a}–{z} или наезжает на "
-                                  "предыдущий шаг", "поправьте диапазоны глав шагов"))
-                expect = (st.to_chapter or st.from_chapter) + 1
+                st_lo, st_hi = st.from_chapter, st.to_chapter or st.from_chapter
+                if st_lo < a or st_hi > z:
+                    out.append(_f("КРУГ-2", "предупреждение", ctx.rel(path), ctx.line_of(path, st.text[:25], max(head_line or 1, 1) - 1),
+                                  f"{c.title}, шаг {st.n} «{st.name}» ({st.chapters}) выходит за границы {a}–{z}",
+                                  "поправьте диапазон глав шага"))
+                    continue  # шаг вне границ не сдвигает «предыдущий» — иначе каскад находок по следующим шагам
+                if st_lo < prev_from:
+                    out.append(_f("КРУГ-2", "предупреждение", ctx.rel(path), ctx.line_of(path, st.text[:25], max(head_line or 1, 1) - 1),
+                                  f"{c.title}, шаг {st.n} «{st.name}» ({st.chapters}) начинается раньше предыдущего шага (гл. {prev_from})",
+                                  "переставьте шаги или поправьте диапазоны глав"))
+                prev_from = max(prev_from, st_lo)
     return out
 
 
@@ -777,11 +907,11 @@ def check_arcs(ctx: LintContext) -> list[LintFinding]:
     for arc in ctx.arcs:
         if dossier_names and arc.character not in dossier_names and ("АРКА-1", arc.character) not in seen:
             seen.add(("АРКА-1", arc.character))
-            out.append(_f("АРКА-1", "заметка", ctx.rel(path), ctx.line_of(path, f"| {arc.character} |"),
+            out.append(_f("АРКА-1", "заметка", ctx.rel(path), arc.line or ctx.line_of(path, f"| {arc.character} |"),
                           f"арки: персонаж «{arc.character}» без карточки", "опечатка в имени или нужна карточка"))
         if act_numbers and arc.act not in act_numbers and ("АРКА-2", str(arc.act)) not in seen:
             seen.add(("АРКА-2", str(arc.act)))
-            out.append(_f("АРКА-2", "заметка", ctx.rel(path), ctx.line_of(path, f"| {arc.character} | {arc.act} |"),
+            out.append(_f("АРКА-2", "заметка", ctx.rel(path), arc.line or ctx.line_of(path, f"| {arc.character} | {arc.act} |"),
                           f"арки: акт {arc.act} («{arc.character}») вне таблицы актов ({', '.join(str(n) for n in sorted(act_numbers))})",
                           "поправьте номер акта"))
     return out
@@ -864,20 +994,66 @@ def check_prose(ctx: LintContext) -> list[LintFinding]:
         lines = _lines(path)
         active = [ban for ban in ctx.infobans if ban.secret and ban.markers and not ban.known_to(b.focal, b.chapter)]
         rules = [r for r in ctx.stoplists if r.kind == "лексика" and verifier1._stoplist_applies(r, b)]
-        narration = set(textutils.narration_only("\n\n".join(lines)).splitlines())
         for i, line in enumerate(lines, start=1):
-            if line.strip() and line.strip() not in narration:
+            if not line.strip():
+                continue
+            # повествовательная часть строки: реплика до атрибуции — речь персонажа, не знание фокала
+            narration = textutils.narration_only(line)
+            if not narration.strip():
                 continue
             for ban in active:
-                hit = marker_hit(line, ban.markers)
+                hit = marker_hit(narration, ban.markers)
                 if hit:
                     out.append(_f("ПРОЗА-1", "предупреждение", ctx.rel(path), i, f"гл. {ch} (фокал {b.focal}): «{hit}» — маркер тайны "
                                   f"{ban.ban_id}, которой фокал ещё не знает", "проверьте фразу или знание фокала"))
             for r in rules:
-                found = verifier1._find_items(line, list(r.items))
+                found = verifier1._find_items(narration, list(r.items))
                 if found:
                     out.append(_f("ПРОЗА-2", "заметка", ctx.rel(path), i, f"гл. {ch}: стоп-лексика линии [{r.rule_id}]: {', '.join(found[:3])}",
                                   "замените слово или снимите правило"))
+    return out
+
+
+@check("КОНТ-2")
+def check_prose_continuity(ctx: LintContext) -> list[LintFinding]:
+    """Континуити против принятой прозы: признак персонажа (сторона шрама, цвет глаз, рост…), закреплённый
+    континуити или карточкой, в предложении прозы с этим персонажем описан иначе."""
+    prose = _prose(ctx)
+    if not prose:
+        return []
+    fixed: dict[str, dict[str, tuple[set[str], str, str]]] = {}  # имя → признак → (значения, откуда, цитата)
+    for c in ctx.continuity:
+        for name in names.find_names(c.event, ctx.known, ctx.pseudo):
+            for feature, (values, quote) in _feature_values(c.event).items():
+                seen = fixed.setdefault(name, {}).get(feature)
+                fixed[name][feature] = ((seen[0] | values) if seen else values, "континуити", quote[:60])
+    for d in ctx.dossiers:
+        for feature, (values, quote) in _feature_values(" ".join([d.profile, d.physique, d.code])).items():
+            if feature not in fixed.get(d.name, {}):
+                fixed.setdefault(d.name, {})[feature] = (values, "карточка", quote[:60])
+    if not fixed:
+        return []
+    patterns = {name: names.name_pattern(name) for name in fixed}
+    out: list[LintFinding] = []
+    for ch, path, _b in prose:
+        for i, line in enumerate(_lines(path), start=1):
+            narration = textutils.narration_only(line) if line.strip() else ""
+            if not narration.strip():
+                continue
+            for sentence in textutils.split_sentences(narration):
+                present = [n for n, rx in patterns.items() if rx.search(sentence)]
+                if not present:
+                    continue
+                found = _feature_values(sentence)
+                for name in present:
+                    for feature, (values, _q) in found.items():
+                        known = fixed[name].get(feature)
+                        if not known or not values or (known[0] & values):
+                            continue
+                        out.append(_f("КОНТ-2", "предупреждение", ctx.rel(path), i,
+                                      f"гл. {ch}: {name}, {feature} — в прозе «{', '.join(sorted(values))}», а {known[1]} фиксирует "
+                                      f"«{', '.join(sorted(known[0]))}» ({known[2]})",
+                                      "согласуйте прозу с континуити или внесите новую деталь в канон", quote=sentence.strip()[:120]))
     return out
 
 
@@ -932,7 +1108,19 @@ def check_prose_names(ctx: LintContext) -> list[LintFinding]:
 
 # ------------------------------------------------------------------ вопросы автору (КАНОН-1)
 
-_INDEX_RANGE_RE = re.compile(r"Р-(\d+)\s*…\s*Р-(\d+)")
+_ID_RE = re.compile(r"^(\D*)(\d+)")
+
+
+def _decision_numbering(decisions) -> tuple[str, int, int] | None:
+    """(префикс, последний номер, ширина номера) по идентификаторам журнала («Р-012» → «Р-», 12, 3); формат
+    номера — из документа, не из движка (П-1)."""
+    parsed = [m for d in decisions if (m := _ID_RE.match(str(d.decision_id).strip()))]
+    if not parsed:
+        return None
+    prefix = parsed[0].group(1)
+    nums = [int(m.group(2)) for m in parsed]
+    width = max(len(m.group(2)) for m in parsed)
+    return prefix, max(nums), width
 
 
 @check("КАНОН-1")
@@ -956,13 +1144,15 @@ def check_canon_questions(ctx: LintContext) -> list[LintFinding]:
                           f"{ev.event_id} датировано «{ev.date}», а гл. {ch}, где читатель его узнаёт, — «{b.date}»",
                           "согласуйте хронологию и план глав — решение за автором"))
     index = ctx.doc("индекс_библиотеки")
-    if index is not None and ctx.decisions:
-        last = max((int(re.sub(r"\D", "", d.decision_id) or 0) for d in ctx.decisions), default=0)
+    numbering = _decision_numbering(ctx.decisions) if index is not None else None
+    if numbering is not None:
+        prefix, last, width = numbering
+        range_re = re.compile(re.escape(prefix) + r"(\d+)\s*(?:…|\.\.\.|[–—-])\s*" + re.escape(prefix) + r"(\d+)")
         for i, line in enumerate(_lines(index), start=1):
-            rm = _INDEX_RANGE_RE.search(line)
+            rm = range_re.search(line)
             if rm and int(rm.group(2)) < last:
-                out.append(_f("КАНОН-1", "заметка", ctx.rel(index), i, f"индекс библиотеки обещает «{rm.group(0)}», а журнал решений дошёл до Р-{last:03d}",
-                              "обновите индекс"))
+                out.append(_f("КАНОН-1", "заметка", ctx.rel(index), i, f"индекс библиотеки обещает «{rm.group(0)}», а журнал решений дошёл "
+                              f"до {prefix}{last:0{width}d}", "обновите индекс"))
     # фокал открывается в разных томах: карточка против таблицы фокалов
     for d in ctx.dossiers:
         vols = _focal_volumes(d.status)
@@ -1018,13 +1208,45 @@ def run_checks(ctx: LintContext) -> list[LintFinding]:
     return findings
 
 
+_CONFIG_FOLDERS = ("типы", "модули", "методики", "линтер", "языки", "промпты")
+
+
+def config_fingerprint(root: Path) -> str:
+    """Отпечаток конфигурации проверки: манифест проекта (модули, методики, карта), переопределения проекта
+    (типы, модули, методики, плагины линтера, язык) и набор проверок движка — вместе с отпечатком канона
+    образует ключ кэша (FR-LT-5): смена конфигурации при том же каноне даёт новый прогон."""
+    h = hashlib.sha256()
+    man = root / "проект.yaml"
+    if man.is_file():
+        try:
+            h.update(man.read_bytes())
+        except OSError:
+            pass
+    for folder in _CONFIG_FOLDERS:
+        base = root / folder
+        if not base.is_dir():
+            continue
+        for p in sorted(x for x in base.rglob("*") if x.is_file() and x.suffix in (".yaml", ".py", ".md", ".j2", ".json")):
+            h.update(p.relative_to(root).as_posix().encode("utf-8"))
+            h.update(b"\0")
+            try:
+                h.update(p.read_bytes())
+            except OSError:
+                pass
+            h.update(b"\0")
+    from . import __version__
+
+    h.update(f"{__version__}:{','.join(sorted(c for codes, _ in CHECKS for c in codes))}".encode("utf-8"))
+    return h.hexdigest()
+
+
 def run_lint(library: Path, exports_dir: Path, logs_dir: Path, export: bool = True, volume: int = 1,
              root: Path | None = None, use_cache: bool = True) -> LintReport:
-    """Машинный слой: экспорт + все проверки тома. Кэш по отпечатку канона (FR-LT-5): при том же отпечатке и той же
-    конфигурации модулей возвращается прежний отчёт."""
+    """Машинный слой: экспорт + все проверки тома. Кэш по отпечатку канона и конфигурации (FR-LT-5): при том же
+    каноне, той же конфигурации модулей/методик/типов и том же томе возвращается прежний отчёт."""
     root = exporter.project_root_of(library, root)
     fingerprint = exporter.canon_fingerprint(library, root)
-    key = f"{fingerprint}:{volume}"
+    key = f"{fingerprint}:{config_fingerprint(root)[:16]}:{volume}"
     if use_cache:
         cached = load_report(logs_dir)
         if cached is not None and cached.fingerprint == key:
@@ -1117,6 +1339,16 @@ def _template(root: Path | None = None) -> str:
     return resources.files("konveyer").joinpath("шаблоны/линтер_канона_система.md").read_text(encoding="utf-8")
 
 
+def system_prompt(ws: Workspace, library: Path) -> str:
+    """Системный промпт модельного слоя, отрендеренный по манифесту (имя серии — из проекта, П-1)."""
+    try:
+        man = manifest_mod.effective(ws.root, library, catalog.load_types(ws.root))
+        series = man.проект.имя
+    except (OSError, ValueError):
+        series = ""
+    return Environment().from_string(_template(ws.root)).render(series=series)
+
+
 def _context_slices(exports_dir: Path) -> str:
     briefs = exporter.load_briefs(exports_dir)
     infobans = exporter.load_infobans(exports_dir)
@@ -1169,7 +1401,7 @@ def run_lint_llm(ws: Workspace, cfg: Config, library: Path, files: list[Path] | 
     docs = files or _library_docs(library)
     if max_calls is not None and len(docs) > max_calls:
         raise ValueError(f"документов {len(docs)}, лимит вызовов модели {max_calls}: укажите --файл или поднимите --лимит")
-    system = _template(ws.root)
+    system = system_prompt(ws, library)
     context = _context_slices(ws.exports)
     if max_cost_usd is not None:
         mc = cfg.role("линтер")
@@ -1180,11 +1412,13 @@ def run_lint_llm(ws: Workspace, cfg: Config, library: Path, files: list[Path] | 
                              f"сузьте список --файл или поднимите бюджет")
     findings: list[LintFinding] = []
     prompts: list[str] = []
-    for doc in docs:
+    for n, doc in enumerate(docs):
         rel = doc.relative_to(library).as_posix()
         user = f"# Документ: {rel}\n\n<документ>\n{doc.read_text(encoding='utf-8')}\n</документ>\n\n# Контекст канона\n\n{context}"
         prompt_path = ws.logs / "линтер_промпты" / (re.sub(r"[^\w.\-]+", "_", rel) + ".md")
         guard.write_text(prompt_path, f"<!-- system -->\n{system}\n\n<!-- user -->\n{user}\n")
+        if n:
+            cancel.check(f"линтер: перед {rel}")  # «Остановить» действует между вызовами (FR-AD-7)
         try:
             raw = adapters.call_role(cfg, "линтер", system, user, ws.logs, role="линтер канона")
             findings += parse_llm_findings(raw, library, doc)
@@ -1223,3 +1457,15 @@ def error_report(exc: BaseException, logs_dir: Path, files: int = 0) -> LintRepo
 def merge_llm(report: LintReport, extra: list[LintFinding], logs_dir: Path) -> LintReport:
     findings = [f for f in report.findings if f.source != "модель"] + extra
     return _finish(findings, logs_dir, report.files_checked, report.fingerprint)
+
+
+def accept_llm_answer(ws: Workspace, library: Path, doc: str, raw: str) -> tuple[LintReport, int]:
+    """Ручной режим модельного слоя (FR-RL-3): ответ модели по документу (из сохранённого промпта) разбирается
+    и вливается в текущий отчёт вместо прежних модельных находок по этому документу. Возвращает (отчёт, сколько
+    находок принято)."""
+    path = resolve_library_files(library, [doc])[0]
+    rel = path.relative_to(library.resolve()).as_posix()
+    found = parse_llm_findings(raw, library.resolve(), path)
+    report = load_report(ws.logs) or run_lint(library, ws.exports, ws.logs, volume=ws.volume, root=ws.root, use_cache=False)
+    findings = [f for f in report.findings if not (f.source == "модель" and f.file == rel)] + found
+    return _finish(findings, ws.logs, report.files_checked, report.fingerprint), len(found)

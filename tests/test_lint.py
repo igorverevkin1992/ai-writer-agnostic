@@ -104,14 +104,16 @@ def test_модельный_слой_без_api_сохраняет_промпт�
 
 
 @real_only
-def test_реальная_библиотека_без_ошибок():
-    """Реальный канон: ошибок уровня «ошибка» нет; предупреждения — подсветка для автора, а не шум."""
-    import tempfile
+def test_реальная_библиотека_без_ошибок(tmp_path):
+    """Реальный канон: ошибок уровня «ошибка» нет; предупреждения — подсветка для автора, а не шум.
+    Работает на копии библиотеки во временной папке pytest — живой канон автора не трогается, мусора не остаётся."""
+    import shutil
 
-    tmp = Path(tempfile.mkdtemp())
-    ws = Workspace(tmp)
-    guard.set_library_dir(LIBRARY)
-    report = lint.run_lint(LIBRARY, ws.exports, ws.logs)
+    lib = tmp_path / "Библиотека"
+    shutil.copytree(LIBRARY, lib, ignore=shutil.ignore_patterns(".git"))
+    ws = Workspace(tmp_path)
+    guard.set_library_dir(lib)
+    report = lint.run_lint(lib, ws.exports, ws.logs, root=ws.root)
     assert report.errors == 0, [f.message for f in report.findings if f.severity == "ошибка"]
     codes = {f.code for f in report.findings}
     # расхождение реестра и матрицы по Т-07 снято автором (Р-033): на чистом каноне ТАЙНА-1 нет

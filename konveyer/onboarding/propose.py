@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .. import catalog, declparse, manifest as manifest_mod, mdparse
+from .. import cancel, catalog, declparse, manifest as manifest_mod, mdparse
 from ..paths import Workspace
 from . import classify, importer, normalize
 
@@ -283,6 +283,7 @@ def model_layer(ws: Workspace, cfg, files: list[Path], types: dict[str, catalog.
         if cached.exists():
             data = json.loads(cached.read_text(encoding="utf-8"))
         else:
+            cancel.check(f"архивариус: перед {path.name}")  # «Остановить» действует между вызовами (FR-AD-7)
             try:
                 raw = adapters.call_role(cfg, "архивариус", system, user, ws.logs, role="архивариус")
                 data = llmjson.extract_json(raw, list)

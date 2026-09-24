@@ -8,7 +8,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .. import backup as backup_mod, canonchange, compiler, exporter, gitops, guard, regression as regression_mod
+from .. import backup as backup_mod, cancel, canonchange, compiler, exporter, gitops, guard, regression as regression_mod
 from ..config import Config
 from ..errors import StepError
 from ..fsm import STATES, ChapterState, TransitionError
@@ -17,10 +17,12 @@ from ..paths import Workspace
 from .common import Confirm, _ctx, _ensure_dir, _is_git_url, colors, confirm_or_reject, echo, secho
 
 
-def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False, max_calls: int = 40) -> int:
+def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False, max_calls: int = 40,
+         answers: list[str] | None = None) -> int:
     """Проверка канона на противоречия и ошибки логики повествования (машинный слой; `llm` — модель).
     Возвращает число ошибок канона последнего прогона (код возврата 1 при `--strict` ставит CLI);
-    `watch` — следить за библиотекой и перепроверять при каждом изменении (до Ctrl+C)."""
+    `watch` — следить за библиотекой и перепроверять при каждом изменении (до Ctrl+C);
+    `answers` — ответы модели, полученные вручную по сохранённым промптам («документ=файл_ответа»)."""
     from .. import lint as lint_mod
 
     ws, cfg, lib = _ctx()
@@ -34,10 +36,20 @@ def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False,
         raise StepError(str(e)) from e
 
     def once() -> int:
+        nonlocal answers
         try:
-            report = lint_mod.run_lint(lib, ws.exports, ws.logs, volume=ws.volume, root=ws.root, use_cache=False)
+            report = lint_mod.run_lint(lib, ws.exports, ws.logs, volume=ws.volume, root=ws.root)
         except Exception as e:  # noqa: BLE001 — сбой линтера виден как находка, не как трейсбек
             report = lint_mod.error_report(e, ws.logs)
+        for item in answers or []:
+            doc, _, file = item.partition("=")
+            if not doc or not file:
+                raise StepError(f"--ответ ожидает «документ=файл_ответа», получено «{item}»")
+            try:
+                report, added = lint_mod.accept_llm_answer(ws, lib, doc.strip(), Path(file.strip()).read_text(encoding="utf-8"))
+            except (ValueError, OSError) as e:
+                raise StepError(f"ответ модели по «{doc}» не принят: {e}") from e
+            secho(f"Ответ модели по {doc}: находок принято {added}", fg=colors.GREEN)
         if llm:
             if report.errors:
                 secho(
@@ -67,6 +79,7 @@ def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False,
             f"заметок {report.notes} → журналы/линтер.md",
             fg=colors.RED if report.errors else colors.GREEN,
         )
+        answers = []  # в режиме наблюдения ответы вливаются один раз
         return report.errors
 
     if not watch:
@@ -223,6 +236,7 @@ def retest_run_models(ws: Workspace, cfg: Config, chapter: int, prompt_path: Pat
         if target.exists():
             ran.append(f"{mc.model} (уже есть)")
             continue
+        cancel.check(f"пере-тест: перед {mc.model}")  # «Остановить» действует между вызовами (FR-AD-7)
         try:
             text = adapters.call_model(mc, cfg.api, "", prompt, ws.logs, role=f"пере-тест ({role})", chapter=chapter)
         except adapters.ManualModeNeeded as e:

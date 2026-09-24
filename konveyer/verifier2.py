@@ -146,9 +146,7 @@ def build_prompt(ws: Workspace, chapter: int, draft: int, cfg: Config | None = N
         drama = circles.frame_for_chapter(exporter.load_circles(exports_dir), exporter.load_acts(exports_dir), chapter)
     except FileNotFoundError:
         drama = circles.frame_for_chapter([], [], chapter)
-    required = circles.required_steps(ws, "глава") if drama.get("has_any") else None
-    optional = circles.methodic_for(ws, "глава").optional_steps("глава", man) if drama.get("has_any") else set()
-    drama_lines = circles.frame_lines(drama, with_weak_spot=True, required=required, optional=optional) or [
+    drama_lines = circles.frame_lines_for(ws, drama, with_weak_spot=True) or [
         "- (каркас в канон не внесён — проверка драматургии ограничивается собственным движением главы)"
     ]
     participants = sorted(set([brief.focal, *brief.participants]) - {""})

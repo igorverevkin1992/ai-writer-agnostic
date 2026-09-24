@@ -765,12 +765,7 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
     except FileNotFoundError:
         acts = []
         drama = circles.frame_for_chapter([], [], chapter)
-    if drama.get("has_any"):
-        methodic = circles.methodic_for(ws, "глава")
-        drama_lines = circles.frame_lines(drama, required=methodic.required_steps("глава", man),
-                                          optional=methodic.optional_steps("глава", man))
-    else:
-        drama_lines = []
+    drama_lines = circles.frame_lines_for(ws, drama) if drama.get("has_any") else []
     # арки тома: Писателю — только «что видно снаружи» участников сцены по акту главы
     arcs = arc_lines(exporter.load_arcs(exports_dir), acts, brief, infobans, participants)
 
@@ -826,6 +821,7 @@ def compile_window(ws: Workspace, library: Path, chapter: int, soft_limit_chars:
         drama_lines=drama_lines,
         drama_intro=circles.window_intro(ws, drama) if drama_lines else "",
         arc_lines=arcs,
+        arc_intro=circles.arcs_intro(ws) if arcs else "",
     )
 
     window = re.sub(r"\n{3,}", "\n\n", window)  # пустые строки от условных блоков шаблона не копятся

@@ -431,7 +431,7 @@ def test_каркасы_нечитаемый_ответ_не_прерывает_
     answers = iter(["Извините, вот мои мысли без JSON"] + ['{"title": "т", "steps": []}'] * 20)
     monkeypatch.setattr(adapters, "call_role", lambda *a, **k: next(answers))
     result = circles.run(ws, Config(), "всё", library=library)
-    assert len(result["не_разобрано"]) == 1 and "сырой" in result["не_разобрано"][0]
+    assert len(result["сбои"]) == 1 and "сырой" in result["сбои"][0]
     raw_files = list((ws.root / "драматургия" / "ответы").glob("*_сырой.md"))
     assert len(raw_files) == 1 and raw_files[0].read_text(encoding="utf-8") == "Извините, вот мои мысли без JSON"
     assert result["готово"] and len(result["промпты"]) == 1 and result["ручной_режим"] is None

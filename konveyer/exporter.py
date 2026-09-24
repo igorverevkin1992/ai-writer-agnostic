@@ -203,6 +203,8 @@ def _acts_of(data: dict, path: Path, line: int, errors: list[MarkupError]) -> li
     if not acts:
         errors.append(MarkupError(path, line, f"акт «{data.get('act')}»: не разобран диапазон глав «{chapters}» "
                                               f"(ожидается «1–4» или «5»)"))
+    for a in acts:
+        a.line = a.line or line  # строка таблицы актов — для находок линтера
     return acts
 
 
@@ -226,6 +228,8 @@ def _validate(records: list[dict], schema_name: str, path: Path, errors: list[Ma
                 errors.append(MarkupError(path, line, f"неизвестные поля схемы {schema_name}: {', '.join(unknown)}; "
                                                       f"допустимые: {', '.join(sorted(model.model_fields))}"))
                 continue
+        if "line" in model.model_fields and not data.get("line") and rec.get("_строка"):
+            data["line"] = int(rec["_строка"])  # строка записи — для находок линтера (FR-LT-1)
         if model is Act:
             out.extend((rec, a) for a in _acts_of(data, path, line, errors))
             continue

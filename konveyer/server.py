@@ -789,7 +789,7 @@ class PanelAPI:
                             self.lint_running = True
                             self.lint_pending = False
                         try:
-                            report = lint_mod.run_lint(self.library, self.ws.exports, self.ws.logs, volume=self.ws.volume, root=self.ws.root, use_cache=False)
+                            report = lint_mod.run_lint(self.library, self.ws.exports, self.ws.logs, volume=self.ws.volume, root=self.ws.root)
                         except Exception as e:  # noqa: BLE001 — сбой виден как находка
                             report = lint_mod.error_report(e, self.ws.logs)
                         finally:
@@ -899,6 +899,18 @@ class PanelAPI:
         self.invalidate_caches()
         return result
 
+    def manual_lint_answer(self, doc: str, text: str) -> dict:
+        """Ручной режим модельного слоя линтера (FR-RL-3): ответ модели по документу из сохранённого промпта."""
+        from . import lint as lint_mod
+
+        if not text.strip():
+            raise ValueError("пустой ответ модели")
+        with self.jobs.exclusive():
+            report, added = lint_mod.accept_llm_answer(self.ws, self.library, doc, text)
+        with self._lint_lock:
+            self.lint_report = report
+        return {"added": added, "lint": self.lint_summary()}
+
     def apply_lint_fix(self, fix_data: dict) -> dict:
         """Применяет ровно то исправление, которое автор видел и подтвердил (file/line/old/new),
         а не элемент списка по индексу — отчёт мог перестроиться наблюдателем между показом и кликом."""
@@ -971,7 +983,8 @@ class PanelAPI:
 PANEL_ACTIONS = {
     "state", "chapter", "draft", "diff", "window", "prompt", "find", "circles", "lint", "canon", "log", "job",
     "project", "onboarding", "journals", "regression", "resolve", "resolve-all", "edits", "canon-batch", "canon-doc",
-    "lint-fix", "circles-manual", "circles-preview", "manual-draft", "manual-flags", "accept", "rollback", "onboarding-decision",
+    "lint-fix", "lint-manual", "circles-manual", "circles-preview", "manual-draft", "manual-flags", "accept", "rollback",
+    "onboarding-decision",
     "job-cancel",
 }
 
@@ -1212,6 +1225,8 @@ def make_handler(api: PanelAPI):
                     return self._json(api.apply_lint_fix(fix))
                 if path == "/api/circles/manual":
                     return self._json(api.manual_circle(body.get("scope", ""), body.get("key"), str(body.get("text", ""))))
+                if path == "/api/lint/manual":
+                    return self._json(api.manual_lint_answer(str(body.get("doc", "")), str(body.get("text", ""))))
                 m = re.fullmatch(r"/api/chapter/(\d+)/manual-draft", path)
                 if m:
                     return self._json(api.manual_draft(int(m.group(1)), str(body.get("text", ""))))

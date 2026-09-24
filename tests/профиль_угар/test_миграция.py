@@ -16,7 +16,8 @@ from konveyer.paths import Workspace
 from tests.профиль import LIBRARY_ENV
 
 _FALLBACK = Path(__file__).resolve().parents[3] / "igorverevkin1992" / "ugar-library"
-ETALON = Path(os.environ.get(LIBRARY_ENV) or os.environ.get("KONVEYER_ЭТАЛОН") or (_FALLBACK if _FALLBACK.is_dir() else ""))
+_ENV = os.environ.get(LIBRARY_ENV) or os.environ.get("KONVEYER_ЭТАЛОН")
+ETALON = Path(_ENV) if _ENV else _FALLBACK  # пустой путь не должен превращаться в текущую папку (Path("") — это cwd)
 pytestmark = pytest.mark.skipif(not ETALON.is_dir(), reason=f"библиотека эталона не подключена ({LIBRARY_ENV})")
 
 
@@ -126,3 +127,26 @@ def test_миграция_линтер_те_же_классы(ugar):
     assert codes["ПРОЗА-3"] == 1 and codes["ТАЙНА-4"] == 1 and codes["МАТР-3"] == 2
     for f in report.findings:
         assert f.file and "Что сделать" in f.message
+
+
+def test_миграция_каркасы_акты_и_материал_эталона(ugar):
+    """FR-DR-6 на эталоне: акты и части тома 1 из документа каркасов, охваты аналитика, материал книги и акта."""
+    from konveyer import circles
+
+    ws, lib, man = ugar
+    parts = exporter.load_parts(ws.exports)
+    assert [(p["part"], p["from_chapter"], p["to_chapter"]) for p in parts] == [(1, 1, 9), (2, 10, 18), (3, 19, 36), (4, 37, 46)]
+    acts = exporter.load_acts(ws.exports)
+    assert [(a.act, a.from_chapter, a.to_chapter) for a in acts] == [(1, 1, 9), (2, 10, 18), (3, 19, 36), (4, 37, 46)]
+    assert acts[2].parts == "III–IV" and "Обретение" in acts[2].steps
+    assert len(circles.targets(ws, "всё")) == 1 + 4 + 46
+    assert circles.frame_for_chapter([], acts, 20)["act"].title == "ТРАУР · КОММЕРСАНТ"
+    title, book = circles.build_material(ws, "книга")
+    assert "МОКРОЕ ДЕЛО" in book and "гл. 46" in book and "Реестр тайн" in book
+    assert "## Акты тома" in book and "Акт 3 «ТРАУР · КОММЕРСАНТ» — гл. 19–36" in book
+    title, act = circles.build_material(ws, "акт", 1)
+    assert "Акт 1" in title and "гл. 9" in act and "гл. 10" not in act and "Шаги каркаса тома" in act
+    title, act3 = circles.build_material(ws, "акт", 3)
+    assert "гл. 19" in act3 and "гл. 36" in act3 and "гл. 37" not in act3
+    title, ch = circles.build_material(ws, "глава", 5)
+    assert "обыск стола" in ch and "М-04" in ch and "М-06" not in ch  # знание фокала, не тайны
