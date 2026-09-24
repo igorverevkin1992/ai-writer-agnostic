@@ -53,7 +53,7 @@ def test_нет_записи_файлов_мимо_guard():
         # создание проекта: библиотеки ещё нет — стартовый комплект и профиль пишутся до её защиты (FR-LC-*)
         "project.py": {"create", "_copy_profile"},
         # онбординг: сырьё/ и онбординг/ лежат вне библиотеки; снимок и его восстановление — откат транзакции (FR-ON-17)
-        "onboarding/importer.py": {"import_path", "save_index"},
+        "onboarding/importer.py": {"import_path", "_import_one", "_unpack_zip", "save_index"},
         "onboarding/propose.py": {"save", "normalized_preview_path", "model_layer"},
         "onboarding/report.py": {"save"},
         "onboarding/apply.py": {"__init__", "restore", "close", "_write_conflict"},
