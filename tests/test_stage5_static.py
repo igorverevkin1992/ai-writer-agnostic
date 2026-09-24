@@ -43,9 +43,11 @@ def _owner_name(func: ast.expr) -> str:
     return owner.id if isinstance(owner, ast.Name) else ""
 
 
-def test_нет_записи_файлов_мимо_guard():
-    """FR-K3: единственная точка записи и удаления — guard.write_text/append_text/remove. Прямые записи,
-    переименования и удаления (os.replace/rename/unlink, shutil.rmtree/move, Path.unlink/rename/rmdir)
+def test_единственная_точка_записи():
+    """FR-SC-1/FR-SC-12: единственная точка записи и удаления — guard.write_text/append_text/replace/remove.
+    Прямые записи, копирования, ссылки, переименования и удаления (os.replace/rename/unlink/link/symlink,
+    shutil.rmtree/move/copyfileobj, Path.unlink/rename/rmdir/symlink_to/hardlink_to/touch), внутренний
+    `guard._write_atomic` и присваивания приватному состоянию guard (`guard._state.…`, `guard._library_dir`)
     и вызовы git через subprocess вне gitops.py допустимы только в перечисленных функциях, и все они
     работают вне библиотеки (init копирует демо-библиотеку до её защиты, компиляция окна — во временной папке)."""
     allowed = {
@@ -62,10 +64,11 @@ def test_нет_записи_файлов_мимо_guard():
         # переезд библиотеки целиком (папка переносится, содержимое документов не меняется; по подтверждению автора)
         "backup.py": {"split_library"},
     }
-    writers = {"write_text", "write_bytes", "copyfile", "copytree", "move", "copy", "copy2", "rmtree"}
+    writers = {"write_text", "write_bytes", "copyfile", "copytree", "move", "copy", "copy2", "rmtree", "copyfileobj"}
+    guard_private = {"write_atomic", "_write_atomic"}  # внутренняя запись guard — снаружи не вызывается
     # у str/set/dict есть свои replace/remove — эти имена считаются файловыми только у os/shutil
-    os_only = {"replace", "remove", "rename", "unlink", "rmdir", "removedirs", "renames"}
-    any_owner = {"unlink", "rmdir", "rename"}  # методов с такими именами у str/dict/set нет — это Path
+    os_only = {"replace", "remove", "rename", "unlink", "rmdir", "removedirs", "renames", "link", "symlink"}
+    any_owner = {"unlink", "rmdir", "rename", "symlink_to", "hardlink_to", "touch"}  # таких методов у str/dict/set нет — это Path
     offenders = []
     for path in sorted(KONVEYER.rglob("*.py")):
         if path.name == "guard.py":
@@ -75,13 +78,24 @@ def test_нет_записи_файлов_мимо_guard():
         tree = ast.parse(src)
         spans = _enclosing_functions(tree)
         for node in ast.walk(tree):
+            if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                for t in targets:
+                    chain = t
+                    while isinstance(chain, ast.Attribute) and not (isinstance(chain.value, ast.Name) and chain.value.id == "guard"):
+                        chain = chain.value
+                    if isinstance(chain, ast.Attribute) and chain.attr.startswith("_"):
+                        offenders.append(f"{rel}:{node.lineno}: присваивание guard.{chain.attr}")
+                continue
             if not isinstance(node, ast.Call):
                 continue
             func = node.func
             name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
             owner = _owner_name(func)
             raw_write = False
-            if name in writers and owner != "guard":
+            if name in guard_private:
+                raw_write = True
+            elif name in writers and owner != "guard":
                 raw_write = True
             elif name in os_only and owner in ("os", "shutil"):
                 raw_write = True
@@ -101,8 +115,8 @@ def test_нет_записи_файлов_мимо_guard():
     assert not offenders, "\n".join(offenders)
 
 
-def test_сессию_записи_в_канон_открывает_только_canonchange():
-    """Аудит 4.12 / п. 25: `guard.canon_write_session()` открывает ровно один модуль — единый конвейер
+def test_нет_новых_открывателей_сессии():
+    """FR-SC-12: `guard.canon_write_session()` открывает ровно один модуль — единый конвейер
     `canonchange.canon_change` (проверки git → запись → экспорт → линт → коммит/«незакоммичено»).
     Канонист, круги истории, панель и `canon-commit` идут через него; новых открывателей быть не должно."""
     openers = []
