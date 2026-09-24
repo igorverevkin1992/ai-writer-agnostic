@@ -1,11 +1,10 @@
 """Упаковка и установка (NFR-3, NFR-12): колесо содержит подпакеты и данные движка, тяжёлые разборщики — в extras,
 lock-файл покрывает extras разработки; ярлыки панели включают UTF-8 (NFR-2)."""
 
+import fnmatch
 import re
 import tomllib
 from pathlib import Path
-
-from setuptools import find_packages
 
 ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
@@ -14,8 +13,8 @@ PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 def test_подпакеты_входят_в_колесо():
     """`konveyer.steps`, `konveyer.onboarding` и любые новые подпакеты попадают в дистрибутив (find, не список)."""
     include = PYPROJECT["tool"]["setuptools"]["packages"]["find"]["include"]
-    found = set(find_packages(where=str(ROOT), include=include))
     on_disk = {p.parent.relative_to(ROOT).as_posix().replace("/", ".") for p in (ROOT / "konveyer").rglob("__init__.py")}
+    found = {pkg for pkg in on_disk if any(fnmatch.fnmatchcase(pkg, pat) for pat in include)}  # так отбирает setuptools
     assert on_disk <= found, sorted(on_disk - found)
     assert {"konveyer.steps", "konveyer.onboarding"} <= found
 
@@ -35,7 +34,7 @@ def test_extras_разборщиков_и_lock():
     """python-docx/openpyxl/pypdf — необязательные extras (NFR-12); `dev` их включает (тесты онбординга),
     requirements.lock пинует их и всё из `dev` и `llm`."""
     extras = PYPROJECT["project"]["optional-dependencies"]
-    names = lambda reqs: {re.split(r"[<>=!~\[ ]", r, 1)[0].lower() for r in reqs}  # noqa: E731
+    names = lambda reqs: {re.split(r"[<>=!~\[ ]", r, maxsplit=1)[0].lower() for r in reqs}  # noqa: E731
     assert names(extras["onboarding"]) == {"python-docx", "openpyxl", "pypdf"}
     assert names(extras["onboarding"]) <= names(extras["dev"])
     lock = {ln.split("==")[0].strip().lower().replace("_", "-") for ln in (ROOT / "requirements.lock").read_text(encoding="utf-8").splitlines()
