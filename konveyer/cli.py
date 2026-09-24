@@ -791,6 +791,24 @@ def cmd_import(source: str = typer.Argument(..., metavar="ПУТЬ", help="Фа�
         _fail(str(e))
 
 
+@app.command("импорт-прозы", rich_help_panel="Онбординг")
+@_friendly
+def cmd_import_prose(
+    files: list[Path] = typer.Argument(..., metavar="ФАЙЛЫ", help="Готовые главы: .md/.txt как есть, .docx/.pdf/.rtf — через извлечение."),
+    volume: int | None = typer.Option(None, "--том", "--volume", help="Том, к которому относятся главы (по умолчанию — текущий)."),
+    start: int | None = typer.Option(None, "--с-главы", "--from-chapter", min=1,
+                                     help="Нумеровать главы по порядку файлов начиная с N (иначе номер берётся из имени файла)."),
+    no_calibrate: bool = typer.Option(False, "--без-калибровки", "--no-calibrate", help="Не предлагать коридоры норм по импортированной прозе."),
+    no_commit: bool = typer.Option(False, "--без-коммита", "--no-commit", help="Записать главы без git-коммита."),
+    yes: bool = _yes(),
+) -> None:
+    """Сценарий В «Серия, частично написанная»: готовая проза → в корпус (документы типа «проза» библиотеки, одной
+    сессией записи в канон), нормы калибруются по ней, из неё предзаполняются словарь имён и заготовка континуити,
+    спорные факты выносятся списком (онбординг/проза_*.md)."""
+    onboarding_steps.import_prose([str(f) for f in files], volume=volume, start_chapter=start, yes=yes,
+                                  confirm=typer.confirm, commit=not no_commit, calibrate=not no_calibrate)
+
+
 @app.command("онбординг", rich_help_panel="Онбординг")
 @_friendly
 def cmd_onboarding(
@@ -852,6 +870,7 @@ SYNONYMS = {
     "dashboard": "дашборд", "run": "такт", "canon-commit": "канон-коммит", "library-split": "библиотека-отделить",
     "backup": "бэкап", "init": "начать", "нормы": "norms", "метрики": "metrics", "учёт": "accounting",
     "импорт": "import", "онбординг": "onboarding", "пере-тест": "retest", "типы": "types", "отбор": "select",
+    "импорт-прозы": "import-prose",
 }
 
 

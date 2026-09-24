@@ -236,3 +236,42 @@ def test_документация_совпадает_с_каталогом(tmp_p
     r = runner.invoke(app, ["типы", "--документация", "--куда", str(tmp_path / "д")])
     assert r.exit_code == 0 and (tmp_path / "д" / "Соглашения_типов.md").exists() and (tmp_path / "д" / "Реестр_метрик.md").exists()
     assert (tmp_path / "д" / "Реестр_метрик.md").read_text(encoding="utf-8") == metrics.documentation()
+
+
+def test_cli_импорт_прозы_сценарий_в(ws, library, monkeypatch):
+    """Сценарий В (§4.2): готовая проза → документы типа «проза» (дословно, через одну сессию записи в канон),
+    корпус пересобран, коридоры норм предложены, словарь имён и континуити предзаполнены черновиками,
+    спорные факты — списком с пометкой «⚠ решение автора»; существующая глава не перезаписывается."""
+    monkeypatch.chdir(ws.root)
+    src = ws.root / "черновики"
+    src.mkdir()
+    text = ("Пронин пришёл к киоску раньше первого поезда. Зоя открыла окно. Виктор Семёнович Кузнецов стоял "
+            "у кассы и молчал. Потом Кузнецов ушёл.\n\nВторой абзац главы с Прониным и Зоей.\n")
+    (src / "Глава 9.md").write_text(text, encoding="utf-8")
+    (src / "Глава 3.md").write_text("Другой текст.\n", encoding="utf-8")
+    old3 = (library / "Проза" / "Том1_Глава03.md").read_text(encoding="utf-8")
+    r = runner.invoke(app, ["импорт-прозы", str(src / "Глава 9.md"), str(src / "Глава 3.md"), "--да", "--без-коммита"])
+    out = _out(r)
+    assert r.exit_code == 0, out
+    assert (library / "Проза" / "Том1_Глава09.md").read_text(encoding="utf-8") == text  # дословно (FR-ON-15)
+    assert (library / "Проза" / "Том1_Глава03.md").read_text(encoding="utf-8") == old3 and "не перезаписан" in out
+    assert (ws.corpus / "Том1_Глава09.txt").exists()  # корпус пересобран экспортом
+    names = (ws.root / "онбординг" / "проза_имена.md").read_text(encoding="utf-8")
+    assert "| Зоя | 9 | да |" in names and "| Пронин | 9 | да |" in names
+    assert "| Виктор Семёнович | 9 | нет | ⚠ решение автора" in names and "Потом Кузнецов" not in names
+    disputed = (ws.root / "онбординг" / "проза_спорное.md").read_text(encoding="utf-8")
+    assert "«Виктор Семёнович»" in disputed and "⚠ решение автора" in disputed
+    cont = (ws.root / "онбординг" / "проза_континуити.md").read_text(encoding="utf-8")
+    assert "| дата | событие | главы | примечание |" in cont and "т.1 гл.9" in cont and "Виктор Семёнович Кузнецов стоял" in cont
+    assert (ws.logs / "калибровка.md").exists() and "Утвердить коридоры" in out
+    # повтор: вносить нечего — ошибка, а не перезапись
+    r = runner.invoke(app, ["импорт-прозы", str(src / "Глава 9.md"), "--да", "--без-коммита"])
+    assert r.exit_code == 1 and "вносить нечего" in _out(r)
+    # нумерация по порядку и отказ автора (код 0, ничего не записано)
+    (src / "текст.md").write_text("Глава без номера.\n", encoding="utf-8")
+    r = runner.invoke(app, ["импорт-прозы", str(src / "текст.md")])
+    assert r.exit_code == 1 and "номер главы не распознан" in _out(r)
+    r = runner.invoke(app, ["импорт-прозы", str(src / "текст.md"), "--с-главы", "11", "--без-калибровки"], input="n\n")
+    assert r.exit_code == 0 and not (library / "Проза" / "Том1_Глава11.md").exists()
+    r = runner.invoke(app, ["импорт-прозы", str(src / "текст.md"), "--с-главы", "11", "--без-калибровки", "-y", "--без-коммита"])
+    assert r.exit_code == 0 and (library / "Проза" / "Том1_Глава11.md").exists(), _out(r)
