@@ -19,6 +19,8 @@ def check(
     ws, cfg, lib = _ctx()
     from ..schemas import Brief
 
+    if not Path(file).exists():
+        raise StepError(f"нет файла {Path(file).name} — укажите существующий файл с текстом для проверки.")
     own = None
     part_range = None
     if chapter is not None:
@@ -133,6 +135,8 @@ def add_golden(
 ) -> Path:
     """Добавить золотой тест из пойманной автором ошибки (FR-R1). Возвращает путь теста."""
     ws, cfg, lib = _ctx()
+    if not Path(fragment_file).exists():
+        raise StepError(f"нет файла фрагмента {Path(fragment_file).name} — укажите существующий файл.")
     test = GoldenTest(
         test_id=test_id,
         fragment=fragment_file.read_text(encoding="utf-8"),

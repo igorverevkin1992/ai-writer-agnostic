@@ -290,12 +290,12 @@ def apply_edits(chapter: int, manual: bool = False) -> int:
         # завершение сорвавшейся автоматической итерации либо ручная правка автора —
         # бюджет итераций FR-E3 (для циклов Писателя) не расходуется
         if not ws.draft_path(chapter, new_k).exists():
-            raise StepError(f"нет файла {ws.draft_path(chapter, new_k)} (ручной режим).")
+            raise StepError(f"нет файла {ws.chapter_rel(chapter)}/черновик_{new_k}.md (ручной режим).")
     elif not edits:
         # правок нет — черновик приёмки переходит дальше без вызова Писателя
         shutil.copyfile(base_path, ws.draft_path(chapter, new_k))
     elif local is None:
-        raise StepError(f"нет базового черновика {base_path} (FR-E3: правки идут от черновика приёмки).")
+        raise StepError(f"нет базового черновика {ws.chapter_rel(chapter)}/черновик_{base}.md (FR-ED-3: правки идут от черновика приёмки).")
     elif not local.needs_model:
         # Р-023: все пары найдены дословно ровно один раз — модель не нужна, бюджет итераций не расходуется
         new_k, local = writer.apply_edits_locally(ws, cfg, chapter, base, edits, new_k=new_k)

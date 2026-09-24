@@ -58,14 +58,27 @@ def _root(
     """КОНВЕЙЕР — производственный такт главы (ТЗ v1.0)."""
 
 
+def _hide_paths(message: str) -> str:
+    """FR-SC-9: абсолютные пути библиотеки и рабочей области в сообщениях об ошибках — словами."""
+    from . import guard
+    from .paths import find_workspace
+
+    roots: list = [(guard._library_dir_raw, "библиотека"), (guard._library_dir, "библиотека")]
+    try:
+        roots.append((find_workspace().root, "рабочая область"))
+    except OSError:
+        pass
+    return steps.hide_paths(message, roots)
+
+
 def _fail(message: str) -> None:
-    typer.secho(f"ОШИБКА: {message}", fg=typer.colors.RED, err=True)
+    typer.secho(f"ОШИБКА: {_hide_paths(message)}", fg=typer.colors.RED, err=True)
     raise typer.Exit(code=1)
 
 
 def _manual(e: steps.ManualMode) -> None:
-    typer.secho(f"⚠ {e.reason}", fg=typer.colors.YELLOW)
-    typer.echo(f"Ручной режим (NFR-3): {e.hint}")
+    typer.secho(f"⚠ {_hide_paths(e.reason)}", fg=typer.colors.YELLOW)
+    typer.echo(f"Ручной режим (NFR-3): {_hide_paths(e.hint)}")
     raise typer.Exit(code=2)
 
 

@@ -78,8 +78,10 @@ def test_ошибка_без_абсолютного_пути(panel, ws):
     ws.chapter_dir(1).mkdir(parents=True, exist_ok=True)
     code, data = _req(port, "GET", "/api/chapter/1/draft/99")
     assert code == 404, data
-    assert str(ws.root) not in data["error"]
-    assert "рабочая область" in data["error"]
+    assert str(ws.root) not in data["error"] and "Errno" not in data["error"]
+    assert data["error"] == "нет черновика 99 у главы 1"
+    # чужое исключение с полным путём — санитизируется словами
+    assert server._sanitize(f"нет {ws.root / 'главы' / 'x'}", panel[1]) == "нет рабочая область/главы/x"
     # документ канона, которого нет — тоже 404 без путей
     code, data = _req(port, "GET", "/api/canon/doc?path=none.md")
     assert code == 404 and str(ws.root) not in data["error"]

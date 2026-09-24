@@ -224,6 +224,49 @@ def test_правки_класс_сохраняется(ws, library):
     assert '"class": "вкус"' in raw
 
 
+def test_предпросмотр_правок_считает_вхождения_как_применение(ws, library):
+    """FR-RV-3/FR-ED-1: «найдено N раз» — с той же терпимостью к пробелам, что при применении; N ≠ 1 — Писателю."""
+    _to_review(ws, library, 1)
+    ws.draft_path(1, 1).write_text(DRAFT + "Бумага пахла чужим табаком.\n", encoding="utf-8")
+    (ws.chapter_dir(1) / "правки.md").write_text(
+        "БЫЛО: Каширин  нашёл\nСТАЛО: Лемм нашёл\n\nБЫЛО: Бумага пахла чужим табаком\nСТАЛО: Бумага пахла морем\n\n"
+        "БЫЛО: нет такого\nСТАЛО: x\n", encoding="utf-8")
+    r = runner.invoke(app, ["edits", "1"])
+    assert r.exit_code == 0, r.output
+    assert "найдено 1 раз — применится кодом" in r.output
+    assert "найдено 2 раза(-) — неоднозначно, уйдёт Писателю" in r.output
+    assert "НЕ найдено в черновике — уйдёт Писателю" in r.output and "Правки [2, 3]" in r.output
+
+
+def test_ошибки_cli_по_русски_и_без_абсолютных_путей(ws, library):
+    """FR-CL-3/FR-SC-9: нет черновиков — «ОШИБКА: что случилось. что сделать», а не errno; пути — относительные."""
+    r = runner.invoke(app, ["diff", "1"])
+    assert r.exit_code == 1 and "ещё нет двух черновиков" in r.output and "Errno" not in r.output
+    r = runner.invoke(app, ["edits", "1"])
+    assert r.exit_code == 1 and "Нет файла правок главы/001/правки.md" in r.output and str(ws.root) not in r.output
+    r = runner.invoke(app, ["check", str(ws.root / "нет_такого.md")])
+    assert r.exit_code == 1 and "нет файла нет_такого.md" in r.output and "Errno" not in r.output
+    # абсолютный путь из чужого исключения тоже прячется
+    from konveyer import cli
+
+    assert cli._hide_paths(f"сбой {library / 'x.md'} и {ws.root / 'y'}") == "сбой библиотека/x.md и рабочая область/y"
+
+
+def test_панель_черновик_и_дифф_без_errno(ws, library):
+    from konveyer import server
+
+    api = server.PanelAPI(ws, Config(), library)
+    try:
+        with pytest.raises(FileNotFoundError, match="нет черновика 9 у главы 1"):
+            api.draft(1, 9)
+        with pytest.raises(FileNotFoundError, match="нет черновика"):
+            api.diff(1, -1, 0)
+        with pytest.raises(FileNotFoundError, match="ещё нет черновика"):
+            api.prompt(1, "verify2")
+    finally:
+        api.stop_lint_worker()
+
+
 # ------------------------------------------------------------------ 7.9 Канонист
 
 

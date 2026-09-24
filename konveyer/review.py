@@ -241,7 +241,7 @@ def parse_edits_md(ws: Workspace, chapter: int) -> list[Edit]:
     """FR-E2: правки.md (пары «было → стало» и/или свободные указания) → правки.jsonl."""
     path = ws.chapter_dir(chapter) / "правки.md"
     if not path.exists():
-        raise FileNotFoundError(f"Нет файла правок {path}. Сначала `konveyer review {chapter}`.")
+        raise FileNotFoundError(f"Нет файла правок {ws.chapter_rel(chapter)}/правки.md. Сначала `konveyer review {chapter}`.")
     edits = parse_edits_text(path.read_text(encoding="utf-8"), chapter, path)
     save_edits(ws, chapter, edits)
     return edits

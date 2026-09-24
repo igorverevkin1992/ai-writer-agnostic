@@ -90,7 +90,7 @@ def _rollback(library: Path, ws: Workspace, error: BaseException) -> None:
     except RuntimeError as e:
         raise RuntimeError(
             f"изменение канона сорвалось ({error}), и откат библиотеки не удался: {e}. "
-            f"Восстановите вручную: git -C «{library}» checkout -- . && git clean -fd -- ."
+            "Восстановите вручную в папке библиотеки: git checkout -- . && git clean -fd -- ."
         ) from error
     try:
         exporter.run_export(library, ws.exports, ws.logs, ws.volume, ws.root)

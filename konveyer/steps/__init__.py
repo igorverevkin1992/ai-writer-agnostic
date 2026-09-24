@@ -18,12 +18,13 @@ import contextlib
 from typing import Iterator
 
 from .. import cancel, timing
-from ..errors import ManualMode, Rejected, StepError, StepExit, describe
+from ..errors import ManualMode, Rejected, StepError, StepExit, describe, hide_paths
 from ..fsm import StatusFileError, TransitionError
 from ..mdparse import MarkupError
 
 __all__ = [
-    "EXPECTED_ERRORS", "ManualMode", "Rejected", "StepError", "StepExit", "describe", "job_context", "outcome",
+    "EXPECTED_ERRORS", "ManualMode", "Rejected", "StepError", "StepExit", "describe", "hide_paths", "job_context",
+    "outcome",
 ]
 
 # ожидаемые ошибки шага (нет файла, структура MD, недопустимый переход FSM, битый состояние.yaml, …):
