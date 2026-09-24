@@ -70,6 +70,7 @@ class Config(BaseModel):
     backup_remotes_min: int = 2
     backup_dir: str | None = None
     backup_keep: int = 10
+    push_after_canonize: bool = False    # FR-BK-1: после приёмки главы отправлять библиотеку во все remotes (сеть)
     volume: int = 1                      # текущий том (совместимость; манифест `проект.yaml` сильнее)
     e2_max_flags: int = 12               # FR-V2-4: лимит числа флагов за прогон
     e2_quote_words: int = 20             # FR-V2-4: длина цитаты флага
@@ -107,6 +108,8 @@ class Config(BaseModel):
             d.setdefault("window_soft_limit_chars", d.pop("лимит_окна"))
         if "пауза_автора_мин" in d:
             d.setdefault("author_pause_min", d.pop("пауза_автора_мин"))
+        if "push_после_приёмки" in d:
+            d.setdefault("push_after_canonize", d.pop("push_после_приёмки") in (True, "да", "вкл", "yes"))
         return d
 
     @field_validator("volume")

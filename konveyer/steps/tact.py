@@ -599,6 +599,17 @@ def _after_canonize(ws: Workspace, cfg: Config, lib: Path, chapter: int, commit:
             echo(f"Архив рабочей области: {path}" + (f" (удалено старых: {len(removed)})" if removed else ""))
         except OSError as e:
             secho(f"⚠ Архив рабочей области не создан: {e}", fg=colors.YELLOW)
+    if cfg.push_after_canonize:
+        # второе место хранения актуально сразу после приёмки (FR-BK-1); сбой сети — предупреждение
+        remotes = gitops.remotes(lib)
+        if not remotes:
+            secho(f"⚠ push_после_приёмки включён, но у библиотеки нет remotes — `{cmd('backup', '--добавить-remote …')}`.", fg=colors.YELLOW)
+        for remote in remotes:
+            try:
+                gitops.push(lib, remote)
+                echo(f"Отправлено в {remote}.")
+            except (RuntimeError, FileNotFoundError) as e:
+                secho(f"⚠ Не отправлено в {remote}: {e} — повторите `{cmd('backup', '--push')}`.", fg=colors.YELLOW)
 
 
 def run(chapter: int) -> None:

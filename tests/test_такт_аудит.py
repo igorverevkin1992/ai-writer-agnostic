@@ -619,3 +619,41 @@ def test_init_создаёт_gitignore_с_env(tmp_path_factory, monkeypatch):
     r = runner.invoke(app, ["начать"])  # повторно — без дублей
     assert (root / ".gitignore").read_text(encoding="utf-8").count(".env") == 1
     assert "konveyer начать --демо" in r.output and "konveyer init" not in r.output
+
+
+def test_json_пустой_массив_в_прозе_не_побеждает_флаги():
+    from konveyer import llmjson
+
+    raw = 'Если нарушений нет — верну []. Но есть: [{"flag_id": "F-001", "type": "бриф", "quote": "х", "rule": "р"}]'
+    assert llmjson.extract_json(raw, list)[0]["flag_id"] == "F-001"
+    assert llmjson.extract_json("Нарушений нет: []", list) == []
+    assert llmjson.extract_json("```json\n[]\n```\nА вот на самом деле: [{\"flag_id\": \"F-2\"}]", list) == [{"flag_id": "F-2"}]
+    with pytest.raises(ValueError):
+        llmjson.extract_json("ничего", list)
+
+
+def test_push_после_приёмки_и_доктор_видит_отставание_копии(ws, library, tmp_path_factory):
+    """FR-BK-1: с `push_после_приёмки: да` приёмка отправляет библиотеку во все remotes; доктор
+    сообщает, на сколько коммитов отстаёт копия, и «неизвестно», пока в неё не отправляли."""
+    from konveyer import gitops
+
+    _init_repo(library)
+    bare = gitops.init_bare(tmp_path_factory.mktemp("копия") / "канон.git")
+    gitops.add_remote(library, "диск", str(bare))
+    r = runner.invoke(app, ["доктор"])
+    assert "копия диск: состояние неизвестно" in r.output
+    gitops.push(library, "диск")
+    assert "копия диск: актуальна" in runner.invoke(app, ["доктор"]).output
+    (ws.root / "конфиг.yaml").write_text("library_dir: Библиотека\npush_после_приёмки: да\n", encoding="utf-8")
+    _at_review(ws)
+    (ws.chapter_dir(1) / "правки.md").write_text("", encoding="utf-8")
+    for args in (["правки-внести", "1"], ["дифф-контроль", "1"], ["принять", "1", "--yes"], ["канон", "1"]):
+        assert runner.invoke(app, args).exit_code == 0, args
+    r = runner.invoke(app, ["канон", "1", "--apply", "--yes"])
+    assert r.exit_code == 0 and "Отправлено в диск" in r.output, r.output
+    assert gitops.remote_lag(library, "диск") == 0
+    assert "копия диск: актуальна" in runner.invoke(app, ["доктор"]).output
+    _git(library, "commit", "-q", "--allow-empty", "-m", "правка канона руками")
+    assert gitops.remote_lag(library, "диск") == 1
+    r = runner.invoke(app, ["доктор"])
+    assert "копия диск: отстаёт на 1 коммит" in r.output and "бэкап --push" in r.output

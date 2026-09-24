@@ -11,7 +11,7 @@ from pathlib import Path
 from .. import backup as backup_mod, canonchange, compiler, exporter, gitops, guard, regression as regression_mod
 from ..config import Config
 from ..errors import StepError
-from ..fsm import STATES, ChapterState, TransitionError
+from ..fsm import STATES, ChapterState, TransitionError, canonical_state
 from ..mdparse import MarkupError
 from ..paths import Workspace
 from .common import Confirm, _ctx, _ensure_dir, _is_git_url, colors, confirm_or_reject, echo, secho
@@ -120,7 +120,8 @@ def rollback(chapter: int, to: str | None = None, yes: bool = False, confirm: Co
             raise StepError(f"глава {chapter} ещё не начата — откатывать некуда.")
         to = STATES[idx - 1]
         echo(f"Откат на шаг назад: «{st.state}» → «{to}».")
-    # Проверка цели ДО любых побочных эффектов (4.2): опечатка в --to не должна стоить git revert'а
+    # Проверка цели ДО любых побочных эффектов: опечатка в --to не должна стоить git revert'а
+    to = canonical_state(to)
     if to not in STATES:
         raise StepError(f"неизвестное состояние «{to}»; допустимые: {', '.join(STATES)}.")
     if STATES.index(to) >= STATES.index(st.state):

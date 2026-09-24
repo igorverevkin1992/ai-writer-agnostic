@@ -142,9 +142,16 @@ def doctor() -> None:
                  "git config user.email/user.name или commit_author в конфиг.yaml (Д-8)")
             item(gitops.in_progress(lib) is None, "нет незавершённых операций git в библиотеке",
                  f"завершите или отмените: git {gitops.in_progress(lib) or ''} --abort (в документах могут быть маркеры конфликта)")
-            n_remotes = len(gitops.remotes(lib))
-            item(n_remotes >= cfg.backup_remotes_min, f"удалённых копий: {n_remotes} (нужно ≥{cfg.backup_remotes_min})",
-                 "`konveyer бэкап --добавить-remote <имя> <url|папка>` — папка на внешнем диске подходит (NFR-6, §1.3)")
+            remotes = gitops.remotes(lib)
+            item(len(remotes) >= cfg.backup_remotes_min, f"удалённых копий: {len(remotes)} (нужно ≥{cfg.backup_remotes_min})",
+                 "`konveyer бэкап --добавить-remote <имя> <url|папка>` — папка на внешнем диске подходит (FR-BK-1, §1.3)")
+            for remote in remotes:
+                lag = gitops.remote_lag(lib, remote)
+                if lag is None:
+                    item(None, f"копия {remote}: состояние неизвестно (в неё ещё не отправляли)", "`konveyer бэкап --push`")
+                else:
+                    item(lag == 0, f"копия {remote}: " + ("актуальна" if lag == 0 else f"отстаёт на {lag} коммит(ов)"),
+                         "`konveyer бэкап --push` (или push_после_приёмки: да в конфиг.yaml)")
     arch_dir = backup_mod.archive_dir(ws, cfg)
     arch_age = backup_mod.archive_age_days(arch_dir)
     if arch_age is None:

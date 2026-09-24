@@ -138,8 +138,22 @@ def has_identity(repo: Path) -> bool:
 
 
 def push(repo: Path, remote: str) -> None:
-    """Отправка текущей ветки в удалённое место (NFR-6, `konveyer бэкап --push`)."""
+    """Отправка текущей ветки в удалённое место (FR-BK-1, `konveyer бэкап --push`)."""
     _git(repo, "push", remote, "HEAD")
+
+
+def remote_lag(repo: Path, remote: str) -> int | None:
+    """На сколько коммитов копия в `remote` отстаёт от HEAD (по последнему известному состоянию ветки
+    `remote/<ветка>`; сеть не нужна). None — состояние копии неизвестно (в неё ещё не отправляли или ветка
+    у копии другая)."""
+    branch = current_branch(repo)
+    if not branch or branch == "HEAD":
+        return None
+    ref = f"refs/remotes/{remote}/{branch}"
+    if _git(repo, "rev-parse", "--verify", "-q", ref, check=False) == "":
+        return None
+    out = _git(repo, "rev-list", "--count", f"{ref}..HEAD", check=False)
+    return int(out) if out.isdigit() else None
 
 
 def remotes(repo: Path) -> list[str]:
