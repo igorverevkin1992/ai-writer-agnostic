@@ -55,13 +55,30 @@ def check(
 
 def circles(
     scope: str = "всё", chapter: int | None = None, redo: bool = False, to_canon: bool = False,
-    yes: bool = False, confirm: Confirm | None = None,
+    yes: bool = False, confirm: Confirm | None = None, accept: str | None = None, answer_file: Path | None = None,
 ) -> dict | None:
-    """Круги истории (8 шагов) — каркас драматургии (Р-020): книга → четыре акта → главы; черновики в драматургия/.
-    `to_canon` — внести черновики в документ 2.1 библиотеки и закоммитить (Д-8). Возвращает результат прогона."""
+    """Каркасы драматургии по методике проекта: книга → акты → главы; черновики в драматургия/.
+    `to_canon` — внести черновики в документ каркасов тома и закоммитить (Д-8). `accept` + `answer_file` — принять
+    ответ модели из файла как каркас `книга` / `акт_N` / `глава_NN` (ручной режим, как в панели — FR-PN-7).
+    Возвращает результат прогона."""
+    import re
+
     from .. import circles as circles_mod
 
     ws, cfg, lib = _ctx()
+    if accept is not None:
+        m = re.fullmatch(r"(книга|акт|глава)_?(\d+)?", accept)
+        if not m or (m.group(1) == "книга") == bool(m.group(2)):
+            raise StepError("--принять: имя промпта «книга», «акт_N» или «глава_NN» (как файл в драматургия/промпты/).")
+        if answer_file is None or not answer_file.is_file():
+            raise StepError("--принять требует файл с ответом модели (JSON): `konveyer каркас --принять акт_1 ответ.json`.")
+        try:
+            path = circles_mod.accept_manual(ws, m.group(1), int(m.group(2)) if m.group(2) else None,
+                                             answer_file.read_text(encoding="utf-8"))
+        except ValueError as e:
+            raise StepError(f"ответ модели не разобран: {e}") from e
+        secho(f"Каркас принят: {path.relative_to(ws.root).as_posix()}", fg=colors.GREEN)
+        return {"готово": [path], "ручной_режим": "", "промпты": []}
     exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
     if to_canon:
         n = len(circles_mod.drafts(ws))

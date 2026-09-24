@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import http.client
 import json
+import re
 import shutil
 import subprocess
 import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 import pytest
 
@@ -418,3 +420,70 @@ def test_state_несёт_провайдеров_ролей(panel):
     assert state["providers"]["писатель"] and set(state["providers"]) >= {"писатель", "верификатор2", "линтер"}
     _, lint = _get(f"{panel}/api/lint")
     assert lint["llm_docs"] > 0 and lint["llm_provider"]
+
+
+# ------------------------------------------------------------- D1-37 / C4-21: тесты фронтенда и сверка констант
+
+
+PANEL_DIR = Path(__file__).resolve().parent.parent / "panel"
+
+
+def test_подписи_задач_панели_покрывают_команды_сервера():
+    """JOB_LABEL в panel/src/nextstep.ts — русская подпись для каждой команды server.COMMANDS, без лишних;
+    реестры для канонизации в панели — с сервера (константы REGISTRIES нет)."""
+    src = (PANEL_DIR / "src" / "nextstep.ts").read_text(encoding="utf-8")
+    block = src.split("JOB_LABEL")[1].split("};")[0]
+    keys = set(re.findall(r'^\s*"?([\w-]+)"?:\s*"', block, re.MULTILINE))
+    assert keys == server.COMMANDS, keys ^ server.COMMANDS
+    chapter_view = (PANEL_DIR / "src" / "ChapterView.tsx").read_text(encoding="utf-8")
+    assert "REGISTRIES" not in chapter_view and "d.registries" in chapter_view
+
+
+def test_панель_js_тесты():
+    """Юнит-тесты чистых модулей панели (nextstep, edits, highlight, diff, api) — `npm test` в panel/ (Node 22)."""
+    node = shutil.which("node")
+    if node is None or not (PANEL_DIR / "node_modules" / "esbuild").exists():
+        pytest.skip("нет Node или зависимостей панели (npm ci в panel/)")
+    r = subprocess.run([node, "tests/run.mjs"], cwd=PANEL_DIR, capture_output=True, text=True, encoding="utf-8", timeout=120)
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    assert "# fail 0" in r.stdout and "# pass" in r.stdout
+
+
+# ------------------------------------------------------------- B3-30: действия панели — командами CLI
+
+
+def test_cli_решение_все_линтер_исправить_каркас_принять(ws, library, monkeypatch, tmp_path):
+    from typer.testing import CliRunner
+
+    from konveyer.cli import app
+
+    monkeypatch.chdir(ws.root)
+    runner = CliRunner()
+    _chapter_on_review(ws)
+    review.save_resolutions(ws, 2, [Resolution(flag_id="F-009"), Resolution(flag_id="F-011")])
+    r = runner.invoke(app, ["решение", "2", "отклонить", "--все"])
+    assert r.exit_code == 1 and "по одному флагу" in r.output
+    r = runner.invoke(app, ["решение", "2", "канонизировать", "--все"])
+    assert r.exit_code == 1 and "реестр" in r.output
+    r = runner.invoke(app, ["решение", "2", "вычеркнуть", "--все"])
+    assert r.exit_code == 0 and "Решено самоволок: 2" in r.output, r.output
+    assert all(x.decision == "вычеркнуть" for x in review.load_resolutions(ws, 2))
+    # линтер --исправить: механическое исправление применяется по подтверждению тем же путём, что кнопка панели
+    doc = library / "23_Поглавник_Том1.md"
+    text = doc.read_text(encoding="utf-8")
+    r = runner.invoke(app, ["линтер", "--исправить", "-y"])
+    assert r.exit_code == 0 and ("Механических исправлений" in r.output or "Исправлений применено" in r.output), r.output
+    r = runner.invoke(app, ["линтер", "--исправить", "--llm"])
+    assert r.exit_code == 1 and "не сочетается" in r.output
+    assert doc.read_text(encoding="utf-8") == text or "Исправлений применено" in r.output
+    # каркас --принять: ответ модели из файла, как «Принять круг» в панели
+    answer = tmp_path / "ответ.json"
+    answer.write_text(json.dumps({"title": "Круг книги", "steps": [{"n": i, "name": f"шаг {i}", "text": "…"} for i in range(1, 9)]},
+                                 ensure_ascii=False), encoding="utf-8")
+    r = runner.invoke(app, ["каркас", "--принять", "книга", "--ответ", str(answer)])
+    assert r.exit_code == 0 and "Каркас принят" in r.output, r.output
+    assert list((ws.root / "драматургия").glob("*.json"))
+    r = runner.invoke(app, ["каркас", "--принять", "книга_1", "--ответ", str(answer)])
+    assert r.exit_code == 1 and "книга" in r.output
+    r = runner.invoke(app, ["каркас", "--принять", "акт_1"])
+    assert r.exit_code == 1 and "файл" in r.output

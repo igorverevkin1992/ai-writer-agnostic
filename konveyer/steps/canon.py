@@ -17,13 +17,44 @@ from ..paths import Workspace
 from .common import Confirm, _ctx, _ensure_dir, _is_git_url, colors, confirm_or_reject, echo, secho
 
 
-def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False, max_calls: int = 40) -> int:
+def lint(llm: bool = False, files: list[str] | None = None, watch: bool = False, max_calls: int = 40,
+         fix: bool = False, yes: bool = False, confirm: Confirm | None = None) -> int:
     """Проверка канона на противоречия и ошибки логики повествования (машинный слой; `llm` — модель).
     Возвращает число ошибок канона последнего прогона (код возврата 1 при `--strict` ставит CLI);
-    `watch` — следить за библиотекой и перепроверять при каждом изменении (до Ctrl+C)."""
-    from .. import lint as lint_mod
+    `watch` — следить за библиотекой и перепроверять при каждом изменении (до Ctrl+C);
+    `fix` — применить механические исправления отчёта (по подтверждению, Д-8) — то же, что кнопка
+    «Применить исправление» в панели (FR-PN-7), затем перепроверить."""
+    from .. import canonchange, lint as lint_mod
 
     ws, cfg, lib = _ctx()
+    if fix:
+        if watch or llm:
+            raise StepError("--исправить не сочетается с --watch и --llm.")
+        report = lint_mod.load_report(ws.logs)
+        if report is None:
+            try:
+                report = lint_mod.run_lint(lib, ws.exports, ws.logs, volume=ws.volume, root=ws.root, use_cache=False)
+            except Exception as e:  # noqa: BLE001
+                report = lint_mod.error_report(e, ws.logs)
+        wanted = set(files or [])
+        fixes = [f.fix for f in report.findings if f.fix and (not wanted or f.fix.file in wanted)]
+        if not fixes:
+            echo("Механических исправлений в отчёте линтера нет.")
+            return report.errors
+        for f in fixes:
+            echo(f"  {f.file}:{f.line}: «{f.old}» → «{f.new}»" + (f" ({f.note})" if f.note else ""))
+        confirm_or_reject(yes, confirm, f"Применить {len(fixes)} исправлени(й) к библиотеке канона? (Д-8) (y)")
+
+        def apply_all() -> None:
+            for f in fixes:
+                lint_mod.apply_fix(lib, f)
+
+        try:
+            canonchange.canon_change(ws, cfg, lib, apply_all, f"исправления линтера: {len(fixes)}", commit=False,
+                                     author_confirmed=True)
+        except (RuntimeError, ValueError) as e:
+            raise StepError(str(e)) from e
+        secho(f"Исправлений применено: {len(fixes)}; закоммитьте канон (`konveyer канон-коммит`).", fg=colors.GREEN)
     if not isinstance(files, list):
         files = []
     if not isinstance(max_calls, int):

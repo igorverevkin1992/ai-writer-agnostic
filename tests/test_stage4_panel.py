@@ -1,6 +1,6 @@
-"""Этап 4 аудита — панель и сервер: 4.2–4.4, 4.6 (серверная часть), 5.3–5.6.
-
-Каждый тест ловит именно ту ошибку, что описана в АУДИТ.md.
+"""Панель и сервер (ТЗ §8.2 FR-PN-1…7, §8.3 FR-AP-2, §10 FR-SC-7): защита Host/Origin, GET без побочных
+эффектов, одна блокировка на операции, валидация и лимиты тела, хвост лога в /api/state, дифф-контроль как
+авторская правка, подсветка пересекающихся цитат.
 """
 
 import http.client
@@ -12,7 +12,7 @@ import time
 import pytest
 
 from konveyer import htmlreview, review, server, verifier2
-from konveyer.config import Config
+from konveyer.config import Config, library_dir, load_config
 from konveyer.fsm import ChapterState
 from konveyer.schemas import Flag, Resolution
 
@@ -25,8 +25,10 @@ def _no_api_keys(monkeypatch):
 
 @pytest.fixture
 def panel(ws, library, monkeypatch):
+    """Живой сервер с конфигом рабочей области (`load_config`/`library_dir`), как у `konveyer panel`."""
     monkeypatch.chdir(ws.root)
-    srv = server.serve(ws, Config(), library, port=0)
+    cfg = load_config(ws)
+    srv = server.serve(ws, cfg, library_dir(ws, cfg), port=0)
     port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield port

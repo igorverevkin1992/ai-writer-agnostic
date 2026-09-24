@@ -252,11 +252,15 @@ def cmd_resolve(
     decision: str | None = typer.Argument(None, help="«вычеркнуть», «канонизировать» или «отклонить»."),
     registry: str | None = typer.Option(None, "--реестр", "--registry", help="Целевой реестр (имя типа: эпистемика, закладки, континуити…)."),
     reason: str = typer.Option("", "--причина", "--reason", help="Причина отклонения флага (обязательна для «отклонить»)."),
+    all_: bool = typer.Option(False, "--все", "--all", help="Одно решение для всех самоволок без решения: `решение N вычеркнуть --все`."),
 ) -> None:
     """Решения по флагам без ручной правки JSON (FR-RV-2): самоволку — вычеркнуть или канонизировать, любой флаг — отклонить с причиной.
 
-    Без аргументов — список; с флагом и решением — записывает решение.
+    Без аргументов — список; с флагом и решением — записывает решение; `--все` — решение для всех самоволок без решения.
     """
+    if all_:
+        edits_mod.resolve_all(chapter, decision or flag_id or "", registry=registry)
+        return
     edits_mod.resolve(chapter, flag_id, decision, registry=registry, reason=reason)
 
 
@@ -400,12 +404,15 @@ def cmd_circles(
     chapter: int | None = typer.Option(None, "--глава", "--chapter", help="Только одна глава (для охвата «главы»)."),
     redo: bool = typer.Option(False, "--заново", "--redo", help="Пересчитать уже существующие круги."),
     to_canon: bool = typer.Option(
-        False, "--в-канон", "--to-canon", help="Внести черновики кругов в документ 2.1 библиотеки и закоммитить (Д-8)."
+        False, "--в-канон", "--to-canon", help="Внести черновики каркасов в документ каркасов тома и закоммитить (Д-8)."
     ),
     yes: bool = typer.Option(False, "--yes", "-y"),
+    accept: str | None = typer.Option(None, "--принять", "--accept", help="Принять ответ модели из файла как каркас: книга | акт_N | глава_NN."),
+    answer_file: Path | None = typer.Option(None, "--ответ", "--answer", help="Файл с ответом модели (JSON) для --принять."),
 ) -> None:
-    """Круги истории (8 шагов) — каркас драматургии (Р-020): книга → четыре акта → главы; черновики в драматургия/."""
-    quality.circles(scope, chapter=chapter, redo=redo, to_canon=to_canon, yes=yes, confirm=typer.confirm)
+    """Каркасы драматургии по методике проекта: книга → акты → главы; черновики в драматургия/."""
+    quality.circles(scope, chapter=chapter, redo=redo, to_canon=to_canon, yes=yes, confirm=typer.confirm,
+                    accept=accept, answer_file=answer_file)
 
 
 @app.command("lint", rich_help_panel="Канон и бэкап")
@@ -416,9 +423,11 @@ def cmd_lint(
     watch: bool = typer.Option(False, "--watch", "--следить", help="Следить за библиотекой и перепроверять при каждом изменении."),
     max_calls: int = typer.Option(40, "--лимит", "--max-calls", help="Предел оплачиваемых вызовов модели за прогон (--llm)."),
     strict: bool = typer.Option(True, "--strict/--no-strict", help="Код возврата 1 при ошибках канона (для скриптов); панель вызывает --no-strict."),
+    fix: bool = typer.Option(False, "--исправить", "--fix", help="Применить механические исправления отчёта (с подтверждением; --файл — только эти документы)."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Без вопросов (для --исправить)."),
 ) -> None:
     """Проверка канона на противоречия и ошибки логики повествования (машинный слой; --llm — модель)."""
-    errors = canon.lint(llm=llm, files=files, watch=watch, max_calls=max_calls)
+    errors = canon.lint(llm=llm, files=files, watch=watch, max_calls=max_calls, fix=fix, yes=yes, confirm=typer.confirm)
     if not watch and errors and strict:
         raise typer.Exit(code=1)
 
