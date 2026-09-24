@@ -134,7 +134,7 @@ def _from_docx(path: Path) -> Extraction:
         import docx  # type: ignore
         from docx.oxml.ns import qn  # type: ignore
     except ImportError:
-        return Extraction(None, Quality(), "нужна библиотека python-docx: pip install 'konveyer[docx]'", ".docx")
+        return Extraction(None, Quality(), "нужна библиотека python-docx: pip install 'konveyer[docx]' (или 'konveyer[onboarding]')", ".docx")
     q = Quality()
     d = docx.Document(str(path))
     out: list[str] = []
@@ -232,7 +232,7 @@ def _from_pdf(path: Path) -> Extraction:
     except (KeyboardInterrupt, SystemExit):
         raise
     except BaseException:  # noqa: BLE001 — pypdf или его криптобиблиотека могут быть сломаны (в т.ч. паника расширения)
-        return Extraction(None, Quality(), "библиотека pypdf недоступна или сломана (pip install pypdf); либо конвертируйте PDF в .docx/.md", ".pdf")
+        return Extraction(None, Quality(), "библиотека pypdf недоступна или сломана (pip install 'konveyer[pdf]'); либо конвертируйте PDF в .docx/.md", ".pdf")
     q = Quality()
     try:
         reader = PdfReader(str(path))
@@ -276,7 +276,7 @@ def _from_xlsx(path: Path) -> Extraction:
     try:
         import openpyxl  # type: ignore
     except ImportError:
-        return Extraction(None, Quality(), "нужна библиотека openpyxl (pip install openpyxl) или сохраните лист как .csv", ".xlsx")
+        return Extraction(None, Quality(), "нужна библиотека openpyxl (pip install 'konveyer[xlsx]') или сохраните лист как .csv", ".xlsx")
     q = Quality()
     wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
     out = [f"# {path.stem}\n"]

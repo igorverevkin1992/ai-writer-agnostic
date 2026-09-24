@@ -1,43 +1,12 @@
 """Миграция эталона как приёмочный тест универсальности (14.2 ТЗ): библиотека УГАРа проходит онбординг как обычный
 проект (FR-MG-1), окна глав сверяются с эталоном по составу фактов и фильтру знания (FR-MG-2), метрики Э1 на принятой
-главе совпадают с эталонными (FR-MG-3), линтер даёт те же классы находок (FR-MG-4)."""
+главе совпадают с эталонными (FR-MG-3), линтер даёт те же классы находок (FR-MG-4). Фикстуры — в conftest.py."""
 
 from __future__ import annotations
 
-import os
-import shutil
 from collections import Counter
-from pathlib import Path
 
-import pytest
-
-from konveyer import catalog, compiler, exporter, guard, lint, manifest as manifest_mod, project, verifier1
-from konveyer.paths import Workspace
-from tests.профиль import LIBRARY_ENV
-
-_FALLBACK = Path(__file__).resolve().parents[3] / "igorverevkin1992" / "ugar-library"
-ETALON = Path(os.environ.get(LIBRARY_ENV) or os.environ.get("KONVEYER_ЭТАЛОН") or (_FALLBACK if _FALLBACK.is_dir() else ""))
-pytestmark = pytest.mark.skipif(not ETALON.is_dir(), reason=f"библиотека эталона не подключена ({LIBRARY_ENV})")
-
-
-@pytest.fixture(scope="module")
-def ugar(tmp_path_factory):
-    """Проект из профиля «угар» с копией библиотеки эталона: карта — выведена классификацией (онбординг без исключений)."""
-    root = tmp_path_factory.mktemp("угар")
-    created = project.create(project.ProjectSpec(root=root / "проект", name="УГАР", profile="угар", starter=False, git=False, volumes=11))
-    shutil.copytree(ETALON, created.library, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".git"))
-    types = catalog.load_types(created.root)
-    man = manifest_mod.infer(created.library, types)
-    man.проект.имя, man.проект.томов_план = "УГАР", 11
-    for m in ("фокализация", "информрежим", "эпистемика", "закладки", "континуити", "дозы_прошлого", "документы_вставки",
-              "хроника_эпохи", "драматургия", "арки"):
-        man.модули[m] = "вкл"
-    man.методики.том = man.методики.акт = man.методики.глава = "круг_хармона"
-    manifest_mod.save(created.root, man)
-    ws = Workspace(created.root)
-    guard.set_library_dir(created.library)
-    exporter.run_export(created.library, ws.exports, ws.logs, 1, created.root)
-    return ws, created.library, man
+from konveyer import compiler, exporter, lint, verifier1
 
 
 def test_миграция_онбординг_без_исключений(ugar):
@@ -92,7 +61,7 @@ def test_миграция_окно_главы_5_эквивалентно_эта�
         assert f"<!-- СЕКЦИЯ: {section} -->" in w, section
     assert "Фокал: Степан" in w and "### Степан" in w and "### Лемм" in w and "### Штерн" not in w
     assert "М-04" in w and "сын Лемма" not in w and "Подлог 1913" not in w  # фильтр знания
-    etalon = (ETALON / "Тест_Писателя" / "ПРОМПТ_Глава5.md").read_text(encoding="utf-8")
+    etalon = (lib / "Тест_Писателя" / "ПРОМПТ_Глава5.md").read_text(encoding="utf-8")
     for word in ("Степан", "Лемм", "рапорт"):
         assert word in w and word in etalon
     # ни одного маркера тайны, недоступной фокалу, в окне
