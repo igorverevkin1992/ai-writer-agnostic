@@ -21,7 +21,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Callable
 
-from . import adapters, catalog, exporter, guard, llmjson, manifest as manifest_mod, names, textutils, verifier1
+from . import adapters, catalog, declparse, exporter, guard, llmjson, manifest as manifest_mod, names, textutils, verifier1
 from .config import Config
 from .mdparse import MarkupError
 from .paths import Workspace
@@ -926,6 +926,41 @@ def check_prose_names(ctx: LintContext) -> list[LintFinding]:
     return out
 
 
+# ------------------------------------------------------------------ дубли строк реестров (КАНОН-2)
+
+
+@check("КАНОН-2")
+def check_registry_duplicates(ctx: LintContext) -> list[LintFinding]:
+    """Полностью одинаковые строки в таблице реестра (типы с колонкой-ключом): дубль от повторной приёмки
+    или ручной вставки. Одинаковый ключ у разных строк допустим (эпистемика: факт × субъект)."""
+    out: list[LintFinding] = []
+    for name, spec in sorted(ctx.types.items()):
+        fmt = next((f for ext in spec.extractions for f in ext.get("форматы", []) if f.get("вид") == "таблица"), None)
+        if fmt is None:
+            continue
+        columns = fmt.get("колонки") or {}
+        if not any(isinstance(sp, dict) and sp.get("роль") == "ключ" for sp in columns.values()):
+            continue
+        for path in ctx.docs(name):
+            entry = ctx.manifest.entry_for(ctx.rel(path))
+            overrides = entry.колонки if entry else {}
+            for table in declparse._tables(path, fmt):
+                if declparse.match_columns(table.headers, columns, overrides) is None:
+                    continue
+                seen: dict[tuple[str, ...], int] = {}
+                for i, row in enumerate(table.rows, start=1):
+                    sig = tuple((row.get(h) or "").strip() for h in table.headers)
+                    if not any(sig):
+                        continue
+                    line = table.line + 1 + i
+                    if sig in seen:
+                        out.append(_f("КАНОН-2", "ошибка", ctx.rel(path), line,
+                                      f"строка реестра «{sig[0]}» повторяет строку {seen[sig]} целиком", "удалите дубль"))
+                    else:
+                        seen[sig] = line
+    return out
+
+
 # ------------------------------------------------------------------ вопросы автору (КАНОН-1)
 
 _INDEX_RANGE_RE = re.compile(r"Р-(\d+)\s*…\s*Р-(\d+)")
@@ -1107,7 +1142,8 @@ def apply_fix(library: Path, fix: LintFix) -> Path:
 
 
 def _template(root: Path | None = None) -> str:
-    for cand in ([root / "промпты" / "линтер.md", root / "шаблоны" / "линтер_канона_система.md"] if root else []):
+    for cand in ([root / "промпты" / "линтер_канона_система.md", root / "промпты" / "линтер.md",
+                  root / "шаблоны" / "линтер_канона_система.md"] if root else []):
         if cand.exists():
             return cand.read_text(encoding="utf-8")
     return resources.files("konveyer").joinpath("шаблоны/линтер_канона_система.md").read_text(encoding="utf-8")

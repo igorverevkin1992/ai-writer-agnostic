@@ -275,6 +275,173 @@ def test_канонист_идемпотентность_и_коммит_шаб�
     assert (library / "31_Матрица_знаний.md").read_text(encoding="utf-8").count("табаком") == 1
 
 
+def _sign_batch(ws, chapter, rows, rules=()):
+    """Подписанный пакет с заданными строками (без модели): пакет_канона.json + пакет_канона.md."""
+    proposals = {"facts": [{"registry": r, "row": row} for r, row in rows], "samovolki": [], "edit_classes": [],
+                 "taste_rules": [{"target": t, "rule": rule} for t, rule in rules]}
+    (ws.chapter_dir(chapter) / "пакет_канона.json").write_text(json.dumps(proposals, ensure_ascii=False), encoding="utf-8")
+    (ws.chapter_dir(chapter) / "пакет_канона.md").write_text(
+        "# Пакет\n\n## Новые факты\n" + "\n".join(f"- РЕЕСТР {r} → {row}" for r, row in rows) + "\n"
+        + "\n".join(f"- ПРАВИЛО {t} → {rule}" for t, rule in rules) + "\n", encoding="utf-8")
+
+
+def test_канонист_отметка_закладки_по_колонке_статус(ws, library):
+    """FR-CN-1: «положена ✓» ставится в колонку «статус», найденную по заголовку, и только закладке с точно
+    совпадающим ключом (P-1 ≠ P-10); без колонки «статус» чужие колонки не трогаются — заметка во «Входящие».
+    Стиль переносов строк документа (CRLF) сохраняется, а нетронутые файлы не переписываются."""
+    reg = library / "32_Реестр_закладок.md"
+    reg.write_bytes("# 32. Реестр закладок\r\n\r\n| plant_id | что | положена | выстрел | статус |\r\n|---|---|---|---|---|\r\n"
+                    "| P-1 | записка | т1 гл1 | т1 гл6 | 🔧 |\r\n| P-10 | десятая | т1 гл3 | т1 гл6 | 🔧 |\r\n".encode("utf-8"))
+    exporter.run_export(library, ws.exports, ws.logs)
+    _accepted(ws, library, decision="вычеркнуть")
+    _sign_batch(ws, 1, [])
+    world_before = (library / "14_Мир.md").stat().st_mtime_ns
+    result = canonist.apply_batch(ws, Config(), library, 1, 2)
+    assert result.commit
+    raw = reg.read_bytes().decode("utf-8")
+    assert "\r\n" in raw and "\n\n" not in raw.replace("\r\n", "")  # CRLF сохранён
+    lines = raw.split("\r\n")
+    assert "| P-1 | записка | т1 гл1 | т1 гл6 | положена ✓ |" in lines
+    assert "| P-10 | десятая | т1 гл3 | т1 гл6 | 🔧 |" in lines  # подстрока «P-1» не задела P-10
+    assert (library / "14_Мир.md").stat().st_mtime_ns == world_before
+    changed = subprocess.run(["git", "-C", str(library), "show", "--stat", "--format=", "HEAD"], capture_output=True,
+                             text=True, encoding="utf-8").stdout
+    assert "32_Реестр_закладок.md | 2 +-" in changed  # ровно одна строка заменена, файл не переписан целиком
+
+
+def test_канонист_без_колонки_статус_не_портит_реестр(ws, library):
+    reg = library / "32_Реестр_закладок.md"
+    reg.write_text("# 32\n\n| plant_id | что | положена | выстрел |\n|---|---|---|---|\n"
+                   "| P-1 | записка | т1 гл1 | т1 гл6 |\n", encoding="utf-8")
+    exporter.run_export(library, ws.exports, ws.logs)
+    _accepted(ws, library, decision="вычеркнуть")
+    _sign_batch(ws, 1, [])
+    canonist.apply_batch(ws, Config(), library, 1, 2)
+    assert "| P-1 | записка | т1 гл1 | т1 гл6 |" in reg.read_text(encoding="utf-8")  # «выстрел» цел
+    inbox = (library / canonist.INBOX_DOC).read_text(encoding="utf-8")
+    assert "ЗАКЛАДКА P-1" in inbox and "отметьте в реестре закладок" in inbox
+
+
+def test_канонист_ключ_присваивается_и_факт_виден_выгрузке(ws, library):
+    """FR-CN-1/FR-CN-3: пустой ключ («—») получает следующий свободный id реестра — строка не пропадает из
+    выгрузки; занятый чужой строкой ключ заменяется свежим с заметкой; тот же факт под тем же ключом для другого
+    субъекта остаётся под своим ключом; полностью одинаковая строка не дублируется."""
+    _accepted(ws, library)  # самоволка F-001 → эпистемика; без модели ключ подставляется в пакет
+    path = canonist.build_batch(ws, Config(), 1, 2)
+    text = path.read_text(encoding="utf-8")
+    assert "| M-010 | Бумага пахла чужим табаком |" in text and "| — |" not in text
+    _sign_batch(ws, 1, [
+        ("эпистемика", "| — | новый факт без ключа | Зоя | 1 |"),
+        ("эпистемика", "| M-001 | выдуманный ключ занят | Зоя | 1 |"),
+        ("эпистемика", "| M-003 | сторож жив и прячется | Лида | 1 |"),
+        ("эпистемика", "| M-001 | записка оставлена на кухонном столе | Каширин | 1 | гл. 1 | — |"),
+    ])
+    canonist.apply_batch(ws, Config(), library, 1, 2)
+    matrix = (library / "31_Матрица_знаний.md").read_text(encoding="utf-8")
+    assert "| M-010 | новый факт без ключа | Зоя | 1 | — | — |" in matrix
+    assert "| M-011 | выдуманный ключ занят | Зоя | 1 | — | — |" in matrix
+    assert "| M-003 | сторож жив и прячется | Лида | 1 | — | — |" in matrix
+    assert matrix.count("| M-001 |") == 1
+    ids = {f.fact_id for f in exporter.load_matrix(ws.exports)}
+    assert {"M-010", "M-011"} <= ids and "—" not in ids
+    inbox = (library / canonist.INBOX_DOC).read_text(encoding="utf-8")
+    assert "ключ M-001" in inbox and "записано под M-011" in inbox
+    msg = subprocess.run(["git", "-C", str(library), "log", "-1", "--format=%s"], capture_output=True, text=True, encoding="utf-8").stdout
+    assert "записей в реестры 4" in msg and "Входящие" not in msg
+
+
+def test_канонист_лишние_ячейки_во_входящие(ws, library):
+    """FR-CN-1: строка с ячейками сверх колонок реестра не усекается молча — уходит во «Входящие»."""
+    _accepted(ws, library, decision="вычеркнуть")
+    _sign_batch(ws, 1, [("эпистемика", "| — | факт | Зоя | 1 | гл. 1 | — | седьмая ячейка |")])
+    canonist.apply_batch(ws, Config(), library, 1, 2)
+    assert "седьмая ячейка" not in (library / "31_Матрица_знаний.md").read_text(encoding="utf-8")
+    inbox = (library / canonist.INBOX_DOC).read_text(encoding="utf-8")
+    assert "седьмая ячейка" in inbox and "ячеек больше" in inbox
+    msg = subprocess.run(["git", "-C", str(library), "log", "-1", "--format=%s"], capture_output=True, text=True, encoding="utf-8").stdout
+    assert "записей в реестры 0, во «Входящие» 1" in msg
+
+
+def test_канонист_отклонённые_логируются_по_номеру_предложения(ws, library):
+    """FR-CN-4: в журнал отклонённых попадают только удалённые автором предложения — правленная формулировка,
+    хвостовой пробел и перенос строки в ответе модели отклонением не считаются; правила вкуса тоже логируются."""
+    _accepted(ws, library, decision="вычеркнуть")
+    proposals = {"facts": [{"registry": "эпистемика", "row": "| — | факт с\nпереносом | Зоя | 1 | ", "reason": "текст"},
+                           {"registry": "эпистемика", "row": "| — | факт лишний | Зоя | 1 |", "reason": "лишний"}],
+                 "samovolki": [], "edit_classes": [],
+                 "taste_rules": [{"target": "правила вкуса", "rule": "не писать «вдруг»", "evidence": "3 правки"},
+                                 {"target": "правила вкуса", "rule": "правило лишнее", "evidence": "1 правка"}]}
+    (ws.chapter_dir(1) / "пакет_канона.json").write_text(json.dumps(proposals, ensure_ascii=False), encoding="utf-8")
+    (ws.chapter_dir(1) / "пакет_канона.md").write_text("\n".join([
+        "# Пакет", "", "## Новые факты",
+        "- РЕЕСТР эпистемика → | — | факт с переносом (поправлено автором) | Зоя | 1 |  <!-- №1 · текст -->",
+        "", "## Кандидаты в правила вкуса",
+        "- ПРАВИЛО правила вкуса → не писать «вдруг»  <!-- №3 · 3 правки -->", ""]), encoding="utf-8")
+    canonist.apply_batch(ws, Config(), library, 1, 2)
+    assert "факт с переносом (поправлено автором)" in (library / "31_Матрица_знаний.md").read_text(encoding="utf-8")
+    log = [json.loads(ln) for ln in (ws.logs / canonist.REJECTED_LOG).read_text(encoding="utf-8").splitlines()]
+    assert [(e["kind"], e.get("row") or e.get("rule")) for e in log] == [("факт", "| — | факт лишний | Зоя | 1 |"), ("правило", "правило лишнее")]
+
+
+def test_канонист_ручной_режим_принимает_ответ_модели(ws, library):
+    """FR-RL-3/FR-CL-4: без ключей промпт сохранён; JSON-ответ модели из ответ_канониста.json (CLI `--manual`)
+    или вставкой в панели собирает тот же пакет, что и автоматический путь."""
+    from konveyer import server
+
+    _accepted(ws, library)
+    r = runner.invoke(app, ["canonize", "1"])
+    assert r.exit_code == 0, r.output
+    assert (ws.chapter_dir(1) / canonist.PROMPT_FILE).exists()
+    assert "ручной режим" in (ws.chapter_dir(1) / "пакет_канона.md").read_text(encoding="utf-8")
+    r = runner.invoke(app, ["canonize", "1", "--manual"])
+    assert r.exit_code == 1 and "ответ_канониста.json" in r.output  # файла ответа ещё нет — ошибка с подсказкой
+    answer = {"facts": [{"registry": "эпистемика", "row": "| — | у Каширина в кармане записка | Каширин | 1 |", "reason": "текст"}],
+              "samovolki": [{"flag_id": "F-001", "registry": "эпистемика", "row": "| — | Бумага пахла чужим табаком | Каширин | 1 |"}],
+              "edit_classes": [], "taste_rules": [{"target": "правила вкуса", "rule": "меньше запахов", "evidence": "1"}]}
+    (ws.chapter_dir(1) / canonist.ANSWER_FILE).write_text("Ответ:\n```json\n" + json.dumps(answer, ensure_ascii=False) + "\n```\n", encoding="utf-8")
+    r = runner.invoke(app, ["canonize", "1", "--manual"])
+    assert r.exit_code == 0, r.output
+    batch = (ws.chapter_dir(1) / "пакет_канона.md").read_text(encoding="utf-8")
+    assert "у Каширина в кармане записка" in batch and "меньше запахов" in batch and "ручной режим" not in batch
+    # та же вставка через панель: состояние проверяется, пакет пересобирается
+    api = server.PanelAPI(ws, Config(), library)
+    try:
+        (ws.chapter_dir(1) / "пакет_канона.md").unlink()
+        out = api.manual_canonist(1, json.dumps(answer, ensure_ascii=False))
+        assert out["ok"] and "у Каширина в кармане записка" in (ws.chapter_dir(1) / "пакет_канона.md").read_text(encoding="utf-8")
+        with pytest.raises(ValueError, match="пустой"):
+            api.manual_canonist(1, "  ")
+    finally:
+        api.stop_lint_worker()
+    commit = tact.canonize(1, apply=True, yes=True)
+    assert commit and "кармане записка" in (library / "31_Матрица_знаний.md").read_text(encoding="utf-8")
+
+
+def test_канонист_показывает_линтер_после_приёмки(ws, library):
+    """FR-CN-2: линтер после записи пакета не молчит — противоречие, внесённое приёмкой, автор видит в выводе."""
+    _accepted(ws, library, decision="вычеркнуть")
+    _sign_batch(ws, 1, [("эпистемика", "| — | факт из будущего | Каширин | 40 |")])  # гл. 40 в томе нет → МАТР-1
+    r = runner.invoke(app, ["canonize", "1", "--apply", "-y"])
+    assert r.exit_code == 0, r.output
+    assert "зафиксирована" in r.output and "Линтер после приёмки" in r.output and "МАТР-1" in r.output
+
+
+@pytest.mark.parametrize("name", ["канонист_система.md", "канонист.md"])
+def test_шаблон_канониста_переопределяется_проектом(ws, library, name):
+    """FR-RL-2: переопределение — по имени движкового файла в `промпты/` (старое имя — синоним)."""
+    (ws.root / "промпты").mkdir(exist_ok=True)
+    (ws.root / "промпты" / name).write_text("СВОЙ КАНОНИСТ «{{ series }}»", encoding="utf-8")
+    assert canonist._system(ws).startswith("СВОЙ КАНОНИСТ «Гаражи»")
+
+
+def test_шаблон_линтера_переопределяется_по_имени_движка(ws):
+    from konveyer import lint
+
+    (ws.root / "промпты").mkdir(exist_ok=True)
+    (ws.root / "промпты" / "линтер_канона_система.md").write_text("СВОЙ ЛИНТЕР", encoding="utf-8")
+    assert lint._template(ws.root) == "СВОЙ ЛИНТЕР"
+
+
 def test_канонист_сбой_коммита_откатывает_и_не_блокирует_повтор(ws, library, monkeypatch):
     """FR-SC-2/FR-CN-3: если `git commit` приёмки сорвался, библиотека чиста, глава остаётся «принято»,
     а повторное применение пакета проходит и создаёт ровно один коммит."""

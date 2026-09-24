@@ -94,7 +94,7 @@ def test_полный_такт_с_коммитом(ws, library):
     assert batch.exists()
     assert "F-001" in batch.read_text(encoding="utf-8")
     head_before = gitops.head(library)
-    commit = canonist.apply_batch(ws, cfg, library, chapter, 2)
+    commit = canonist.apply_batch(ws, cfg, library, chapter, 2).commit
     st.transition("зафиксировано", "canonize --apply")
 
     # атомарный коммит с шаблонным сообщением (FR-K2)

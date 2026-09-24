@@ -692,8 +692,23 @@ class PanelAPI:
             _captured(lambda: _job(tact.verify2, n, manual=True), "флаги не приняты")
         return {"ok": True, "flags": len(flags)}
 
+    def manual_canonist(self, n: int, text: str) -> dict:
+        """Ручной режим Канониста (FR-RL-3): вставленный JSON-ответ модели → ответ_канониста.json + пакет на подпись
+        (`canonize --manual`); применение пакета — по-прежнему отдельное подтверждение автора."""
+        if not text.strip():
+            raise ValueError("пустой ответ Канониста")
+        from . import canonist as canonist_mod, guard
+
+        with self.jobs.exclusive():
+            st = ChapterState(self.ws, n)
+            if st.state != "принято":  # проверка ДО записи файла
+                raise ValueError(f"из состояния «{st.state}» ответ Канониста не принимается (нужно «принято»)")
+            guard.write_text(self.ws.chapter_dir(n) / canonist_mod.ANSWER_FILE, text)
+            output = _captured(lambda: _job(tact.canonize, n, apply=False, yes=True, manual=True), "пакет не собран")
+        return {"ok": True, "output": output}
+
     def accept(self, n: int) -> dict:
-        """Приёмка: подтверждение автор дал кнопкой + диалогом в панели (Д-8)."""
+        """Приёмка: подтверждение автор дал кнопкой + диалогом в панели (FR-RV-4)."""
         with self.jobs.exclusive():
             output = _captured(lambda: _job(tact.accept, n, yes=True), "приёмка отклонена")
         return {"ok": True, "output": output}
@@ -960,7 +975,8 @@ class PanelAPI:
 PANEL_ACTIONS = {
     "state", "chapter", "draft", "diff", "window", "prompt", "find", "circles", "lint", "canon", "log", "job",
     "project", "onboarding", "journals", "regression", "resolve", "resolve-all", "edits", "canon-batch", "canon-doc",
-    "lint-fix", "circles-manual", "manual-draft", "manual-flags", "accept", "rollback", "onboarding-decision", "job-cancel",
+    "lint-fix", "circles-manual", "manual-draft", "manual-flags", "manual-canonist", "accept", "rollback", "onboarding-decision",
+    "job-cancel",
 }
 
 
@@ -1204,6 +1220,9 @@ def make_handler(api: PanelAPI):
                 m = re.fullmatch(r"/api/chapter/(\d+)/manual-flags", path)
                 if m:
                     return self._json(api.manual_flags(int(m.group(1)), str(body.get("text", ""))))
+                m = re.fullmatch(r"/api/chapter/(\d+)/manual-canonist", path)
+                if m:
+                    return self._json(api.manual_canonist(int(m.group(1)), str(body.get("text", ""))))
                 m = re.fullmatch(r"/api/chapter/(\d+)/accept", path)
                 if m:
                     return self._json(api.accept(int(m.group(1))))

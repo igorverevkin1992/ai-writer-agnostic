@@ -226,9 +226,11 @@ def cmd_canonize(
     apply: bool = typer.Option(False, "--apply", help="Применить подписанный пакет (правки MD + export + git-коммит)."),
     yes: bool = typer.Option(False, "--yes", "-y"),
     redo: bool = typer.Option(False, "--заново", "--redo", help="Пересобрать пакет, даже если автор его уже правил (правки пропадут)."),
+    manual: bool = typer.Option(False, "--manual", "--ручной", help="Ручной режим: собрать пакет из ответа модели в главы/N/ответ_канониста.json (FR-RL-3)."),
+    answer: Path | None = typer.Option(None, "--ответ", "--answer", help="Файл с JSON-ответом Канониста (ручной режим)."),
 ) -> None:
-    """Канонист: пакет записей в канон (FR-K1); применение — только после подписи (FR-K2)."""
-    tact.canonize(chapter, apply=apply, yes=yes, redo=redo, confirm=typer.confirm)
+    """Канонист: пакет записей в канон (FR-CN-1); применение — только после подписи (FR-CN-2)."""
+    tact.canonize(chapter, apply=apply, yes=yes, redo=redo, confirm=typer.confirm, manual=manual, answer=answer)
 
 
 # ------------------------------------------------------------- сервисные

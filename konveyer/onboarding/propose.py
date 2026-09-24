@@ -269,8 +269,10 @@ def model_layer(ws: Workspace, cfg, files: list[Path], types: dict[str, catalog.
     cache_dir.mkdir(parents=True, exist_ok=True)
     man = manifest_mod.load(ws.root)
     series = man.проект.имя if man else "серия"
-    tpl_path = ws.root / "промпты" / "архивариус.md"
-    template = tpl_path.read_text(encoding="utf-8") if tpl_path.exists() else \
+    # переопределение проекта — по имени движкового файла (FR-RL-2); старое имя `архивариус.md` — синоним
+    tpl_path = next((c for c in (ws.root / "промпты" / "архивариус_система.md", ws.root / "промпты" / "архивариус.md")
+                     if c.exists()), None)
+    template = tpl_path.read_text(encoding="utf-8") if tpl_path else \
         resources.files("konveyer").joinpath("шаблоны/архивариус_система.md").read_text(encoding="utf-8")
     system = Environment().from_string(template).render(series=series, types=[
         {"name": t.name, "purpose": t.purpose} for t in sorted(types.values(), key=lambda t: t.name) if t.extractions])
