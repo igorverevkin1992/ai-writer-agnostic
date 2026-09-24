@@ -66,6 +66,8 @@ def circles(
     result = circles_mod.run(ws, cfg, scope, chapter, only_missing=not redo, library=lib)
     for path in result["готово"]:
         secho(f"  ✓ {path}", fg=colors.GREEN)
+    for line in result.get("не_разобрано", []):
+        secho(f"  ✗ ответ модели не разобран: {line}", fg=colors.RED)
     if result["ручной_режим"]:
         secho(f"⚠ {result['ручной_режим']}", fg=colors.YELLOW)
         echo(f"Промпты для ручного прогона ({len(result['промпты'])}): драматургия/промпты/ — "

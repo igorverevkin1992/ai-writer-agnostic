@@ -153,13 +153,11 @@ def run_e2_test(ws: Workspace, cfg: Config, test: GoldenTest) -> tuple[list[str]
             "",
             "## ТЕКСТ",
             "",
-            verifier2.FENCE_OPEN,
-            test.fragment,
-            verifier2.FENCE_CLOSE,
+            verifier2.fenced(test.fragment),
         ]
     )
     raw = adapters.call_role(cfg, "верификатор2", system, user, ws.logs, role="верификатор-2 (регрессия)")
-    flags = verifier2.parse_flags(raw)
+    flags = verifier2.parse_flags(raw, cfg.e2_quote_words, cfg.e2_max_flags)
     raised = {f.type for f in flags} | {"самоволка" for f in flags if f.kind == "samovolka"}
     expected = set(test.expected_flags)
     return sorted(raised & expected), sorted(expected - raised), sorted(raised - expected)

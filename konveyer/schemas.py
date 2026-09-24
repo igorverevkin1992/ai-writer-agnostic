@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import re
+
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -82,10 +84,17 @@ class Decision(BaseModel):
 
 
 class Checklist(BaseModel):
-    """checklists.json — чек-лист верификации (текст документа целиком, для Э2)."""
+    """checklists.json — секция чек-листа верификации проекта (для Э2). Пометка «модуль: имя» в заголовке секции
+    привязывает её к модулю: в промпт она идёт, только когда модуль включён; без пометки — базовая."""
 
     file: str = ""
+    title: str = ""
     text: str = ""
+
+    @property
+    def module(self) -> str | None:
+        m = re.search(r"модул[ья]\s*:\s*([\w-]+)", self.title, re.IGNORECASE)
+        return m.group(1).lower() if m else None
 
 
 class ChronologyEvent(BaseModel):

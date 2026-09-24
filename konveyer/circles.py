@@ -394,6 +394,7 @@ def run(ws: Workspace, cfg: Config, scope: str, chapter: int | None = None, only
     """Генерация каркасов сверху вниз (том → акты → главы). Возвращает {готово, промпты, ручной_режим}."""
     done: list[str] = []
     prompts: list[str] = []
+    unparsed: list[str] = []
     manual_reason = None
     todo = [(sc, key) for sc, key in targets(ws, scope, chapter)
             if not (only_missing and (_dir(ws) / f"{_file_stem(sc, key)}.json").exists())]
@@ -412,13 +413,22 @@ def run(ws: Workspace, cfg: Config, scope: str, chapter: int | None = None, only
             cancel.check(f"каркасы: перед «{title}»")
         try:
             raw = adapters.call_role(cfg, "аналитик", system, user, ws.logs, role="аналитик драматургии")
-            circle = llmjson.extract_json(raw, dict)
-            circle.setdefault("title", title)
-            done.append(str(save_circle(ws, sc, key, circle)))
         except adapters.ManualModeNeeded as e:
             manual_reason = e.reason
             prompts.append(str(prompt_path))
-    return {"готово": done, "промпты": prompts, "ручной_режим": manual_reason}
+            continue
+        try:
+            circle = llmjson.extract_json(raw, dict)
+        except ValueError as e:
+            # FR-AD-3: оплаченный, но неразбираемый ответ сохраняется целиком; промпт — к ручному разбору, цикл идёт дальше
+            raw_path = _dir(ws) / "ответы" / f"{stem}_сырой.md"
+            guard.write_text(raw_path, raw)
+            unparsed.append(f"{title}: {e} — ответ сохранён в {raw_path}")
+            prompts.append(str(prompt_path))
+            continue
+        circle.setdefault("title", title)
+        done.append(str(save_circle(ws, sc, key, circle)))
+    return {"готово": done, "промпты": prompts, "ручной_режим": manual_reason, "не_разобрано": unparsed}
 
 
 def accept_manual(ws: Workspace, scope: str, key: int | None, raw: str) -> Path:
