@@ -503,3 +503,15 @@ def test_предпросмотр_внесения_каркасов_в_кано�
     code, body = _get(f"{panel}/api/circles/preview")
     assert code == 200 and body["changed"] and body["doc"].endswith(".md") and any(line.startswith("+") for line in body["lines"])
     assert not any(str(ws.root) in line for line in body["lines"])
+
+
+def test_cli_статус_главы_вне_плана(ws, monkeypatch):
+    """B3-18 (CLI): `статус 99` — ошибка «нет в плане», а не карточка «не-начато» с подсказкой собрать окно."""
+    from typer.testing import CliRunner
+
+    from konveyer.cli import app
+
+    monkeypatch.chdir(ws.root)
+    r = CliRunner().invoke(app, ["статус", "99"])
+    assert r.exit_code == 1 and "нет в плане" in r.output, r.output
+    assert CliRunner().invoke(app, ["статус", "1"]).exit_code == 0

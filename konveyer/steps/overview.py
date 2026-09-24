@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .. import adapters, backup as backup_mod, dashboard as dashboard_mod, gitops, regression as regression_mod
+from .. import adapters, backup as backup_mod, dashboard as dashboard_mod, exporter, gitops, regression as regression_mod
 from .. import review as review_mod, timing, verifier2
+from ..errors import StepError
 from ..fsm import ChapterState, all_states
 from ..paths import Workspace
 from .common import NEXT_STEP, _chapter_flags_summary, _ctx, _print_verdict, colors, echo, secho
@@ -19,6 +20,13 @@ def status(chapter: int | None = None, volume: int | None = None) -> list:
     if volume is not None and volume != ws.volume:
         ws = ws.for_volume(volume)
     if chapter is not None:
+        if not ws.chapter_dir(chapter).exists():
+            try:
+                plan = {b.chapter for b in exporter.load_briefs(ws.exports)}
+            except Exception:  # noqa: BLE001 — нет выгрузок: план неизвестен, карточка «не-начато» допустима (П-5)
+                plan = None
+            if plan is not None and chapter not in plan:
+                raise StepError(f"главы {chapter} нет в плане тома {ws.volume} — проверьте номер или поглавник.")
         return [_status_detail(ws, chapter)]
     states = all_states(ws)
     if not states:
