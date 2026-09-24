@@ -30,7 +30,11 @@ def test_линтер_чистый_канон_молчит(ws, library):
     # каждая проверка объявлена модулем или типом ровно теми кодами, что реализованы (FR-LT-1)
     impl = {c for codes, _ in lint.CHECKS for c in codes}
     declared = catalog.all_lint_codes(catalog.load_modules(None)) - {"РАЗМ-1", "ЛИНТ-0", "МОДЕЛЬ"}
-    assert declared <= impl and impl <= declared | {"АКТ-1", "ЧАСТЬ-1"}, (declared - impl, impl - declared)
+    assert declared <= impl and impl <= declared, (declared - impl, impl - declared)
+    # каждый объявленный код действительно выдаётся телом проверки, а не только декоратором (нет «мёртвых» кодов)
+    src = (Path(lint.__file__)).read_text(encoding="utf-8")
+    dead = sorted(c for c in impl if f'_f("{c}"' not in src and f'code="{c}"' not in src)
+    assert not dead, dead
 
 
 # по одному внедрённому противоречию на класс проверок (FR-LT-2): ожидаемый код ловится, лишнего нет

@@ -234,7 +234,7 @@ def check_chronology(ctx: LintContext) -> list[LintFinding]:
     return out
 
 
-@check("АКТ-1", "ЧАСТЬ-1")
+@check("АКТ-1")
 def check_ranges(ctx: LintContext) -> list[LintFinding]:
     out: list[LintFinding] = []
     if not ctx.briefs or not ctx.acts:
