@@ -1,6 +1,6 @@
-"""Регрессионный корпус золотых тестов (FR-R1…FR-R4).
+"""Регрессионный корпус золотых тестов (FR-RG-1…FR-RG-4).
 
-Пропуск любого ожидаемого флага блокирует смену конфигурации (FR-R3):
+Пропуск любого ожидаемого флага блокирует смену конфигурации (FR-RG-3):
 предупреждение при `accept`, запрет при фиксации `retest`.
 """
 
@@ -31,7 +31,7 @@ def load_tests(ws: Workspace) -> list[GoldenTest]:
 
 
 def safe_file_stem(test_id: str) -> str:
-    """test_id → безопасное имя файла: без разделителей путей и служебных символов (2.11)."""
+    """test_id → безопасное имя файла: без разделителей путей и служебных символов."""
     stem = re.sub(r"[^\w.\-]+", "_", test_id.strip(), flags=re.UNICODE).strip("._")
     if not stem:
         raise ValueError(f"test_id «{test_id}» не годится для имени файла — используйте буквы, цифры, «_» и «-».")
@@ -71,7 +71,7 @@ def add_test(ws: Workspace, test: GoldenTest) -> Path:
 
 
 def environment_hashes(ws: Workspace) -> dict[str, str]:
-    """Отпечаток конфигурации, к которой относится отчёт регрессии (2.8):
+    """Отпечаток конфигурации, к которой относится отчёт регрессии (FR-RG-4):
     конфиг.yaml, папка шаблонов, выгрузки/norms.json. Изменилось — отчёт устарел."""
 
     def sha(data: bytes) -> str:
@@ -164,7 +164,7 @@ def run_e2_test(ws: Workspace, cfg: Config, test: GoldenTest) -> tuple[list[str]
 
 
 def run_regression(ws: Workspace, llm: bool = False, cfg: Config | None = None) -> dict:
-    """FR-R2: Э1 всегда; Э2 — по флагу --llm (при недоступном API — пропуск с пометкой)."""
+    """FR-RG-2: Э1 всегда; Э2 — по флагу --llm (при недоступном API — пропуск с пометкой)."""
     tests = load_tests(ws)
     results = []
     for test in tests:
@@ -184,8 +184,8 @@ def run_regression(ws: Workspace, llm: bool = False, cfg: Config | None = None) 
         )
     missed_total = [r["test_id"] for r in results if r.get("пропущено")]
     executed = [r["test_id"] for r in results if not r.get("skipped")]
-    # «зелёная» — только когда что-то действительно проверено (2.8): пустой корпус или
-    # сплошь пропущенные Э2-тесты доказательством ничего не являются (FR-R3)
+    # «зелёная» — только когда что-то действительно проверено: пустой корпус или
+    # сплошь пропущенные Э2-тесты доказательством ничего не являются (FR-RG-3)
     green = bool(executed) and not missed_total
     if not tests:
         reason = "корпус пуст"
@@ -226,7 +226,7 @@ def is_stale(ws: Workspace) -> bool:
 
 def is_green(ws: Workspace) -> bool | None:
     """None — регрессия ещё не запускалась ИЛИ отчёт устарел (изменились конфиг.yaml,
-    шаблоны или нормы — FR-R3 требует нового прогона)."""
+    шаблоны или нормы — FR-RG-3 требует нового прогона)."""
     report = load_report(ws)
     if report is None or report.get("хэши") != environment_hashes(ws):
         return None

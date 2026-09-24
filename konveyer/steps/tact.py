@@ -199,7 +199,7 @@ def verify2(chapter: int, manual: bool = False, taste: bool = False, again: bool
     if taste:
         try:
             advice = verifier2.run_taste(ws, cfg, chapter, st.draft)
-            echo(f"Вкус (совещательно, 02 §6.1): замечаний {len(advice)} → {ws.chapter_rel(chapter)}/вкус.json")
+            echo(f"Вкус (совещательно, FR-V2-7): замечаний {len(advice)} → {ws.chapter_rel(chapter)}/вкус.json")
         except adapters.ManualModeNeeded:
             echo(f"Промпт вкуса сохранён: {ws.chapter_rel(chapter)}/промпт_вкуса.md (ответ — в вкус.json).")
         except ValueError as e:
@@ -208,7 +208,7 @@ def verify2(chapter: int, manual: bool = False, taste: bool = False, again: bool
 
 
 def _verify2_again(ws: Workspace, cfg: Config, st: ChapterState, manual: bool) -> list:
-    """Повторный Э2 после правок (аудит 2, п. 24а): по текущему черновику, без смены состояния."""
+    """Повторный Э2 после правок (FR-V2-7): по текущему черновику, без смены состояния."""
     chapter = st.chapter
     st.require("правки", "дифф-контроль")
     if manual:
@@ -326,7 +326,7 @@ def apply_edits(chapter: int, manual: bool = False) -> int:
 
 
 def diff_check(chapter: int, author_fix: bool = False, fragments: list[str] | None = None):
-    """Дифф-контроль до/после правок (FR-V1.10, FR-E3). Возвращает отчёт дифф-контроля."""
+    """Дифф-контроль до/после правок (FR-V1-6, FR-ED-3). Возвращает отчёт дифф-контроля."""
     ws, cfg, lib = _ctx()
     if not isinstance(fragments, list):
         fragments = []

@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -474,18 +475,31 @@ def canon_status(ws: Workspace) -> dict[str, str]:
     return status
 
 
-def commit_to_canon(ws: Workspace, cfg: Config, library: Path) -> tuple[Path, str]:
-    """Вносит черновики каркасов в документ каркасов библиотеки (только по подтверждению автора, FR-DR-4)."""
+def canon_preview(ws: Workspace, library: Path) -> dict:
+    """Предпросмотр внесения черновиков в канон (FR-DR-4): будущий документ каркасов, дифф с текущим и статусы
+    черновиков — до подтверждения автора, без записи. {path, exists, text, diff, status, n}."""
     new = drafts(ws)
     if not new:
         raise RuntimeError("черновиков каркасов нет — сначала постройте их (`konveyer каркас`).")
     merged = {(c.scope, c.key): c for c in canon_circles(ws)}
     for c in new:
         merged[(c.scope, c.key)] = c
-    acts = act_list(ws)
     existing = exporter.docs_of_type(library, "каркасы", ws.volume, ws.root)
     path = existing[0] if existing else library / canon_doc_name(ws.volume, ws.root)
-    text = render_canon_doc(list(merged.values()), acts, ws.volume, ws)
+    text = render_canon_doc(list(merged.values()), act_list(ws), ws.volume, ws)
+    old = path.read_text(encoding="utf-8") if path.exists() else ""
+    rel = path.relative_to(library).as_posix() if path.is_relative_to(library) else path.name
+    diff = "".join(difflib.unified_diff(old.splitlines(keepends=True), text.splitlines(keepends=True),
+                                        fromfile=f"{rel} (канон)", tofile=f"{rel} (после внесения)"))
+    return {"path": str(path), "exists": path.exists(), "text": text, "diff": diff, "status": canon_status(ws), "n": len(new)}
+
+
+def commit_to_canon(ws: Workspace, cfg: Config, library: Path) -> tuple[Path, str]:
+    """Вносит черновики каркасов в документ каркасов библиотеки (только по подтверждению автора, FR-DR-4)."""
+    preview = canon_preview(ws, library)
+    new = drafts(ws)
+    path, text = Path(preview["path"]), preview["text"]
+    existing = preview["exists"]
     message = f"[каркасы] внесено каркасов: {len(new)} (драматургия тома {ws.volume})"
     result = canonchange.canon_change(
         ws, cfg, library, lambda: guard.write_text(path, text), message,

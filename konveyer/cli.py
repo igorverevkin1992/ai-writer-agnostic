@@ -168,7 +168,7 @@ def cmd_verify1(chapter: int) -> None:
 def cmd_verify2(
     chapter: int,
     manual: bool = typer.Option(False, "--manual", help="Принять флаги.json, заполненный вручную (NFR-3)."),
-    taste: bool = typer.Option(False, "--вкус", "--taste", help="Дополнительно: советы по вкусу автора (02 §6.1) — не блокируют приёмку."),
+    taste: bool = typer.Option(False, "--вкус", "--taste", help="Дополнительно: советы по вкусу автора по правилам вкуса документа стиля — не блокируют приёмку."),
     again: bool = typer.Option(
         False, "--повторно", "--после-правок", "--again",
         help="Повторный Э2 по текущему черновику после правок (из «правки»/«дифф-контроль»): совещательно — "
@@ -208,7 +208,7 @@ def cmd_diff_check(
         help="С --авторская-правка: снять только эти самоволия (номер в списке или подстрока текста); можно несколько раз.",
     ),
 ) -> None:
-    """Дифф-контроль до/после правок (FR-V1.10, FR-E3)."""
+    """Дифф-контроль до/после правок (FR-V1-6, FR-ED-3)."""
     tact.diff_check(chapter, author_fix=author_fix, fragments=fragments)
 
 

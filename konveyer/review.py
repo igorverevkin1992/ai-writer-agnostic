@@ -64,7 +64,7 @@ def build_review_pack(ws: Workspace, chapter: int, draft: int) -> Path:
         lines.append("- нет")
     taste = verifier2.load_taste(ws, chapter)
     if taste:
-        lines += ["", "## Вкус (советы, не блокируют приёмку; 02 §6.1)", ""]
+        lines += ["", "## Вкус (советы, не блокируют приёмку; FR-V2-7)", ""]
         for f in taste:
             lines.append(f"- **{f.flag_id}** — {f.rule}; {f.recommendation}")
             lines.append(f"  > {f.quote}")

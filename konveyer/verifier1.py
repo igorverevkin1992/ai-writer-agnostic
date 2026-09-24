@@ -1,8 +1,8 @@
-"""Верификатор-1 (Э1): формальные проверки текста (FR-V1.1…FR-V1.10).
+"""Верификатор-1 (Э1): машинные проверки текста (FR-V1-1…FR-V1-7).
 
-Все пороги — ТОЛЬКО из norms.json (02 §5); в коде констант нет
-(критерий приёмки 6). Метрики повествователя считаются без документов-вставок
-(Д-7); деление на предложения — по Д-2.
+Все пороги — ТОЛЬКО из norms.json документа стиля (FR-V1-2, критерий приёмки 14.3.6); в коде констант нет.
+Метрики повествователя считаются без документов-вставок (Д-15); деление на предложения — по языковому модулю
+со словарём сокращений проекта (Д-13).
 """
 
 from __future__ import annotations
@@ -77,7 +77,7 @@ def _document_label(doc: dict) -> str:
 
 
 def variants_summary(ws: Workspace, chapter: int, draft: int, labels: list[str] | None = None) -> dict:
-    """A/B (аудит 2, п. 24б): метрики Э1 по каждому варианту черновика draft (черновик_k.md, черновик_k.alt1.md …)
+    """A/B-варианты (FR-WR-3): метрики Э1 по каждому варианту черновика draft (черновик_k.md, черновик_k.alt1.md …)
     → главы/N/варианты.json. FSM и вердикт.json не трогает."""
     from . import writer
 
@@ -138,7 +138,7 @@ def analyze(
     return metrics.run(ctx)
 
 
-# ------------------------------------------------------- FR-V1.10 дифф-контроль
+# ------------------------------------------------------- FR-V1-6 дифф-контроль
 
 
 def _norm_ws(s: str) -> str:
@@ -179,7 +179,7 @@ def _expected_sentences(old_sents: list[str], edits: list[Edit]) -> tuple[set[st
 
 
 def waive_unauthorized(ws: Workspace, chapter: int, report: DiffReport, fragments: list[str]) -> tuple[list[str], list[str]]:
-    """Авторская правка (`diff-check --авторская-правка`): снимает самоволия и ПИШЕТ в дифф.json,
+    """Авторская правка (`diff-check --авторская-правка`, FR-ED-3): снимает самоволия и ПИШЕТ в дифф.json,
     что именно снято. Без перечня — снимаются все (как прежде); с перечнем `--фрагмент` — только
     совпавшие (номер в списке самоволий или подстрока текста). Возвращает (снято, не найдено)."""
     waived: list[str] = []
@@ -234,7 +234,7 @@ def diff_check(ws: Workspace, chapter: int, draft_before: int, draft_after: int,
     for e in verifiable:
         before, after = e.before.strip(), e.after.strip()
         before_n, after_n = _norm_ws(before), _norm_ws(after)
-        # по счётчикам вхождений (2.5): цитата, встречающаяся в тексте дважды, после правки
+        # по счётчикам вхождений: цитата, встречающаяся в тексте дважды, после правки
         # одного места встречается на один раз меньше — это «внесено», а не «не внесено»
         if after and before_n in after_n:
             # «стало» содержит «было» (дописано продолжение): число «было» не меняется —
@@ -249,7 +249,7 @@ def diff_check(ws: Workspace, chapter: int, draft_before: int, draft_after: int,
         else:
             not_applied.append(e.seq)
 
-    # самовольные изменения — по КАЖДОМУ изменённому предложению (2.5), а не по блоку difflib:
+    # самовольные изменения — по КАЖДОМУ изменённому предложению, а не по блоку difflib:
     # блок из двух предложений, где правкой объяснено одно, второе не «отмывает»
     old_sents = textutils.split_sentences(textutils.strip_markdown(old))
     new_sents = textutils.split_sentences(textutils.strip_markdown(new))

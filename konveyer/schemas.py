@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 
 class StopRule(BaseModel):
-    """Строка stoplists.json — из 03/04 и Р-016 (усилители)."""
+    """Строка stoplists.json: стоп-листы линий (повествование), лексика эпохи (язык), усилители (стиль)."""
 
     scope: Literal["0.3", "0.4"]
     rule_id: str
@@ -145,13 +145,13 @@ class Plant(BaseModel):
 
 
 class Norm(BaseModel):
-    """Числовой порог Э1 — из 02 §5. Единственный источник порогов (FR критерий 6)."""
+    """Числовой порог Э1 — из таблицы норм документа стиля. Единственный источник порогов (FR-V1-2)."""
 
     min: float | None = None
     max: float | None = None
     brak: float | None = None
     unit: str = ""
-    source: str = "02 §5"
+    source: str = "документ стиля"
 
 
 class ContinuityEvent(BaseModel):
@@ -334,7 +334,7 @@ class Arc(BaseModel):
 
 
 class CheckResult(BaseModel):
-    """Результат одной проверки Э1 (FR-V1.9)."""
+    """Результат одной проверки Э1 (FR-V1-5)."""
 
     check_id: str
     status: Literal["PASS", "FLAG", "BRAK"]
@@ -360,7 +360,7 @@ class Verdict(BaseModel):
 
 
 class Flag(BaseModel):
-    """Флаг Э2 (FR-V2.2). kind=samovolka требует решения автора."""
+    """Флаг Э2 (FR-V2-4). kind=samovolka требует решения автора."""
 
     flag_id: str = Field(pattern=r"^[\w.\-]+$")  # попадает в id/href разметки — только безопасные символы
     type: str
@@ -372,7 +372,7 @@ class Flag(BaseModel):
 
 
 class Resolution(BaseModel):
-    """Решение автора по самоволке (FR-V2.5)."""
+    """Решение автора по самоволке (FR-RV-2)."""
 
     flag_id: str = Field(pattern=r"^[\w.\-]+$")
     decision: Literal["вычеркнуть", "канонизировать", "отклонить"] | None = None
@@ -397,7 +397,7 @@ class Edit(BaseModel):
 
 
 class DiffReport(BaseModel):
-    """Отчёт дифф-контроля (FR-V1.10)."""
+    """Отчёт дифф-контроля (FR-V1-6)."""
 
     chapter: int
     draft_before: int
@@ -417,7 +417,7 @@ class DiffReport(BaseModel):
 
 
 class GoldenTest(BaseModel):
-    """Золотой тест (FR-R1)."""
+    """Золотой тест (FR-RG-1)."""
 
     test_id: str
     fragment: str

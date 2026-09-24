@@ -568,3 +568,41 @@ def test_калибровка_синонимы_колонок_из_типа(ws, 
     assert "| средняя_длина | средняя длина фразы | 8 | 11 | 6 | слов |" in merged
     assert "| новая_метрика | новая_метрика | — | 3 | — | шт |" in merged
     assert calibrate.decision_id_prefix(ws) == "Р-" and calibrate.next_decision_id("## Р-007\n", "Р-") == "Р-008"
+
+
+# ------------------------------------------------------------------ каркасы в канон
+
+
+def test_каркасы_в_канон_с_предпросмотром_и_диффом(ws, library, monkeypatch, capsys):
+    """Внесение каркасов в канон — по подтверждению с предпросмотром и диффом (FR-DR-4)."""
+    import json
+
+    from konveyer import circles
+    from konveyer.steps import quality
+    from tests.test_circles_canon import _init_git, _sample
+
+    _init_git(library)
+    book, part, ch = _sample()
+    circles.save_circle(ws, "книга", None, json.loads(book.model_dump_json()))
+    preview = circles.canon_preview(ws, library)
+    assert preview["n"] == 1 and not preview["exists"] and preview["status"] == {"книга": "не в каноне"}
+    assert "+# " in preview["diff"] and "Ты" in preview["text"]
+    monkeypatch.chdir(ws.root)
+    asked: list[str] = []
+
+    def confirm(question: str) -> bool:
+        asked.append(question)
+        return False
+
+    from konveyer.steps.common import Rejected
+
+    with pytest.raises(Rejected):
+        quality.circles(to_canon=True, confirm=confirm)
+    out = capsys.readouterr().out
+    assert "книга: не в каноне" in out and "+# " in out and "см. дифф выше" in asked[0]
+    assert not (library / circles.canon_doc_name(ws.volume, ws.root)).exists()  # без подтверждения — без записи
+    quality.circles(to_canon=True, yes=True)
+    circles.save_circle(ws, "глава", 1, json.loads(ch.model_dump_json()))
+    preview = circles.canon_preview(ws, library)
+    assert preview["exists"] and preview["status"] == {"книга": "в каноне", "глава_01": "не в каноне"}
+    assert preview["diff"].startswith("--- ") and "+" in preview["diff"]

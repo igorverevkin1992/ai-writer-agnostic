@@ -703,6 +703,17 @@ class PanelAPI:
             output = _captured(lambda: _job(canon.rollback, n, to=to, yes=True), "откат отклонён")
         return {"ok": True, "output": output}
 
+    def circles_preview(self) -> dict:
+        """Дифф внесения черновиков каркасов в канон — панель показывает его в диалоге подтверждения (FR-DR-4)."""
+        from . import circles as circles_mod
+
+        try:
+            preview = circles_mod.canon_preview(self.ws, self.library)
+        except RuntimeError as e:
+            return {"ok": False, "error": str(e), "diff": "", "status": {}}
+        return {"ok": True, "path": preview["path"], "exists": preview["exists"], "diff": preview["diff"],
+                "status": preview["status"], "n": preview["n"]}
+
     def circles(self) -> dict:
         from . import circles as circles_mod
 
@@ -960,7 +971,8 @@ class PanelAPI:
 PANEL_ACTIONS = {
     "state", "chapter", "draft", "diff", "window", "prompt", "find", "circles", "lint", "canon", "log", "job",
     "project", "onboarding", "journals", "regression", "resolve", "resolve-all", "edits", "canon-batch", "canon-doc",
-    "lint-fix", "circles-manual", "manual-draft", "manual-flags", "accept", "rollback", "onboarding-decision", "job-cancel",
+    "lint-fix", "circles-manual", "circles-preview", "manual-draft", "manual-flags", "accept", "rollback", "onboarding-decision",
+    "job-cancel",
 }
 
 
@@ -1106,6 +1118,8 @@ def make_handler(api: PanelAPI):
                     return self._json(api.find(q))
                 if path == "/api/circles":
                     return self._json(api.circles())
+                if path == "/api/circles/preview":
+                    return self._json(api.circles_preview())
                 m = re.fullmatch(r"/api/circles/prompt/([\w\-]+)", path)
                 if m:
                     return self._json(api.circle_prompt(m.group(1)))

@@ -1,5 +1,5 @@
-"""Качество и регрессия: check (Э1 по произвольному файлу), circles (круги истории, Р-020),
-regress (золотые тесты, FR-R2), add_golden (FR-R1)."""
+"""Качество и регрессия: check (Э1 по произвольному файлу), circles (каркасы драматургии, FR-DR-1…FR-DR-4),
+regress (золотые тесты, FR-RG-2), add_golden (FR-RG-1), norms (нормы и калибровка, FR-V1-7)."""
 
 from __future__ import annotations
 
@@ -42,19 +42,31 @@ def circles(
     scope: str = "всё", chapter: int | None = None, redo: bool = False, to_canon: bool = False,
     yes: bool = False, confirm: Confirm | None = None,
 ) -> dict | None:
-    """Круги истории (8 шагов) — каркас драматургии (Р-020): книга → четыре акта → главы; черновики в драматургия/.
-    `to_canon` — внести черновики в документ 2.1 библиотеки и закоммитить (Д-8). Возвращает результат прогона."""
+    """Каркасы драматургии по методике проекта (FR-DR-1): книга → акты → главы; черновики в драматургия/.
+    `to_canon` — внести черновики в документ каркасов библиотеки и закоммитить по подтверждению с диффом (FR-DR-4).
+    Возвращает результат прогона."""
     from .. import circles as circles_mod
 
     ws, cfg, lib = _ctx()
     exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)
     if to_canon:
-        n = len(circles_mod.drafts(ws))
-        if not n:
-            raise StepError("черновиков кругов нет — сначала `konveyer circles`.")
+        try:
+            preview = circles_mod.canon_preview(ws, lib)
+        except RuntimeError as e:
+            raise StepError(str(e)) from e
+        # FR-DR-4: подтверждение — с предпросмотром и диффом, а не только с числом каркасов
+        for stem, status in sorted(preview["status"].items()):
+            echo(f"  {stem}: {status}")
+        if preview["diff"]:
+            echo(preview["diff"].rstrip("\n"))
+        elif not preview["exists"]:
+            echo(preview["text"].rstrip("\n"))
+        else:
+            echo("(документ каркасов не изменится)")
         confirm_or_reject(
             yes, confirm,
-            f"Внести {n} круг(ов) в {circles_mod.canon_doc_name(ws.volume)} библиотеки и закоммитить? (Д-8) (y)",
+            f"Внести {preview['n']} каркас(ов) в {circles_mod.canon_doc_name(ws.volume, ws.root)} библиотеки "
+            "и закоммитить (см. дифф выше)? (y)",
         )
         try:
             path, commit = circles_mod.commit_to_canon(ws, cfg, lib)
@@ -78,6 +90,17 @@ def circles(
     return result
 
 
+def circles_preview() -> dict:
+    """Предпросмотр внесения каркасов в канон: дифф и статусы черновиков без записи (FR-DR-4)."""
+    from .. import circles as circles_mod
+
+    ws, cfg, lib = _ctx()
+    try:
+        return circles_mod.canon_preview(ws, lib)
+    except RuntimeError as e:
+        raise StepError(str(e)) from e
+
+
 def regress(llm: bool = False) -> dict:
     """Прогон регрессионного корпуса золотых тестов (FR-RG-2). Красная регрессия — `StepExit(1)`."""
     ws, cfg, lib = _ctx()
@@ -89,7 +112,7 @@ def regress(llm: bool = False) -> dict:
     if not report["всего"]:
         secho(
             "⚠ Корпус золотых тестов ПУСТ (регрессия/золотые/) — регрессия ничего не проверила и зелёной "
-            "считаться не может (FR-R3). Пополните корпус: `konveyer add-golden` (FR-R1).",
+            "считаться не может (FR-RG-3). Пополните корпус: `konveyer add-golden` (FR-RG-1).",
             fg=colors.YELLOW,
         )
     elif not report.get("выполнено"):
@@ -111,7 +134,7 @@ def regress(llm: bool = False) -> dict:
         why = report.get("причина") or "пропущены ожидаемые флаги"
         secho(
             f"Регрессия КРАСНАЯ: {why}{' ' + str(report['провалено']) if report['провалено'] else ''} "
-            "(FR-R3: смена конфигурации заблокирована).",
+            "(FR-RG-3: смена конфигурации заблокирована).",
             fg=colors.RED,
         )
         raise StepExit(1)

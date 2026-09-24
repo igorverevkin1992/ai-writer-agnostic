@@ -61,7 +61,7 @@ class Language:
         return w
 
     def normalize(self, text: str) -> list[str]:
-        """Токены для n-грамм и TTR: нижний регистр, без пунктуации, с нормализацией букв (Д-4)."""
+        """Токены для n-грамм и TTR: нижний регистр, без пунктуации, с нормализацией букв (Д-14: по словоформам)."""
         return [self.normalize_word(w) for w in self.words(text)]
 
     def ngrams(self, tokens: list[str], n: int) -> Counter:
@@ -120,7 +120,7 @@ class Language:
         return m.group(1) + ABBR_MASK
 
     def split_sentences(self, text: str, extra_abbr: Path | list[tuple[str, bool]] | None = None) -> list[str]:
-        """Деление на предложения (Д-2): терминатор + закрывающие кавычки; сокращения, инициалы и одинокие
+        """Деление на предложения (Д-13): терминатор + закрывающие кавычки; сокращения, инициалы и одинокие
         заголовки внутри прозы («Глава пятая») границей не считаются."""
         extra = load_abbreviations(extra_abbr) if isinstance(extra_abbr, Path) else (extra_abbr or [])
         sentences: list[str] = []

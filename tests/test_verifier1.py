@@ -1,4 +1,4 @@
-"""Тесты Верификатора-1 (FR-V1.*): флаговые «красные» проверки (10.2)."""
+"""Тесты Верификатора-1 (FR-V1-1…FR-V1-5): флаговые «красные» проверки на демо-проекте."""
 
 import json
 
@@ -80,6 +80,6 @@ def test_вердикт_пишется_в_файл(ws, library):
     verdict = verifier1.run_verify1(ws, 1, 1)
     data = json.loads((ws.chapter_dir(1) / "вердикт.json").read_text(encoding="utf-8"))
     assert data["chapter"] == 1
-    for c in data["checks"]:  # FR-V1.9: структура вердикта
+    for c in data["checks"]:  # FR-V1-5: структура вердикта
         assert {"check_id", "status", "threshold", "actual", "quotes", "rule_source"} <= set(c)
     assert verdict.checks

@@ -1,4 +1,4 @@
-"""Writer-adapter: вызовы Писателя (FR-W1, FR-W2) и дословные правки кодом (Р-023)."""
+"""Writer-adapter: вызовы Писателя (FR-WR-1…FR-WR-5) и дословные правки кодом (FR-ED-2)."""
 
 from __future__ import annotations
 
