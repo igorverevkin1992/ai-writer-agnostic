@@ -425,6 +425,24 @@ def check_secrets(ctx: LintContext) -> list[LintFinding]:
     return out
 
 
+@check("ТАЙНА-6")
+def check_ban_volumes(ctx: LintContext) -> list[LintFinding]:
+    """Запрет «до тома N» ссылается на том за пределами плана серии (целостность ссылок между реестрами, FR-LT-2).
+    Выведенный классификацией манифест плана автора не знает — сверять не с чем (П-5)."""
+    out: list[LintFinding] = []
+    if ctx.manifest.выведен:
+        return out
+    plan = ctx.manifest.проект.томов_план
+    path = ctx.doc("информрежим")
+    for ban in ctx.infobans:
+        if ban.until_volume is None or ban.until_volume <= plan:
+            continue
+        out.append(_f("ТАЙНА-6", "предупреждение", ctx.rel(path), ban.line or ctx.line_of(path, ban.ban_id),
+                      f"{ban.ban_id}: запрет действует «до тома {ban.until_volume}», а в плане серии томов: {plan}",
+                      "поправьте колонку «до тома» или план томов (`томов_план` в проект.yaml)"))
+    return out
+
+
 # ------------------------------------------------------------------ эпистемика
 
 OFFSTAGE_RE = re.compile(r"по своим каналам|за кадром", re.IGNORECASE)
