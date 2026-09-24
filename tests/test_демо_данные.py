@@ -62,3 +62,32 @@ def test_стоп_лист_линии_не_подсказывает_тайну(w
     assert "[Л-2]" in hidden  # остальные правила линии Зои — как были
     shown = compiler.compile_window(ws, library, 4)[0].read_text(encoding="utf-8")
     assert "[Л-4] линия «Зоя»: не употреблять — отец; папа" in shown
+
+
+def test_противоречия_демо_объявлены_модулями_и_покрывают_все_документы():
+    """NFR-9: каждый учебный код — объявленный код линтера; тайны, закладки, каркасы, проза, индекс — все классы."""
+    from konveyer.steps import setup
+
+    items = setup.demo_contradictions()
+    declared = catalog.all_lint_codes(catalog.load_modules(DEMO))
+    assert items and all(c["код"] in declared for c in items), sorted({c["код"] for c in items} - declared)
+    assert {c["код"].split("-")[0] for c in items} >= {"ХРОН", "МАТР", "ТАЙНА", "ЗАКЛ", "КОНТ", "ФОКАЛ", "ДОСЬЕ", "ПОГЛ", "КРУГ", "ПРОЗА", "КАНОН"}
+
+
+def test_init_демо_с_противоречиями(tmp_path, monkeypatch):
+    """`konveyer init --демо --противоречия`: библиотека, манифест и учебные противоречия; линтер их находит."""
+    from typer.testing import CliRunner
+
+    from konveyer import exporter, lint
+    from konveyer.cli import app
+    from konveyer.paths import Workspace
+
+    monkeypatch.chdir(tmp_path)
+    r = CliRunner().invoke(app, ["init", "--демо", "--противоречия"])
+    assert r.exit_code == 0, r.output
+    assert (tmp_path / "проект.yaml").exists() and (tmp_path / "Библиотека" / "21_Каркасы_Том1.md").exists()
+    assert "внесено противоречий" in r.output
+    ws = Workspace(tmp_path)
+    exporter.run_export(tmp_path / "Библиотека", ws.exports, ws.logs)
+    report = lint.run_lint(tmp_path / "Библиотека", ws.exports, ws.logs, use_cache=False)
+    assert report.errors and report.warnings and report.notes
