@@ -253,7 +253,7 @@ def test_учёт_стоимость_по_ценам_конфига(ws):
     assert accounting.warnings(ws, Config(), 2) == []
 
 
-def test_учёт_перерыв_по_порогу_и_переход_внутри_задачи():
+def test_учёт_перерыв_по_порогу_и_переход_внутри_задачи(monkeypatch):
     t0 = datetime(2026, 5, 1, 10, 0, tzinfo=timezone.utc)
     hist = [
         {"время": t0.isoformat(), "из": "не-начато", "в": "собрано", "задача": f"compile@{t0.isoformat()}"},
@@ -262,13 +262,13 @@ def test_учёт_перерыв_по_порогу_и_переход_внутр�
         {"время": (t0 + timedelta(minutes=30 + 150)).isoformat(), "из": "сгенерировано", "в": "верифицировано-1",
          "задача": f"verify1@{(t0 + timedelta(minutes=30 + 150)).isoformat()}"},
     ]
-    timing.set_pause_threshold(120)
+    # порог — через monkeypatch: падение assert не оставит чужой порог следующим тестам
+    monkeypatch.setattr(timing, "MAX_AUTHOR_PAUSE_S", 120 * 60)
     kinds = [(k, round(s / 60)) for k, s, _ in timing.intervals(hist)]
     assert ("авторское", 25) in kinds and ("машинное", 5) in kinds and ("перерыв", 150) in kinds
-    timing.set_pause_threshold(180)
+    monkeypatch.setattr(timing, "MAX_AUTHOR_PAUSE_S", 180 * 60)
     kinds = [(k, round(s / 60)) for k, s, _ in timing.intervals(hist)]
     assert ("авторское", 150) in kinds
-    timing.set_pause_threshold(120)
 
 
 def test_прогноз_остатка_тома(ws):

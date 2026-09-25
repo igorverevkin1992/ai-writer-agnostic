@@ -464,7 +464,8 @@ def apply_batch(ws: Workspace, cfg: Config, library: Path, chapter: int, draft: 
     message = (f"{gitops.chapter_subject(chapter, ws.volume)} приёмка: записей в реестры {n_registry}"
                + (f", во «Входящие» {n_inbox}" if n_inbox else "")
                + f", правок {n_edits}, канонизировано самоволок {n_sam} "
-               f"(конвейер; решения — {ws.chapter_rel(chapter)}/решения.json)")
+               f"(конвейер; решения — {ws.chapter_rel(chapter)}/решения.json)"
+               + gitops.acceptance_trailer(chapter, ws.draft_path(chapter, draft).name, ws.volume))
 
     def write_batch() -> None:
         brief = exporter.load_brief(ws.exports, chapter)

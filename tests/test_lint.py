@@ -120,7 +120,7 @@ def test_реальная_библиотека_без_ошибок(tmp_path):
     assert "ТАЙНА-1" not in codes
     # возраст «гл. 41 т.1» больше не принимается за возраст (ложных ДОСЬЕ-1 нет)
     assert not any(f.code == "ДОСЬЕ-1" and "41" in f.message for f in report.findings)
-    # участники сцен без карточки досье и карточки без «Физики» — заметки для автора (аудит 7.6, 3.10)
+    # участники сцен без карточки досье и карточки без «Физики» — заметки для автора
     notes = {f.code: [x.message for x in report.findings if x.code == f.code] for f in report.findings}
     assert all(f.severity == "заметка" for f in report.findings if f.code in ("ПОГЛ-2", "ДОСЬЕ-6"))
     who = {re.search(r"«([^»]+)»", m).group(1) for m in notes["ПОГЛ-2"]}

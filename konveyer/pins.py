@@ -30,8 +30,15 @@ def path_of(ws: Workspace) -> Path:
     return ws.logs / PINS
 
 
-def record(ws: Workspace, cfg: Config, note: str = "пере-тест") -> Path:
-    data = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "основание": note, "пины": fingerprint(cfg)}
+def privacy(cfg: Config) -> dict[str, dict]:
+    """{роль: {провайдер, модель, режим_без_обучения}} — фиксация провайдера и режима (FR-SC-10)."""
+    return {r: {"провайдер": m.provider, "модель": m.model, "режим_без_обучения": bool(m.no_training) or m.manual}
+            for r, m in cfg.roles().items()}
+
+
+def record(ws: Workspace, cfg: Config, note: str = "пере-тест", extra: dict | None = None) -> Path:
+    data = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "основание": note, "пины": fingerprint(cfg),
+            "приватность": privacy(cfg), **(extra or {})}
     p = path_of(ws)
     guard.write_text(p, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
     return p

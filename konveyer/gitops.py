@@ -52,24 +52,50 @@ def commit_all(repo: Path, message: str, author: str | None = None) -> str | Non
     args = ["commit", "-m", message]
     if author:
         args += ["--author", author]
-    _git(repo, *args)
+    # pathspec «.»: в коммит попадают только файлы папки библиотеки — то, что автор успел
+    # проиндексировать в остальном репозитории (библиотека как подпапка), остаётся в индексе (FR-CN-2)
+    _git(repo, *args, "--", ".")
     return head(repo)
 
 
+def staged_files(repo: Path) -> list[str]:
+    """Файлы, уже проиндексированные во ВСЁМ репозитории (`git diff --cached`), пути от корня репозитория."""
+    return [p for p in _git(repo, "diff", "--cached", "--name-only", check=False).splitlines() if p]
+
+
 def restore_library(repo: Path) -> None:
-    """Откат незакоммиченных изменений ТОЛЬКО в папке библиотеки (сбой apply_batch, 2.6):
+    """Откат незакоммиченных изменений ТОЛЬКО в папке библиотеки (сбой записи в канон, FR-SC-2):
     отслеживаемые файлы — к HEAD, новые файлы и папки — удаляются; остальной репозиторий не трогается."""
     _git(repo, "checkout", "--", ".")
     _git(repo, "clean", "-fd", "--", ".")
 
 
-def check_norm_change_message(message: str) -> bool:
-    """Сценарий Б: изменение норм — только со ссылкой Р-№ в сообщении (предупреждение)."""
-    return bool(re.search(r"Р-\d+", message))
+def check_norm_change_message(message: str, pattern: str | None) -> bool:
+    """Сценарий Б: изменение норм — со ссылкой на запись журнала решений в сообщении (предупреждение).
+    `pattern` — регэксп ссылки из типа «журнал_решений» (`ссылка_на_запись.регэксп`); без него правила нет."""
+    if not pattern:
+        return True
+    try:
+        return bool(re.search(pattern, message))
+    except re.error:
+        return True
+
+
+ACCEPT_TRAILER = "Конвейер-приёмка"
+
+
+def acceptance_trailer(chapter: int, draft_name: str, volume: int = 1) -> str:
+    """Трейлер сообщения коммита приёмки: по нему (а не по префиксу темы) приёмка узнаётся в истории (FR-CN-3).
+    Ручной `konveyer канон-коммит -m "[глава 3] …"` трейлера не несёт и приёмкой не считается."""
+    vol = f"; том {int(volume)}" if int(volume) != 1 else ""
+    return f"\n\n{ACCEPT_TRAILER}: глава {int(chapter)}{vol}; черновик {draft_name}"
+
+
+_TRAILER_RE = re.compile(rf"^{ACCEPT_TRAILER}: глава (\d+)\b(?:; том (\d+))?", re.M)
 
 
 def chapter_subject(chapter: int, volume: int = 1) -> str:
-    """Шаблонный префикс сообщения коммита приёмки: том 1 — `[глава N]` (совместимость с историей
+    """Шаблонный префикс темы коммита приёмки: том 1 — `[глава N]` (совместимость с историей
     существующих библиотек), тома ≥ 2 — `[том V глава N]`: главы разных томов не путаются."""
     return f"[глава {chapter}]" if int(volume) == 1 else f"[том {volume} глава {chapter}]"
 
@@ -81,18 +107,23 @@ def _chapter_subject_re(chapter: int, volume: int) -> str:
 
 
 def find_chapter_commit(repo: Path, chapter: int, volume: int = 1) -> str | None:
-    """Ищет ДЕЙСТВУЮЩИЙ коммит приёмки главы `chapter` тома `volume` по шаблонному сообщению
-    (`chapter_subject`). Если самый свежий коммит по главе — её откат (`Revert "[глава N] …"`),
-    приёмки нет (None): иначе повторное применение пакета «нашло бы» уже откачённую приёмку."""
+    """Ищет ДЕЙСТВУЮЩИЙ коммит приёмки главы `chapter` тома `volume` по трейлеру `Конвейер-приёмка: глава N`
+    в теле сообщения (FR-CN-3); коммиты с шаблонной темой, но без трейлера (правки автора через канон-коммит)
+    приёмкой не считаются. Если самый свежий коммит по главе — её откат (`Revert "[глава N] …"`), приёмки
+    нет (None): иначе повторное применение пакета «нашло бы» уже откачённую приёмку."""
     pattern = _chapter_subject_re(chapter, volume)
-    out = _git(repo, "log", "--format=%H %s", check=False)
-    for line in out.splitlines():
-        sha, _, subject = line.partition(" ")
+    out = _git(repo, "log", "--format=%H%x1f%s%x1f%B%x1e", check=False)
+    for record in out.split("\x1e"):
+        parts = record.strip("\n").split("\x1f")
+        if len(parts) < 3:
+            continue
+        sha, subject, body = parts[0].strip(), parts[1], parts[2]
         if re.match(rf'Revert "{pattern}', subject):
             return None  # откат приёмки новее самой приёмки
         if subject.startswith("Revert "):
             continue
-        if re.match(pattern, subject):
+        m = _TRAILER_RE.search(body)
+        if m and int(m.group(1)) == int(chapter) and int(m.group(2) or 1) == int(volume):
             return sha
     return None
 
@@ -114,6 +145,13 @@ def revert(repo: Path, commit: str, author: str | None = None) -> str:
     revert: в документах канона не остаются маркеры `<<<<<<<`, индекс чист, REVERT_HEAD нет."""
     if in_progress(repo):
         raise RuntimeError(f"в библиотеке незавершённая операция git ({in_progress(repo)}) — завершите или отмените её (`git revert --abort`).")
+    staged = staged_files(repo)
+    if staged:
+        # revert-коммит собирается из индекса целиком: чужие проиндексированные файлы попали бы в него
+        raise RuntimeError(
+            f"в индексе git уже есть файлы ({', '.join(staged[:5])}{'…' if len(staged) > 5 else ''}) — "
+            "закоммитьте их или снимите (`git restore --staged`), затем повторите откат."
+        )
     try:
         _git(repo, "revert", "--no-edit", "--no-commit", commit)
         touched = [p for p in _git(repo, "diff", "--cached", "--name-only", check=False).splitlines() if p]
@@ -143,8 +181,9 @@ def has_identity(repo: Path) -> bool:
 
 
 def push(repo: Path, remote: str) -> None:
-    """Отправка текущей ветки в удалённое место (FR-BK-1, `konveyer бэкап --push`)."""
-    _git(repo, "push", remote, "HEAD")
+    """Отправка текущей ветки И тегов (приёмок `глава-N`, томов `том-N`) в удалённое место
+    (FR-BK-1, FR-BK-3: во втором месте хранения версии канона по приёмкам различимы)."""
+    _git(repo, "push", remote, "HEAD", "--tags")
 
 
 def remote_lag(repo: Path, remote: str) -> int | None:
@@ -180,7 +219,7 @@ def last_commit_age_days(repo: Path) -> float | None:
     return (time.time() - int(out)) / 86400
 
 
-# ------------------------------------------------------- сохранность (аудит 2, этап 5, п. 28)
+# ------------------------------------------------------- сохранность (FR-BK-1…FR-BK-4)
 
 
 def toplevel(repo: Path) -> Path | None:

@@ -2,6 +2,7 @@
 эталона и демо-проекта могут жить только в данных (`konveyer/data/…`) и тестах, но не в коде, типах, модулях,
 шаблонах и методиках движка."""
 
+import re
 from pathlib import Path
 
 KONVEYER = Path(__file__).resolve().parent.parent / "konveyer"
@@ -14,6 +15,16 @@ SERIES_TOKENS = [
     '"0.3"', '"0.4"', "ИНСТРУМЕНТ_", "Тест_Писателя",
 ]
 ENGINE_SUFFIXES = {".py", ".j2", ".md", ".yaml", ".json"}
+
+# Имена документов канона, ссылки на разделы и номера решений конкретной библиотеки (FR-SC-11): в коде движка
+# (.py, .j2) их быть не может — только в каталоге типов (`имя_по_умолчанию`, формат ссылки журнала), профиле
+# и проекте. «02 §5», «36_Журнал», «Р-020» — нумерация эталонной серии, а не движка.
+SERIES_PATTERNS = {
+    "имя документа вида NN_Имя": re.compile(r"(?<![\w.])\d{2}_[А-ЯЁ]"),
+    "ссылка на раздел документа вида NN §N": re.compile(r"(?<![\w.])\d{2} §\s*\d"),
+    "номер решения журнала вида Р-NNN / Р-№": re.compile(r"(?<![\w-])Р-(?:\d{2,3}|№)(?![\w-])"),
+}
+CODE_SUFFIXES = {".py", ".j2"}
 
 
 def _engine_files() -> list[Path]:
@@ -36,6 +47,19 @@ def test_нет_серийных_констант():
                 if tok in line:
                     offenders.append(f"{path.relative_to(KONVEYER)}:{i}: «{tok}»: {line.strip()[:90]}")
     assert not offenders, "константы серии в движке:\n" + "\n".join(offenders)
+
+
+def test_нет_имён_документов_и_номеров_решений_в_коде():
+    """FR-SC-11: имена файлов документов, ссылки «NN §N» и номера решений — только в данных, не в коде."""
+    offenders = []
+    for path in _engine_files():
+        if path.suffix not in CODE_SUFFIXES:
+            continue
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            for what, rx in SERIES_PATTERNS.items():
+                if rx.search(line):
+                    offenders.append(f"{path.relative_to(KONVEYER)}:{i}: {what}: {line.strip()[:100]}")
+    assert not offenders, "константы библиотеки-эталона в коде движка:\n" + "\n".join(offenders)
 
 
 def test_серийные_маркеры_окна_живут_в_профиле():

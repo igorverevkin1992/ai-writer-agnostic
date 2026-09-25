@@ -87,7 +87,7 @@ def required_steps(ws: Workspace, scope: str) -> set[int]:
 def canon_doc_name(volume: int = 1, root: Path | None = None) -> str:
     """Имя документа каркасов тома — из каталога типов (`каркасы.имя_по_умолчанию`)."""
     spec = catalog.load_types(root).get("каркасы")
-    pattern = spec.default_name if spec and spec.default_name else "21_Каркасы_Том{том}.md"
+    pattern = spec.default_name if spec and spec.default_name else "Каркасы_Том{том}.md"
     return pattern.format(том=int(volume))
 
 
@@ -761,7 +761,7 @@ def canon_status(ws: Workspace) -> dict[str, str]:
 def arcs_doc_name(volume: int = 1, root: Path | None = None) -> str:
     """Имя документа арок тома — из каталога типов (`арки.имя_по_умолчанию`)."""
     spec = catalog.load_types(root).get("арки")
-    pattern = spec.default_name if spec and spec.default_name else "22_Арки_Том{том}.md"
+    pattern = spec.default_name if spec and spec.default_name else "Арки_Том{том}.md"
     return pattern.format(том=int(volume))
 
 

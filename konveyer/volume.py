@@ -1,14 +1,14 @@
-"""Тома (аудит 2, п. 27): сводка тома, закрытие тома, переключение текущего тома.
+"""Тома (FR-VL-1…FR-VL-3): сводка тома, закрытие тома, переключение текущего тома.
 
-Рабочая область ведёт один текущий том (`конфиг.yaml: volume`, `Workspace.volume`):
+Рабочая область ведёт один текущий том (манифест `проект.yaml: текущий_том`, `Workspace.volume`):
 главы тома 1 — `главы/001`, тома N ≥ 2 — `главы/ТN/001`; выгрузки `выгрузки/` —
 всегда текущего тома (`exporter.run_export(volume=…)`); документы канона по тому выбирает
-`exporter.volume_docs` (маркер `Том{N}`/`_Т{N}` в имени).
+манифест (маркер `Том{N}`/`_Т{N}` в имени).
 
-`close_volume` — закрытие тома: все главы «зафиксировано» → снапшот 3.5 в библиотеку
-(`35_Снапшот_ТомN.md`, через единый конвейер `canonchange.canon_change`) → тег `том-N` →
-рукопись `рукопись/ТомN.md` (+ `.docx`, если установлен python-docx) → статистика тома.
-Переключение `config.volume` на следующий том — только по подтверждению автора (в CLI).
+`close_volume` — закрытие тома (FR-VL-2): все главы «зафиксировано» → рукопись `рукопись/ТомN.md`
+(+ `.docx`, если установлен python-docx) и статистика тома (канон не трогают) → снапшот тома в библиотеку
+(имя — из каталога типов, через единый конвейер `canonchange.canon_change`) → тег `том-N`.
+Переключение текущего тома на следующий — только по подтверждению автора (в CLI).
 """
 
 from __future__ import annotations
@@ -18,32 +18,36 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import canonchange, exporter, gitops, guard, snapshot
-from .apilog import read_log
+from . import accounting, canonchange, exporter, gitops, guard, snapshot
 from .config import Config
 from .fsm import ChapterState, StatusFileError, all_states
 from .paths import Workspace
 from .schemas import Act, Brief, Verdict
 
 TAG = "том-{volume}"
-# метрики Э1, у которых «actual» — число (усредняются по актам в статистике тома)
-_NUMERIC_CHECKS = {
-    "V1.2a_средняя_длина": "средняя длина фразы",
-    "V1.2b_доля_коротких": "доля коротких",
-    "V1.2c_доля_длинных": "доля длинных",
-    "V1.2e_объём": "слов",
-    "V1.8a_ttr_главы": "TTR главы",
-    "V1.9a_доля_диалога": "доля диалога",
-}
+
+
+def numeric_checks() -> dict[str, str]:
+    """{check_id: подпись} метрик Э1 с числовым «actual» — из реестра метрик (§7.5), не из локального списка:
+    новая или переименованная в профиле метрика попадает в статистику тома по актам сама."""
+    from . import metrics
+
+    out: dict[str, str] = {}
+    for m in metrics.REGISTRY.values():
+        if m.kind != "метрика" or not m.check_id or not m.unit or m.check_id in out:
+            continue
+        out[m.check_id] = f"{m.id} ({m.unit})"
+    return out
 
 
 def snapshot_doc_name(volume: int, root: Path | None = None) -> str:
-    """Имя документа снапшота тома — из каталога типов (`снапшоты.имя_по_умолчанию`)."""
+    """Имя документа снапшота тома — из каталога типов (`снапшоты.имя_по_умолчанию`, П-1: в коде имени нет)."""
     from . import catalog
 
     spec = catalog.load_types(root).get("снапшоты")
-    pattern = spec.default_name if spec and spec.default_name else "35_Снапшот_Том{том}.md"
-    return pattern.format(том=int(volume))
+    if not (spec and spec.default_name):
+        raise LookupError("в каталоге типов нет типа «снапшоты» с «имя_по_умолчанию» — закрытие тома невозможно.")
+    return spec.default_name.format(том=int(volume))
 
 
 def tag_name(volume: int) -> str:
@@ -77,8 +81,11 @@ def build_manuscript(ws: Workspace, library: Path, volume: int) -> tuple[Path, P
     `рукопись/ТомN.docx`. Возвращает (md, docx | None, подсказка | None)."""
     chapters = prose_files(library, volume, ws.root)
     if not chapters:
-        raise FileNotFoundError(f"в библиотеке нет принятых глав тома {volume} (Проза/Том{volume}_ГлаваNN.md).")
-    briefs = {b.chapter: b for b in _briefs_of(ws, volume)}
+        raise FileNotFoundError(
+            f"в библиотеке нет принятых глав тома {volume} ({exporter.prose_folder(library, ws.root).name}/"
+            f"{exporter.prose_name(library, volume, 1, ws.root)} и далее)."
+        )
+    briefs = {b.chapter: b for b in _briefs_of(ws, library, volume)}
     lines = [f"# Том {volume}", ""]
     sections: list[tuple[str, list[str]]] = []
     for n, path in chapters:
@@ -108,16 +115,14 @@ def build_manuscript(ws: Workspace, library: Path, volume: int) -> tuple[Path, P
     return md, docx_path, None
 
 
-def _briefs_of(ws: Workspace, volume: int) -> list[Brief]:
-    try:
-        return [b for b in exporter.load_briefs(ws.exports) if b.volume == volume]
-    except FileNotFoundError:
-        return []
+def _briefs_of(ws: Workspace, library: Path, volume: int) -> list[Brief]:
+    """Поглавник тома: из выгрузок или временного экспорта тома (`accounting.volume_briefs`); нет — пусто."""
+    return accounting.volume_briefs(ws, library, volume) or []
 
 
-def _acts_of(ws: Workspace) -> list[Act]:
+def _acts_of(exports: Path) -> list[Act]:
     try:
-        return exporter.load_acts(ws.exports)
+        return exporter.load_acts(exports)
     except FileNotFoundError:
         return []
 
@@ -140,15 +145,17 @@ def _num(text: str) -> float | None:
 @dataclass
 class VolumeStats:
     volume: int
-    chapters_total: int            # глав в поглавнике тома
+    chapters_total: int | None     # глав в поглавнике тома; None — поглавник недоступен
     fixed: list[int]               # «зафиксировано»
     in_work: dict[int, str]        # глава → состояние (не «зафиксировано», не «не-начато»)
-    words: dict[int, int]          # слова принятых глав (по Проза/)
+    words: dict[int, int]          # слова принятых глав (по документам прозы)
     acts: list[Act]
     act_metrics: dict[int, dict[str, float]]   # акт → {метрика: среднее по главам акта}
     total_metrics: dict[str, float]            # то же по всем главам тома
-    cost: float                    # $ по журналы/api.jsonl за главы тома
+    cost: float                    # $ по журналы/api.jsonl — все строки тома (сходится с `учёт`)
     calls: int
+    author_s: float = 0.0          # время автора по историям глав тома (FR-VL-3, FR-EC-4)
+    machine_s: float = 0.0
     missing_docs: list[str] = field(default_factory=list)
 
     @property
@@ -157,10 +164,13 @@ class VolumeStats:
 
 
 def volume_stats(ws: Workspace, library: Path, volume: int | None = None) -> VolumeStats:
-    """Сводка тома: главы по состояниям, слова принятых глав, средние метрики Э1 по актам, стоимость."""
+    """Сводка тома (FR-VL-3): главы по состояниям, слова принятых глав, средние метрики Э1 по актам,
+    стоимость и время — из того же учёта, что `konveyer учёт` (`accounting.volume_account`)."""
     volume = ws.volume if volume is None else int(volume)
     vws = ws.for_volume(volume)
-    briefs = _briefs_of(ws, volume)
+    with accounting.volume_exports(ws, library, volume) as exports:
+        briefs = accounting.volume_briefs(ws, library, volume) if exports is not None else None
+        acts = _acts_of(exports) if exports is not None else []
     fixed: list[int] = []
     in_work: dict[int, str] = {}
     verdicts: dict[int, Verdict] = {}
@@ -173,7 +183,8 @@ def volume_stats(ws: Workspace, library: Path, volume: int | None = None) -> Vol
         if v is not None:
             verdicts[st.chapter] = v
     words = {n: _word_count(_chapter_body(p.read_text(encoding="utf-8"))[0]) for n, p in prose_files(library, volume, ws.root)}
-    acts = _acts_of(ws) if volume == ws.volume else []
+
+    labels = numeric_checks()
 
     def averages(lo: int, hi: int) -> dict[str, float]:
         sums: dict[str, list[float]] = {}
@@ -181,42 +192,31 @@ def volume_stats(ws: Workspace, library: Path, volume: int | None = None) -> Vol
             if not lo <= ch <= hi:
                 continue
             for c in v.checks:
-                label = _NUMERIC_CHECKS.get(c.check_id)
+                label = labels.get(c.check_id)
                 val = _num(c.actual) if label else None
                 if label and val is not None:
                     sums.setdefault(label, []).append(val)
-        return {k: round(sum(v) / len(v), 3) for k, v in sums.items()}
+        return {k: round(sum(v) / len(v), 3) for k, v in sorted(sums.items())}
 
     act_metrics = {a.act: m for a in acts if (m := averages(a.from_chapter, a.to_chapter))}
-    cost, calls = _cost_of_volume(ws, volume, {b.chapter for b in briefs} | set(words) | set(in_work) | set(fixed))
+    acc = accounting.volume_account(ws, volume, chapters_total=len(briefs) if briefs is not None else 0)
     return VolumeStats(
-        volume=volume, chapters_total=len(briefs), fixed=sorted(fixed), in_work=dict(sorted(in_work.items())),
-        words=words, acts=acts, act_metrics=act_metrics, total_metrics=averages(0, 10**6),
-        cost=round(cost, 2), calls=calls, missing_docs=exporter.missing_volume_docs(library, volume, ws.root),
+        volume=volume, chapters_total=len(briefs) if briefs is not None else None, fixed=sorted(fixed),
+        in_work=dict(sorted(in_work.items())), words=words, acts=acts, act_metrics=act_metrics,
+        total_metrics=averages(0, 10**6), cost=round(acc.cost, 2), calls=acc.calls,
+        author_s=acc.author_s, machine_s=acc.machine_s, missing_docs=exporter.missing_volume_docs(library, volume, ws.root),
     )
 
 
-def _cost_of_volume(ws: Workspace, volume: int, chapters: set[int]) -> tuple[float, int]:
-    """Стоимость по `журналы/api.jsonl`: строки с `volume == N`; старые строки без поля «volume» — том 1."""
-    cost, calls = 0.0, 0
-    for row in read_log(ws.logs):
-        row_vol = row.get("volume")
-        if row_vol is None:
-            row_vol = 1
-        if int(row_vol) != volume:
-            continue
-        if row.get("chapter") is not None and chapters and int(row["chapter"]) not in chapters:
-            continue
-        calls += 1
-        cost += float(row.get("cost_est") or 0.0)
-    return cost, calls
-
-
 def render_stats(stats: VolumeStats) -> str:
+    from . import timing
+
     lines = [f"# Том {stats.volume} — статистика", ""]
-    lines.append(f"- Глав в поглавнике: {stats.chapters_total}; зафиксировано: {len(stats.fixed)}; в работе: {len(stats.in_work)}")
+    plan = stats.chapters_total if stats.chapters_total is not None else "поглавник недоступен"
+    lines.append(f"- Глав в поглавнике: {plan}; зафиксировано: {len(stats.fixed)}; в работе: {len(stats.in_work)}")
     lines.append(f"- Слов в принятых главах: {stats.words_total}")
     lines.append(f"- Вызовов моделей: {stats.calls}; оценка стоимости: ${stats.cost:.2f}")
+    lines.append(f"- Время автора: {timing.fmt_minutes(stats.author_s)}; машинное: {timing.fmt_minutes(stats.machine_s)}")
     if stats.in_work:
         lines += ["", "## В работе", ""]
         lines += [f"- Глава {n}: {s}" for n, s in stats.in_work.items()]
@@ -256,7 +256,7 @@ class CloseResult:
     messages: list[str] = field(default_factory=list)
 
 
-def unfixed_chapters(ws: Workspace, volume: int) -> list[str]:
+def unfixed_chapters(ws: Workspace, library: Path, volume: int) -> list[str]:
     """Главы тома, которые ещё не «зафиксировано» (по поглавнику тома и папкам глав): «гл. N (состояние)»."""
     vws = ws.for_volume(volume)
     states: dict[int, str] = {}
@@ -265,15 +265,28 @@ def unfixed_chapters(ws: Workspace, volume: int) -> list[str]:
             states[n] = ChapterState(vws, n).state
         except StatusFileError:
             states[n] = "повреждено"
-    for b in _briefs_of(ws, volume):
+    for b in _briefs_of(ws, library, volume):
         states.setdefault(b.chapter, "не-начато")
     return [f"гл. {n} ({s})" for n, s in sorted(states.items()) if s != "зафиксировано"]
 
 
+def missing_prose(ws: Workspace, library: Path, volume: int) -> list[str]:
+    """Зафиксированные главы тома, у которых в библиотеке нет документа прозы (удалён, переименован,
+    другой шаблон имени в типе «проза»): рукопись без них молча была бы неполной (FR-VL-2)."""
+    have = {n for n, _ in prose_files(library, volume, ws.root)}
+    vws = ws.for_volume(volume)
+    out = []
+    for st in all_states(vws):
+        if st.state == "зафиксировано" and st.chapter not in have:
+            out.append(f"гл. {st.chapter} ({exporter.prose_name(library, volume, st.chapter, ws.root)})")
+    return out
+
+
 def close_volume(ws: Workspace, cfg: Config, library: Path, volume: int, *, again: bool = False,
                  author_confirmed: bool) -> CloseResult:
-    """Закрывает том (аудит 2, п. 27): проверка приёмки всех глав → снапшот 3.5 в библиотеку (через
-    `canonchange.canon_change`, коммит) → тег `том-N` → рукопись .md/.docx → статистика.
+    """Закрывает том (FR-VL-2). Все проверки и всё, что не трогает канон (рукопись, статистика), — ДО записи
+    в библиотеку; затем снапшот тома через `canonchange.canon_change` (коммит) и тег `том-N`: сбой на рукописи
+    не оставляет том «полузакрытым». Как и приёмка, требует библиотеку под git (иначе нет ни коммита, ни тега).
     Выгрузки должны быть тома `volume` (закрывается текущий том; другой — сначала `konveyer том открыть N`)."""
     if not author_confirmed:
         raise PermissionError("закрытие тома без подтверждения автора запрещено (FR-K2, Д-8).")
@@ -282,22 +295,37 @@ def close_volume(ws: Workspace, cfg: Config, library: Path, volume: int, *, agai
             f"закрывается только текущий том рабочей области (сейчас том {ws.volume}); "
             f"переключитесь: `konveyer том открыть {volume}`."
         )
+    if not gitops.is_repo(library):
+        raise RuntimeError(
+            "библиотека не под git — закрытие тома невозможно (снапшот тома коммитится и помечается тегом, "
+            "как приёмка главы). Инициализируйте репозиторий в библиотеке (git init; git add -A; git commit), затем повторите."
+        )
     exporter.run_export(library, ws.exports, ws.logs, volume, ws.root)
-    pending = unfixed_chapters(ws, volume)
+    pending = unfixed_chapters(ws, library, volume)
     if pending:
         raise RuntimeError(
             f"том {volume} нельзя закрыть: не зафиксированы {', '.join(pending)}. "
             "Доведите главы до «зафиксировано» (`konveyer канон N --применить`)."
         )
-    if not _briefs_of(ws, volume):
+    if not _briefs_of(ws, library, volume):
         raise RuntimeError(f"в поглавнике нет глав тома {volume} — закрывать нечего.")
+    lost = missing_prose(ws, library, volume)
+    if lost:
+        raise RuntimeError(
+            f"том {volume} нельзя закрыть: у зафиксированных глав нет документа прозы в библиотеке — {', '.join(lost)}. "
+            "Верните файлы прозы (или откатите главы), затем повторите."
+        )
     doc = library / snapshot_doc_name(volume, ws.root)
     messages: list[str] = []
     if doc.exists() and not again:
         raise RuntimeError(
             f"снапшот {doc.name} уже есть в библиотеке; чтобы переписать его — `konveyer том закрыть {volume} --заново`."
         )
+    # 1. рукопись и статистика — канон не трогают; их сбой (нет папки, нет прав, python-docx) ничего не портит
     draft = snapshot.build_snapshot(ws, volume)
+    md, docx_path, hint = build_manuscript(ws, library, volume)
+    stats_path = write_stats(ws, volume_stats(ws, library, volume))
+    # 2. снапшот — в канон через единый конвейер (FR-K3), затем тег
     text = draft.read_text(encoding="utf-8").replace(
         "Черновик сгенерирован конвейером; вносится в канон правкой библиотеки + `konveyer канон-коммит`.",
         f"Внесён в канон командой `konveyer том закрыть {volume}` (срез мира на конец тома).",
@@ -309,24 +337,19 @@ def close_volume(ws: Workspace, cfg: Config, library: Path, volume: int, *, agai
     )
     messages.append(result.message)
     tag: str | None = None
-    if gitops.is_repo(library):
-        sha = result.commit or gitops.head(library)
-        name = tag_name(volume)
-        try:
-            existing = gitops.tags(library, name)
-            if existing and not again:
-                messages.append(f"тег {name} уже стоит — оставлен как есть.")
-                tag = name
-            else:
-                if existing:
-                    gitops.delete_tag(library, name)
-                tag = gitops.tag(library, name, sha)
-        except (RuntimeError, FileNotFoundError) as e:
-            messages.append(f"тег {name} не поставлен: {e}")
-    else:
-        messages.append("библиотека не под git — тег тома не поставлен.")
-    md, docx_path, hint = build_manuscript(ws, library, volume)
-    stats_path = write_stats(ws, volume_stats(ws, library, volume))
+    sha = result.commit or gitops.head(library)
+    name = tag_name(volume)
+    try:
+        existing = gitops.tags(library, name)
+        if existing and not again:
+            messages.append(f"тег {name} уже стоит — оставлен как есть.")
+            tag = name
+        else:
+            if existing:
+                gitops.delete_tag(library, name)
+            tag = gitops.tag(library, name, sha)
+    except (RuntimeError, FileNotFoundError) as e:
+        messages.append(f"тег {name} не поставлен: {e}")
     return CloseResult(
         volume=volume, snapshot_doc=doc, commit=result.commit, tag=tag, manuscript_md=md,
         manuscript_docx=docx_path, docx_hint=hint, stats_path=stats_path, messages=messages,

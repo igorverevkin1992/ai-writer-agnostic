@@ -126,7 +126,7 @@ def choose_variant(ws: Workspace, chapter: int, k: int, label: str) -> None:
     guard.write_text(ws.chapter_dir(chapter) / f"черновик_{k}.meta.json", json.dumps(meta, ensure_ascii=False, indent=2) + "\n")
 
 
-# ------------------------------------------------------------ правки кодом (аудит 2, п. 19; Р-023)
+# ------------------------------------------------------------ правки кодом (дословные БЫЛО/СТАЛО без модели)
 
 
 @dataclass
@@ -208,7 +208,7 @@ def apply_edits_locally(ws: Workspace, cfg: Config, chapter: int, чернови
 
 def edit_prompt(ws: Workspace, chapter: int, черновик_k: int, edits: list[Edit], draft_text: str | None = None) -> str:
     """FR-W2: принятый черновик + правки + инструкция «внести точно» (шаблон в шаблоны/).
-    `draft_text` — промежуточный текст после правок кодом (Р-023); без него — сам черновик_k."""
+    `draft_text` — промежуточный текст после правок кодом; без него — сам черновик_k."""
     tpl = None
     for cand in (ws.root / "промпты" / "правки.md.j2", ws.templates / "правки.md.j2"):
         if cand.exists():

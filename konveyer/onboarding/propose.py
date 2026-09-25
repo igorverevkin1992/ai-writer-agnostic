@@ -523,7 +523,7 @@ def _proposed_name(spec: catalog.TypeSpec, source: str, volume: int | None, take
 
 def untouched_skeletons(library: Path | None, man: manifest_mod.Manifest | None, types: dict[str, catalog.TypeSpec]) -> set[str]:
     """Документы стартового комплекта, которые автор не трогал (текст равен каркасу типа): онбординг может
-    занять их имя вместо того, чтобы класть «14_Мир_2.md» рядом с пустым «14_Мир.md»."""
+    занять их имя вместо того, чтобы класть «Мир_2.md» рядом с пустым «Мир.md»."""
     from .. import project
 
     out: set[str] = set()

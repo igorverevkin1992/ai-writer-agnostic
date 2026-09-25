@@ -146,11 +146,12 @@ def regress(llm: bool = False) -> dict:
 def add_golden(
     test_id: str, fragment_file: Path, expect: list[str] | None = None, focal: str = "", year: int | None = None,
     echelon: str = "Э1", chapter: int | None = None, window_file: Path | None = None, use_corpus: bool = False,
-    volume_words: int | None = None,
+    volume_words: int | None = None, ignore: list[str] | None = None,
 ) -> Path:
     """Добавить золотой тест из пойманной автором ошибки одной командой (FR-RG-1). Срез контекста: `chapter` берёт
     бриф главы (фокал, год, том, объём, «НЕ знает») и её окно из папки главы; `window_file` — своё окно (утечка окна);
-    `use_corpus` — прогон против корпуса (межглавные повторы); `volume_words` — объём брифа. Возвращает путь теста."""
+    `use_corpus` — прогон против корпуса (межглавные повторы); `volume_words` — объём брифа; `ignore` — проверки,
+    срабатывание которых на этом фрагменте не считается «лишним». Возвращает путь теста."""
     ws, cfg, lib = _ctx()
     if not Path(fragment_file).exists():
         raise StepError(f"нет файла фрагмента {Path(fragment_file).name} — укажите существующий файл.")
@@ -160,6 +161,7 @@ def add_golden(
         context_slice=regression_mod.context_slice(ws, focal=focal, year=year, chapter=chapter, window_file=window_file,
                                                    use_corpus=use_corpus, volume_words=volume_words),
         expected_flags=list(expect or []),
+        ignore_flags=list(ignore or []),
         echelon=echelon,  # type: ignore[arg-type]
     )
     path = regression_mod.add_test(ws, test)

@@ -82,7 +82,7 @@ def index_doc_path(man: Manifest, library: Path, types: dict[str, catalog.TypeSp
         if e.тип == "индекс_библиотеки" and not e.is_folder:
             return library / e.файл
     spec = types.get("индекс_библиотеки")
-    return library / (spec.default_name if spec and spec.default_name else "00_Индекс_библиотеки.md")
+    return library / (spec.default_name if spec and spec.default_name else "Индекс_библиотеки.md")
 
 
 # ------------------------------------------------------------------ снимки для отката

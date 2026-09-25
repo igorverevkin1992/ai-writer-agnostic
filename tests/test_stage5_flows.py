@@ -80,9 +80,12 @@ def test_retest_пакет_и_запрет_фиксации(ws, library, monkeyp
     assert not ws.window_path(1).exists()  # окно главы в работе не создаётся/не трогается (2.10)
     # фиксация без прогона регрессии запрещена (FR-R3)
     r = runner.invoke(app, ["пере-тест", "--зафиксировать"])
-    assert r.exit_code == 1 and "FR-R3" in r.output
-    # после зелёного прогона — разрешена
+    assert r.exit_code == 1 and "FR-RG-3" in r.output
+    # после зелёного прогона — разрешена, но только с пакетом, где есть ответ модели-Писателя (FR-RT-2)
     assert runner.invoke(app, ["regress"]).exit_code == 0
+    r = runner.invoke(app, ["пере-тест", "--зафиксировать"])
+    assert r.exit_code == 1 and "нет пакета" in r.output, r.output
+    (packs[-1] / "ответ_gemini-3.1-pro.md").write_text("Ответ ручного прогона.\n", encoding="utf-8")
     r = runner.invoke(app, ["пере-тест", "--зафиксировать"])
     assert r.exit_code == 0, r.output
     assert any(p.joinpath("журнал_запись.md").exists() for p in (ws.root / "пере-тест").iterdir())

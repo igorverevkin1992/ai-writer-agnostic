@@ -1149,7 +1149,7 @@ _ID_RE = re.compile(r"^(\D*)(\d+)")
 
 
 def _decision_numbering(decisions) -> tuple[str, int, int] | None:
-    """(префикс, последний номер, ширина номера) по идентификаторам журнала («Р-012» → «Р-», 12, 3); формат
+    """(префикс, последний номер, ширина номера) по идентификаторам журнала («Х-012» → «Х-», 12, 3); формат
     номера — из документа, не из движка (П-1)."""
     parsed = [m for d in decisions if (m := _ID_RE.match(str(d.decision_id).strip()))]
     if not parsed:

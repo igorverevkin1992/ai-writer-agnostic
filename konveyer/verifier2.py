@@ -123,7 +123,12 @@ def system_prompt(ws: Workspace, cfg: Config) -> str:
 
 
 def build_prompt(ws: Workspace, chapter: int, draft: int, cfg: Config | None = None) -> tuple[str, str]:
-    """(system, user): срезы по включённым модулям (FR-V2-1), текст в ограждении (FR-V2-2)."""
+    """(system, user): срезы по включённым модулям (FR-V2-1), текст черновика в ограждении (FR-V2-2)."""
+    return build_prompt_text(ws, chapter, ws.draft_path(chapter, draft).read_text(encoding="utf-8"), cfg)
+
+
+def build_prompt_text(ws: Workspace, chapter: int, text: str, cfg: Config | None = None) -> tuple[str, str]:
+    """То же для произвольного текста главы (ответ модели в пакете пере-теста, FR-RT-1)."""
     cfg = cfg or Config()
     exports_dir = ws.exports
     man = _manifest(ws)
@@ -140,7 +145,6 @@ def build_prompt(ws: Workspace, chapter: int, draft: int, cfg: Config | None = N
     plants = compiler.chapter_plants(exports_dir, brief)
     doses = compiler.chapter_doses(exports_dir, brief)
     documents = compiler.chapter_documents(exports_dir, brief)
-    text = ws.draft_path(chapter, draft).read_text(encoding="utf-8")
     compiler.configure_markers(ws.root)
     try:
         drama = circles.frame_for_chapter(exporter.load_circles(exports_dir), exporter.load_acts(exports_dir), chapter)

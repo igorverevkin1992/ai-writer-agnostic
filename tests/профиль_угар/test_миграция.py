@@ -17,7 +17,9 @@ from tests.профиль import LIBRARY_ENV
 
 _FALLBACK = Path(__file__).resolve().parents[3] / "igorverevkin1992" / "ugar-library"
 _ENV = os.environ.get(LIBRARY_ENV) or os.environ.get("KONVEYER_ЭТАЛОН")
-ETALON = Path(_ENV) if _ENV else _FALLBACK  # пустой путь не должен превращаться в текущую папку (Path("") — это cwd)
+# без переменной и без соседнего клона — пропуск; `Path("")` считался бы текущей папкой (и репозиторий кода
+# копировался бы как «библиотека эталона»)
+ETALON = Path(_ENV) if _ENV else _FALLBACK
 pytestmark = pytest.mark.skipif(not ETALON.is_dir(), reason=f"библиотека эталона не подключена ({LIBRARY_ENV})")
 
 

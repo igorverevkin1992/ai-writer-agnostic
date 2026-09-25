@@ -3,7 +3,7 @@
 Графики: правки/1000 слов по главам; метрики Э1 с коридорами норм и флагом
 отклонения >20% от среднего части; TTR нарастающим окном; расход токенов и
 стоимость по ролям. Плюс: таблица глав с состояниями FSM и временем автора
-(критерий приёмки 1: такт ≤40 минут работы автора).
+(§14.3, п. 7: такт ≤40 минут работы автора).
 """
 
 from __future__ import annotations
@@ -61,10 +61,16 @@ def _read_metrics(ws: Workspace) -> list[dict]:
     path = ws.logs / "метрики.jsonl"
     if not path.exists():
         return []
-    rows = [json.loads(ln) for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
     latest: dict[int, dict] = {}
-    for r in rows:
-        latest[r["chapter"]] = r  # последняя запись главы побеждает
+    for ln in path.read_text(encoding="utf-8").splitlines():
+        if not ln.strip():
+            continue
+        try:
+            r = json.loads(ln)
+        except ValueError:
+            continue  # обрывок строки — не повод ронять дашборд
+        if isinstance(r, dict) and isinstance(r.get("chapter"), int):
+            latest[r["chapter"]] = r  # последняя запись главы побеждает
     return [latest[k] for k in sorted(latest)]
 
 
@@ -93,7 +99,7 @@ def _chapters_block(ws: Workspace) -> str:
 
 
 def render_dashboard(ws: Workspace) -> str:
-    """HTML дашборда в памяти — панель отдаёт его по GET без записи на диск (аудит 4.3)."""
+    """HTML дашборда в памяти — панель отдаёт его по GET без записи на диск (FR-SC-7: GET без побочных эффектов)."""
     metrics = _read_metrics(ws)
     chapters = [m["chapter"] for m in metrics]
     try:

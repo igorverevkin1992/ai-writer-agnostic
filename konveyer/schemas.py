@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ---------------------------------------------------------------- выгрузки (§6.4)
 
@@ -446,13 +446,28 @@ class DiffReport(BaseModel):
 
 
 class GoldenTest(BaseModel):
-    """Золотой тест (FR-RG-1)."""
+    """Золотой тест (FR-RG-1): `{id, фрагмент, срез_контекста, ожидаемые_флаги}`; `ignore_flags`
+    (`игнорировать_флаги`) — проверки, срабатывание которых для этого фрагмента не считается «лишним»
+    (нормы объёма и длин фраз на коротком фрагменте — шум, а не ложное срабатывание)."""
 
     test_id: str
     fragment: str
     context_slice: dict = Field(default_factory=dict)  # chapter, focal, year, window?
     expected_flags: list[str] = Field(default_factory=list)  # check_id / type
+    ignore_flags: list[str] = Field(default_factory=list)
     echelon: Literal["Э1", "Э2"] = "Э1"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _russian_keys(cls, data):
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+        for ru, en in (("id", "test_id"), ("фрагмент", "fragment"), ("срез_контекста", "context_slice"),
+                       ("ожидаемые_флаги", "expected_flags"), ("игнорировать_флаги", "ignore_flags"), ("эшелон", "echelon")):
+            if ru in d:
+                d.setdefault(en, d.pop(ru))
+        return d
 
 
 # ------------------------------------------------------------- линтер канона

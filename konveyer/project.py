@@ -80,7 +80,7 @@ def skeleton_for(spec: catalog.TypeSpec, volume: int = 1) -> str:
 
 
 def _title(spec: catalog.TypeSpec, volume: int) -> str:
-    """«21_Каркасы_Том{том}.md» → «21. Каркасы · Том 1»; без имени по умолчанию — имя типа."""
+    """«NN_Имя_Том{том}.md» → «NN. Имя · Том 1»; без имени по умолчанию — имя типа."""
     if not spec.default_name:
         return spec.name
     stem = spec.default_name.split("/")[0].rsplit(".", 1)[0]

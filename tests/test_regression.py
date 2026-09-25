@@ -1,4 +1,4 @@
-"""Регрессия (FR-R2…FR-R4): 100% стартового корпуса ловится (критерий приёмки 4)."""
+"""Регрессия (FR-RG-2…FR-RG-4): 100% стартового корпуса ловится."""
 
 import json
 
@@ -33,6 +33,6 @@ def test_пропуск_флага_красная(ws):
     )
     report = regression.run_regression(ws)
     assert not report["зелёная"]
-    assert regression.is_green(ws) is False  # FR-R3: блокирует смену конфигурации
+    assert regression.is_green(ws) is False  # FR-RG-3: блокирует смену конфигурации
     data = json.loads((ws.regression / "report.json").read_text(encoding="utf-8"))
     assert "ложный_ожидаемый" in data["провалено"]

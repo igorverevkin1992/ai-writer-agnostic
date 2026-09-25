@@ -1,8 +1,9 @@
-"""Многотомность (аудит 2, этап 5, п. 27) без ломки тома 1: `главы/001` и документы без номера тома
+"""Многотомность (FR-VL-1…FR-VL-3) без ломки тома 1: `главы/001` и документы без номера тома
 работают как раньше; том 2 живёт в `главы/Т2/`, берёт документы `…_Том2.md`, состояния изолированы;
 `konveyer volume close/open/status`."""
 
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -200,10 +201,15 @@ def test_config_volume_и_ctx(ws, library):
     assert load_config(ws).volume == 1
     set_volume(ws, 2)
     text = (ws.root / "конфиг.yaml").read_text(encoding="utf-8")
-    assert "library_dir: Библиотека" in text and "volume: 2" in text
+    assert "library_dir: Библиотека" in text and re.search(r"^(volume|текущий_том): 2$", text, re.M)
     assert load_config(ws).volume == 2
     set_volume(ws, 3)
-    assert (ws.root / "конфиг.yaml").read_text(encoding="utf-8").count("volume:") == 1
+    text = (ws.root / "конфиг.yaml").read_text(encoding="utf-8")
+    assert len(re.findall(r"^(?:volume|текущий_том):", text, re.M)) == 1
+    # ключ автора сохраняется (П-8): латинский `volume:` не подменяется русским и наоборот
+    (ws.root / "конфиг.yaml").write_text("library_dir: Библиотека\nvolume: 1\n", encoding="utf-8")
+    set_volume(ws, 2)
+    assert "volume: 2" in (ws.root / "конфиг.yaml").read_text(encoding="utf-8")
     with pytest.raises(ValueError):
         Config(volume=0)
     set_volume(ws, 2)

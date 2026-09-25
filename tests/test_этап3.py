@@ -753,6 +753,8 @@ def test_том_снапшот_через_сессию_записи_и_руко�
         st = ChapterState(ws, n)
         st.data["состояние"] = "зафиксировано"
         st._save()
+        # у каждой зафиксированной главы есть проза: без неё закрытие тома отказывает (FR-VL-2, рукопись без пропусков)
+        (library / "Проза" / f"Том1_Глава0{n}.md").write_text(f"Текст главы {n}.\n", encoding="utf-8")
     gitops.commit_all(library, "проза")
     exporter.run_export(library, ws.exports, ws.logs)
     seen = []

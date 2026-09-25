@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .. import adapters, backup as backup_mod, dashboard as dashboard_mod, gitops, regression as regression_mod
+from .. import adapters, backup as backup_mod, dashboard as dashboard_mod, exporter, gitops, regression as regression_mod
 from .. import review as review_mod, timing, verifier2
 from ..errors import StepError
 from ..fsm import ChapterState, all_states
@@ -153,7 +153,7 @@ def doctor() -> None:
         lay = backup_mod.layout(lib, ws.root)
         item(lay.kind != "no-git", "библиотека под git", "git init внутри библиотеки (версионирование канона, §5.1)")
         if lay.kind != "no-git":
-            item(lay.ok, lay.label, lay.hint)  # три раскладки (п. 28): своя / внутри репозитория кода / не под git
+            item(lay.ok, lay.label, lay.hint)  # три раскладки (FR-BK-4): своя / внутри репозитория кода / не под git
         if gitops.is_repo(lib):
             item(gitops.has_identity(lib) or bool(cfg.commit_author), "авторство git настроено",
                  "git config user.email/user.name или commit_author в конфиг.yaml (Д-8)")
@@ -173,7 +173,7 @@ def doctor() -> None:
     arch_age = backup_mod.archive_age_days(arch_dir)
     if arch_age is None:
         item(None if cfg.backup_dir is None else False, f"архив рабочей области: ещё не делался ({arch_dir})",
-             "`konveyer бэкап --архив`; backup_dir в конфиг.yaml — архив после каждой приёмки главы (п. 29)")
+             "`konveyer бэкап --архив`; папка_архива (backup_dir) в конфиг.yaml — архив после каждой приёмки главы (FR-BK-2)")
     else:
         item(arch_age <= 7, f"архив рабочей области: {arch_age:.1f} дн. назад ({backup_mod.latest_archive(arch_dir)})",
              "`konveyer бэкап --архив`")
@@ -214,7 +214,7 @@ def doctor() -> None:
         item(has_module("google.genai"), "SDK google-genai", "pip install 'konveyer[llm]'")
     if "anthropic" in providers:
         item(has_module("anthropic"), "SDK anthropic", "pip install 'konveyer[llm]'")
-    # пины моделей против API (п. 31): только чтение метаданных, ни одной генерации
+    # пины моделей против API (FR-RT-3): только чтение метаданных, ни одной генерации
     seen: set[tuple[str, str]] = set()
     labels = {"писатель": "Писатель", "верификатор2": "Верификатор-2", "канонист": "Канонист",
               "аналитик": "аналитик", "линтер": "линтер", "архивариус": "архивариус"}
@@ -236,9 +236,9 @@ def doctor() -> None:
         )
     else:
         label = "регрессия зелёная" if green else "регрессия КРАСНАЯ"
-    item(green, label, "`konveyer регрессия`" if green is None else "пропущенные флаги блокируют смену конфигурации (FR-R3)")
+    item(green, label, "`konveyer регрессия`" if green is None else "пропущенные флаги блокируют смену конфигурации (FR-RG-3)")
     n_tests = len(regression_mod.load_tests(ws)) if ws.regression.exists() else 0
-    item(n_tests > 0, f"золотых тестов: {n_tests}", "корпус пуст — регрессия не может быть зелёной; пополните: `konveyer золотой` (FR-R1)")
+    item(n_tests > 0, f"золотых тестов: {n_tests}", "корпус пуст — регрессия не может быть зелёной; пополните: `konveyer золотой` (FR-RG-1)")
 
 
 def dashboard() -> Path:
@@ -254,8 +254,13 @@ def accounting(volume: int | None = None) -> str:
     from .. import accounting as accounting_mod
 
     ws, cfg, lib = _ctx()
-    acc = accounting_mod.volume_account(ws, volume)
-    text = accounting_mod.render(acc, cfg)
+    if volume is None or volume == ws.volume:
+        try:
+            exporter.run_export(lib, ws.exports, ws.logs, ws.volume, ws.root)  # поглавник тома — для плана и прогноза
+        except Exception as e:  # noqa: BLE001 — сводка без поглавника, не отказ (П-5)
+            secho(f"⚠ выгрузки не пересобраны: {e}", fg=colors.YELLOW)
+    acc = accounting_mod.volume_account(ws, volume, library=lib)
+    text = accounting_mod.render(acc, cfg, ws)
     echo(text)
     path = accounting_mod.save(ws, acc, cfg)
     for w in accounting_mod.warnings(ws, cfg):
