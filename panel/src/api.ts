@@ -14,6 +14,12 @@ export class ApiError extends Error {
   }
 }
 
+/** Текст ошибки для тоста: без префикса «ApiError: »/«Error: », который даёт String(e). */
+export function errText(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return String(e).replace(/^(Api)?Error:\s*/, "");
+}
+
 export function isConflict(e: unknown): boolean {
   return e instanceof ApiError && (e.status === 409 || e.code === "конфликт");
 }

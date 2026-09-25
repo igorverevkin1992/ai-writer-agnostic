@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { apiGet, apiPost } from "./api";
+import { apiGet, apiPost, errText } from "./api";
 import type { Notify, RunCommand } from "./App";
 import type { Confirm } from "./Confirm";
 import { RestoredNote, useDraft } from "./drafts";
@@ -16,6 +16,9 @@ interface CirclesData {
   prompts: string[];
   canon_status: Record<string, string>;
   in_canon: number;
+  /** документ канона, в который вносятся каркасы текущего тома (имя — из каталога типов, П-1) */
+  canon_doc: string;
+  volume: number;
 }
 
 const SCOPE_LABEL: Record<string, string> = { книга: "Книга", акт: "Акты", глава: "Главы" };
@@ -38,6 +41,8 @@ export function Circles(props: {
   const [data, setData] = useState<CirclesData | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [manualStem, setManualStem] = useState<string>("");
+  // предпросмотр внесения в канон (FR-DR-4): дифф документа каркасов до подтверждения
+  const [preview, setPreview] = useState<{ doc: string; lines: string[]; changed: boolean } | null>(null);
   // вставленный ответ модели (ручной режим) — в localStorage и в реестре «не сохранено» (аудит 5.3)
   const ds = useDraft("круги:ручной", "", "в ручном режиме «Кругов истории»");
   const pasted = ds.text;
@@ -46,7 +51,7 @@ export function Circles(props: {
   const busy = jobBusy || pending;
 
   const load = useCallback(() => {
-    apiGet<CirclesData>("/api/circles").then(setData).catch((e) => notify(String(e)));
+    apiGet<CirclesData>("/api/circles").then(setData).catch((e) => notify(errText(e)));
   }, [notify]);
   useEffect(load, [load, refreshTick]);
 
@@ -62,11 +67,21 @@ export function Circles(props: {
 
   const pendingCanon = Object.values(data.canon_status).filter((s) => s !== "в каноне").length;
 
+  const showPreview = () =>
+    run(async () => {
+      if (preview) return setPreview(null);
+      try {
+        setPreview(await apiGet<{ doc: string; lines: string[]; changed: boolean }>("/api/circles/preview"));
+      } catch (e) {
+        notify(errText(e));
+      }
+    });
+
   const toCanon = () =>
     run(async () => {
       const ok = await confirm(
-        `Внести ${data.circles.length} круг(ов) в документ 2.1 библиотеки (21_Круги_истории_Том1.md) и закоммитить канон? ` +
-        "После этого окна глав получат секцию «Драматургия», а Э2 — проверку 4.4. (Д-8)",
+        `Внести ${data.circles.length} каркас(ов) в документ «${data.canon_doc}» библиотеки (том ${data.volume}) и закоммитить канон? ` +
+        "После этого окна глав получат секцию «Драматургия», а Э2 — проверку драматургии. (Д-8)",
       );
       if (!ok) return;
       await runCommand("circles-canon");
@@ -75,12 +90,12 @@ export function Circles(props: {
   const copyPrompt = (stem: string) =>
     run(async () => {
       try {
-        const r = await apiGet<{ text: string }>(`/api/circles/prompt/${stem}`);
+        const r = await apiGet<{ text: string }>(`/api/circles/prompt/${encodeURIComponent(stem)}`);
         await navigator.clipboard.writeText(r.text);
         notify(`Промпт «${stem}» скопирован — вставьте ответ модели ниже.`, "ok");
         setManualStem(stem);
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
 
@@ -94,7 +109,7 @@ export function Circles(props: {
         ds.discard(); // принято сервером — черновик больше не нужен
         load();
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
 
@@ -104,9 +119,9 @@ export function Circles(props: {
     <>
       <h1>Круги истории — каркас драматургии</h1>
       <p className="muted">
-        Круг истории (Р-020) — несущий каркас драматургии и темпа: круг тома → круги {nActs} актов (Р-021) →
-        круги глав; каждый уровень строится внутри шага уровня выше. Черновики лежат в <code>драматургия/</code>;
-        после внесения в канон (документ 2.1) они попадают в окно Писателя («Драматургия главы») и в проверку Э2 (4.4).
+        Каркас драматургии по методике проекта: каркас тома → каркасы {nActs} актов → каркасы глав; каждый уровень
+        строится внутри шага уровня выше. Черновики лежат в <code>драматургия/</code>; после внесения в канон
+        (документ «{data.canon_doc}») они попадают в окно Писателя («Драматургия главы») и в проверку Э2.
         {" "}В каноне сейчас: <strong>{data.in_canon}</strong> круг(ов)
         {pendingCanon > 0 && <>, не внесено или изменено: <strong>{pendingCanon}</strong></>}.
       </p>
@@ -128,10 +143,26 @@ export function Circles(props: {
         <button disabled={busy} onClick={() => generate("акты")}>Акты</button>
         <button disabled={busy} onClick={() => generate("главы")}>Главы</button>
         <button disabled={busy} onClick={() => generate("всё", true)}>Пересчитать всё</button>
+        <button disabled={busy || data.circles.length === 0} onClick={showPreview}>
+          {preview ? "Скрыть изменения" : "Что изменится в каноне"}
+        </button>
         <button className={pendingCanon > 0 ? "primary" : ""} disabled={busy || data.circles.length === 0} onClick={toCanon}>
           Внести в канон{pendingCanon > 0 ? ` (${pendingCanon})` : ""}
         </button>
       </div>
+      {preview && (
+        <div className="card" data-testid="circles-preview">
+          <strong>{preview.doc}</strong>{" "}
+          <span className="muted">{preview.changed ? "— изменения при внесении в канон:" : "— уже совпадает с черновиками"}</span>
+          {preview.changed && (
+            <div className="diff">
+              {preview.lines.map((l, i) => (
+                <div key={i} className={l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : ""}>{l}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {data.prompts.length > 0 && (
         <details className="card">

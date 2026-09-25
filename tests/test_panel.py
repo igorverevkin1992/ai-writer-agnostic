@@ -10,7 +10,7 @@ import urllib.parse
 import pytest
 
 from konveyer import review, server, verifier2
-from konveyer.config import Config
+from konveyer.config import library_dir, load_config
 from konveyer.fsm import ChapterState
 from konveyer.schemas import Flag, Resolution
 
@@ -23,9 +23,11 @@ def _no_api_keys(monkeypatch):
 
 @pytest.fixture
 def panel(ws, library, monkeypatch):
-    """Живой сервер панели на свободном порту; cwd — рабочая область (для команд)."""
+    """Живой сервер панели на свободном порту; cwd — рабочая область (для команд).
+    Конфиг и путь библиотеки — как у `konveyer panel` (`load_config`/`library_dir`), а не значения по умолчанию."""
     monkeypatch.chdir(ws.root)
-    srv = server.serve(ws, Config(), library, port=0)
+    cfg = load_config(ws)
+    srv = server.serve(ws, cfg, library_dir(ws, cfg), port=0)
     port = srv.server_address[1]
     thread = threading.Thread(target=srv.serve_forever, daemon=True)
     thread.start()
@@ -76,14 +78,42 @@ def test_пост_без_заголовка_блокирован(panel):
     assert code == 403 and "X-Konveyer-Panel" in data["error"]
 
 
-def test_обход_статики_блокирован(panel):
-    req = urllib.request.Request(f"{panel}/..%2f..%2f" + urllib.parse.quote("конфиг.yaml"))
-    try:
-        with urllib.request.urlopen(req, timeout=5) as r:
-            body = r.read()
-            assert b"library_dir" not in body  # отдаётся SPA, не конфиг
-    except urllib.error.HTTPError as e:
-        assert e.code in (400, 403, 404)
+def _raw_get(base: str, path: str) -> tuple[int, bytes]:
+    """GET сырым сокетом: путь уходит как есть — клиент не нормализует «..» за сервер."""
+    import http.client
+    import socket
+
+    port = int(base.rsplit(":", 1)[1])
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
+        sock.sendall(f"GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n".encode("utf-8"))
+        r = http.client.HTTPResponse(sock)
+        r.begin()
+        return r.status, r.read()
+
+
+TRAVERSALS = [
+    "/../конфиг.yaml", "/..%2f..%2fконфиг.yaml", "/%2e%2e/конфиг.yaml", "/assets/../../конфиг.yaml", "/../../etc/passwd",
+    "/выгрузки/norms.json", "/главы/001/окно.md", "/Библиотека/23_Поглавник_Том1.md",
+]
+
+
+@pytest.mark.parametrize("path", TRAVERSALS)
+def test_обход_статики_блокирован(panel, ws, path):
+    """FR-SC-7: статика — только из папки панели. Выход за корень → 403/404, файлы рабочей области
+    (конфиг, выгрузки, окно главы, библиотека) не отдаются ни под каким путём; SPA-роутинг отдаёт только index.html."""
+    from konveyer import compiler
+
+    compiler.compile_window(ws, ws.root / "Библиотека", 1)
+    code, body = _raw_get(panel, urllib.parse.quote(path, safe="/%"))
+    assert code in (200, 403, 404), (path, code)
+    if code == 200:
+        assert b"<!doctype html" in body[:100].lower(), path  # SPA-роутинг: index.html, не файл проекта
+    for secret in (b"library_dir", b"root:", '"norms"'.encode(), "Глава 1".encode(), "ОКНО".encode()):
+        assert secret not in body, (path, secret)
+    # сама статика отдаётся
+    assert _raw_get(panel, "/index.html")[0] == 200
+    assets = list((server._static_root() / "assets").glob("*.js"))
+    assert assets and _raw_get(panel, f"/assets/{assets[0].name}")[0] == 200
 
 
 def test_команда_compile_как_задача(panel, ws):

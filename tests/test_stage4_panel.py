@@ -1,6 +1,6 @@
-"""Этап 4 аудита — панель и сервер: 4.2–4.4, 4.6 (серверная часть), 5.3–5.6.
-
-Каждый тест ловит именно ту ошибку, что описана в АУДИТ.md.
+"""Панель и сервер (ТЗ §8.2 FR-PN-1…7, §8.3 FR-AP-2, §10 FR-SC-7): защита Host/Origin, GET без побочных
+эффектов, одна блокировка на операции, валидация и лимиты тела, хвост лога в /api/state, дифф-контроль как
+авторская правка, подсветка пересекающихся цитат.
 """
 
 import http.client
@@ -12,7 +12,7 @@ import time
 import pytest
 
 from konveyer import htmlreview, review, server, verifier2
-from konveyer.config import Config
+from konveyer.config import Config, library_dir, load_config
 from konveyer.fsm import ChapterState
 from konveyer.schemas import Flag, Resolution
 
@@ -25,8 +25,10 @@ def _no_api_keys(monkeypatch):
 
 @pytest.fixture
 def panel(ws, library, monkeypatch):
+    """Живой сервер с конфигом рабочей области (`load_config`/`library_dir`), как у `konveyer panel`."""
     monkeypatch.chdir(ws.root)
-    srv = server.serve(ws, Config(), library, port=0)
+    cfg = load_config(ws)
+    srv = server.serve(ws, cfg, library_dir(ws, cfg), port=0)
     port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield port
@@ -304,15 +306,18 @@ def test_diff_check_author_в_командах(ws, library, monkeypatch):
     calls: list[tuple] = []
     monkeypatch.setattr(tact, "diff_check", lambda chapter, author_fix=False: calls.append((chapter, author_fix)))
     api = server.PanelAPI(ws, Config(), library)
-    api.run_command("diff-check-author", 7)
+    api.run_command("diff-check-author", 3)
     deadline = time.time() + 5
     while api.jobs.busy and time.time() < deadline:
         time.sleep(0.05)
-    assert calls == [(7, True)]
-    api.run_command("diff-check", 7)
+    assert calls == [(3, True)]
+    api.run_command("diff-check", 3)
     while api.jobs.busy and time.time() < deadline:
         time.sleep(0.05)
-    assert calls[-1] == (7, False)
+    assert calls[-1] == (3, False)
+    # главы вне плана тома нет — команда для неё не стартует (404 «нет объекта», FR-AP-2)
+    with pytest.raises(FileNotFoundError, match="нет в плане"):
+        api.run_command("diff-check", 7)
 
 
 # ----------------------------------------------------------- 5.3 подсветка пересекающихся цитат

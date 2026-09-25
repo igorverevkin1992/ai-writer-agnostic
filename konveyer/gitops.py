@@ -210,6 +210,24 @@ def dirty(repo: Path) -> bool:
     return bool(_git(repo, "status", "--porcelain", "--", ".", check=False))
 
 
+def file_log(repo: Path, rel: str, limit: int = 30) -> list[dict]:
+    """История одного файла: [{sha, date, author, message}] от новых к старым (`git log --follow`);
+    пусто — файл ещё не коммитился."""
+    out = _git(repo, "log", f"--max-count={int(limit)}", "--follow", "--format=%H%x1f%cI%x1f%an%x1f%s", "--", rel, check=False)
+    commits = []
+    for line in out.splitlines():
+        parts = line.split("\x1f")
+        if len(parts) == 4:
+            commits.append({"sha": parts[0], "date": parts[1], "author": parts[2], "message": parts[3]})
+    return commits
+
+
+def file_diff(repo: Path, sha: str, rel: str) -> list[str]:
+    """Изменения файла в коммите `sha` — строки unified diff без заголовка коммита."""
+    out = _git(repo, "show", "--format=", "--no-color", sha, "--", rel, check=False)
+    return out.splitlines()
+
+
 def last_commit_age_days(repo: Path) -> float | None:
     out = _git(repo, "log", "-1", "--format=%ct", check=False)
     if not out:

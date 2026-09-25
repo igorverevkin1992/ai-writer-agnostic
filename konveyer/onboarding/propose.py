@@ -776,6 +776,10 @@ def set_decision(ws: Workspace, file: str, decision: str) -> Proposal:
     decision = decision.strip()
     if not valid_decision(decision):
         raise ValueError(f"решение «{decision}»: допустимо {', '.join(DECISIONS)}, тип:<имя>, склеить:<файл>, колонка:<поле>=<заголовок>")
+    if decision.startswith("тип:"):
+        known = catalog.load_types(ws.root)
+        if decision[4:].strip() not in known:
+            raise ValueError(f"тип «{decision[4:].strip()}» неизвестен: один из {', '.join(sorted(known))}")
     proposals = load(ws)
     pr = next((p for p in proposals if p.файл == file), None)
     if pr is None:

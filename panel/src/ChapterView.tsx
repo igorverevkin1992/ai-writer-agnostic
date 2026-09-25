@@ -1,13 +1,14 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { apiGet, apiPost } from "./api";
+import { apiGet, apiPost, errText, isConflict } from "./api";
 import type { Notify, RunCommand, TabRequest } from "./App";
 import type { Confirm } from "./Confirm";
 import { DirtyContext, readDraft, removeDraft, RestoredNote, useDirtyKeys, useDraft } from "./drafts";
+import { compactDiff, lineDiff } from "./diff";
 import { appendPair, countOccurrences, describeFound, hasParagraphBreak, parseEdits } from "./edits";
 import { highlight, type Mark } from "./highlight";
 import { usePending } from "./hooks";
 import { JOB_LABEL, nextStep, TAB_LABEL, TABS, type Tab } from "./nextstep";
-import type { ChapterDetail, Flag, Job, Resolution } from "./types";
+import type { ChapterDetail, Flag, Job, Registry, Resolution } from "./types";
 
 const AUTHOR_FIX_CONFIRM =
   "Считать расхождения текущего черновика с правками АВТОРСКОЙ правкой, а не самоволием Писателя? " +
@@ -37,7 +38,7 @@ const ACTIONS: Record<string, { label: string; cmd: string; primary?: boolean; c
     {
       label: "Применить пакет + коммит",
       cmd: "canonize-apply",
-      confirm: "Применить пакет к УГАР_Библиотеке и сделать git-коммит? (Д-8)",
+      confirm: "Применить пакет записей к библиотеке канона и сделать git-коммит? (Д-8)",
     },
   ],
   "зафиксировано": [],
@@ -93,7 +94,7 @@ export function ChapterView(props: {
   }, [tabRequest, chapter]);
 
   const load = useCallback(() => {
-    apiGet<ChapterDetail>(`/api/chapter/${chapter}`).then(setD).catch((e) => notify(String(e)));
+    apiGet<ChapterDetail>(`/api/chapter/${chapter}`).then(setD).catch((e) => notify(errText(e)));
   }, [chapter, notify]);
 
   useEffect(load, [load, refreshTick]);
@@ -125,7 +126,7 @@ export function ChapterView(props: {
         await apiPost(`/api/chapter/${chapter}/accept`);
         load();
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
 
@@ -136,7 +137,7 @@ export function ChapterView(props: {
         await apiPost(`/api/chapter/${chapter}/rollback`, {});
         load();
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
 
@@ -148,7 +149,7 @@ export function ChapterView(props: {
         notify(`Вычеркнуто самоволок: ${r.resolved}.`, "ok");
         load();
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
 
@@ -328,7 +329,7 @@ function Reading(props: {
       </h2>
       {d.flags.length === 0 && <p className="muted">Флагов нет{d.state === "сгенерировано" || d.state === "собрано" ? " (Э2 ещё не запускался)" : ""}.</p>}
       {d.flags.map((f) => (
-        <FlagCard key={f.flag_id} f={f} chapter={d.chapter}
+        <FlagCard key={f.flag_id} f={f} chapter={d.chapter} registries={d.registries}
           resolution={d.resolutions.find((r) => r.flag_id === f.flag_id)}
           canResolve={hasResolutions} reload={reload} notify={notify}
           onEdit={d.text ? () => openEditor(f.quote, `флаг ${f.flag_id}`) : undefined} />
@@ -336,7 +337,8 @@ function Reading(props: {
 
       {editor && d.text != null && (
         <ReplaceEditor key={editor.before + editor.source} chapter={d.chapter} text={d.text} before={editor.before}
-          source={editor.source} editsMd={d.edits_md} onClose={() => setEditor(null)} reload={reload} notify={notify} />
+          source={editor.source} editsMd={d.edits_md} editsVersion={d.edits_version}
+          onClose={() => setEditor(null)} reload={reload} notify={notify} />
       )}
 
       {html ? (
@@ -364,10 +366,10 @@ function Reading(props: {
 /** Пара «БЫЛО (из выделения или цитаты флага) → СТАЛО (ввод)» → в конец правки.md через API правок.
  *  Если во вкладке «Правки» лежит несохранённый черновик — пара добавляется к нему, черновик сохраняется. */
 function ReplaceEditor(props: {
-  chapter: number; text: string; before: string; source: string; editsMd: string | null;
+  chapter: number; text: string; before: string; source: string; editsMd: string | null; editsVersion: string | null;
   onClose: () => void; reload: () => void; notify: Notify;
 }) {
-  const { chapter, text, before, source, editsMd, onClose, reload, notify } = props;
+  const { chapter, text, before, source, editsMd, editsVersion, onClose, reload, notify } = props;
   const [after, setAfter] = useState("");
   const [pending, run] = usePending();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -384,13 +386,18 @@ function ReplaceEditor(props: {
       const base = draft?.text ?? editsMd ?? "";
       const next = appendPair(base, before, after);
       try {
-        const r = await apiPost<{ parsed: number }>(`/api/chapter/${chapter}/edits`, { text: next });
+        // версия правки.md: если файл изменили на диске после открытия главы — 409, пара не затирает чужое
+        const r = await apiPost<{ parsed: number }>(`/api/chapter/${chapter}/edits`, { text: next, version: editsVersion });
         removeDraft(key); // черновик вкладки «Правки» ушёл на сервер вместе с новой парой
         notify(`Правка добавлена в правки.md (распознано правок — ${r.parsed}).`, "ok");
         onClose();
         reload();
       } catch (e) {
-        notify(String(e));
+        if (isConflict(e)) {
+          reload();
+          return notify("правки.md изменён на диске после открытия главы — глава перечитана, повторите добавление правки.");
+        }
+        notify(errText(e));
       }
     });
 
@@ -417,26 +424,33 @@ function ReplaceEditor(props: {
   );
 }
 
-const REGISTRIES = ["3.1", "3.2", "3.3", "1.2"];
-
 function FlagCard(props: {
-  f: Flag; chapter: number; resolution?: Resolution; canResolve: boolean; reload: () => void; notify: Notify;
-  onEdit?: () => void;
+  f: Flag; chapter: number; registries: Registry[]; resolution?: Resolution; canResolve: boolean;
+  reload: () => void; notify: Notify; onEdit?: () => void;
 }) {
-  const { f, chapter, resolution, canResolve, reload, notify, onEdit } = props;
-  const [registry, setRegistry] = useState(REGISTRIES[0]);
+  const { f, chapter, registries, resolution, canResolve, reload, notify, onEdit } = props;
+  // реестры для канонизации — с сервера (типы каталога и проекта), не константа панели (П-1)
+  const [registry, setRegistry] = useState(registries[0]?.name ?? "");
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState("");
   const [pending, run] = usePending();
-  const decide = (decision: string) =>
+  const decide = (decision: string, extra: Record<string, unknown> = {}) =>
     run(async () => {
       try {
-        await apiPost(`/api/chapter/${chapter}/resolve`, { flag_id: f.flag_id, decision, registry });
+        await apiPost(`/api/chapter/${chapter}/resolve`, { flag_id: f.flag_id, decision, ...extra });
+        setRejecting(false);
         reload();
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
+  const reject = () => {
+    if (!reason.trim()) return notify("Отклонение флага требует причины (FR-RV-2) — она уходит в журнал отклонённых флагов.");
+    decide("отклонить", { reason: reason.trim() });
+  };
   const badge = f.kind === "samovolka" ? "самоволка" : f.severity;
   const showType = f.type.trim().toLowerCase() !== badge.toLowerCase();
+  const rejected = resolution?.decision === "отклонить";
   return (
     <div className="card">
       <span className={`badge b-${f.kind}`}>{badge}</span>{" "}
@@ -449,7 +463,10 @@ function FlagCard(props: {
       )}
       <blockquote>{f.quote}</blockquote>
       <div className="muted">{f.rule}. {f.recommendation}</div>
-      {f.kind === "samovolka" && (
+      {rejected && (
+        <div className="resolved">решение: отклонён{resolution?.reason ? ` — ${resolution.reason}` : ""}</div>
+      )}
+      {!rejected && f.kind === "samovolka" && (
         resolution?.decision ? (
           <div className="resolved">
             решение: {resolution.decision}
@@ -459,13 +476,31 @@ function FlagCard(props: {
           <div className="resolvebtns">
             <span className="unresolved">решение автора:</span>
             <button disabled={pending} onClick={() => decide("вычеркнуть")}>Вычеркнуть</button>
-            <button disabled={pending} onClick={() => decide("канонизировать")}>Канонизировать →</button>
+            <button disabled={pending || !registry} onClick={() => decide("канонизировать", { registry })}>Канонизировать →</button>
             <select value={registry} aria-label="Реестр для канонизации" onChange={(e) => setRegistry(e.target.value)}>
-              {REGISTRIES.map((r) => <option key={r}>{r}</option>)}
+              {registries.map((r) => <option key={r.name} value={r.name} title={r.purpose}>{r.name}</option>)}
             </select>
           </div>
         ) : (
           <div className="muted">решение автора — после «Пакета приёмки» (решения.json ещё нет)</div>
+        )
+      )}
+      {!rejected && canResolve && !(f.kind === "samovolka" && resolution?.decision) && (
+        rejecting ? (
+          <div className="resolvebtns" data-testid="reject-flag">
+            <input className="search" style={{ maxWidth: 360 }} value={reason} placeholder="причина отклонения (в журнал)"
+              aria-label="Причина отклонения" onChange={(e) => setReason(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") reject(); if (e.key === "Escape") setRejecting(false); }} />
+            <button className="danger" disabled={pending || !reason.trim()} onClick={reject}>Отклонить флаг</button>
+            <button disabled={pending} onClick={() => setRejecting(false)}>Отмена</button>
+          </div>
+        ) : (
+          <div className="resolvebtns">
+            <button type="button" className="h2btn" style={{ margin: 0 }} disabled={pending} onClick={() => setRejecting(true)}
+              title="Флаг не нарушение — отклонить с причиной; отклонённые логируются для настройки промптов (FR-RV-2)">
+              Отклонить…
+            </button>
+          </div>
         )
       )}
     </div>
@@ -491,15 +526,24 @@ function Edits({ d, reload, notify }: { d: ChapterDetail; reload: () => void; no
     [parsed, d.text],
   );
 
-  const save = () =>
+  const [conflict, setConflict] = useState(false);
+  const save = (force = false) =>
     run(async () => {
       try {
-        const r = await apiPost<{ parsed: number }>(`/api/chapter/${d.chapter}/edits`, { text });
+        const r = await apiPost<{ parsed: number }>(`/api/chapter/${d.chapter}/edits`,
+          { text, ...(force ? {} : { version: d.edits_version }) });
         ds.clear();
+        setConflict(false);
         notify(`Сохранено: распознано правок — ${r.parsed}`, "ok");
         reload();
       } catch (e) {
-        notify(String(e));
+        if (isConflict(e)) {
+          // 409: правки.md изменён на диске — черновик автора остаётся в поле, глава перечитывается для сравнения
+          setConflict(true);
+          reload();
+          return;
+        }
+        notify(errText(e));
       }
     });
 
@@ -512,7 +556,7 @@ function Edits({ d, reload, notify }: { d: ChapterDetail; reload: () => void; no
         const r = await apiGet<{ lines: string[] }>(`/api/chapter/${d.chapter}/diff/${a}/${b}`);
         setDiff(r.lines);
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
 
@@ -526,9 +570,13 @@ function Edits({ d, reload, notify }: { d: ChapterDetail; reload: () => void; no
         Быстрее: во вкладке «Чтение с флагами» выделите фрагмент → «Заменить на…».
       </p>
       <RestoredNote state={ds} />
+      {conflict && (
+        <FileConflict name="правки.md" disk={d.edits_md ?? ""} mine={text} busy={pending}
+          onReread={() => { ds.discard(); setConflict(false); }} onOverwrite={() => save(true)} onClose={() => setConflict(false)} />
+      )}
       <textarea aria-label="правки.md" value={text} onChange={(e) => ds.setText(e.target.value)} />
       <div className="actions">
-        <button className="primary" disabled={pending || !ds.dirty} onClick={save}>Сохранить правки</button>
+        <button className="primary" disabled={pending || !ds.dirty} onClick={() => save()}>Сохранить правки</button>
         {ds.dirty && <button disabled={pending} onClick={ds.discard}>Отменить правки</button>}
       </div>
 
@@ -602,15 +650,22 @@ function Acceptance(props: {
   const batch = ds.text;
   const [pending, run] = usePending();
 
-  const saveBatch = () =>
+  const [conflict, setConflict] = useState(false);
+  const saveBatch = (force = false) =>
     run(async () => {
       try {
-        await apiPost(`/api/chapter/${d.chapter}/canon-batch`, { text: batch });
+        await apiPost(`/api/chapter/${d.chapter}/canon-batch`, { text: batch, ...(force ? {} : { version: d.batch_version }) });
         ds.clear();
+        setConflict(false);
         notify("Пакет сохранён.", "ok");
         reload();
       } catch (e) {
-        notify(String(e));
+        if (isConflict(e)) {
+          setConflict(true);
+          reload();
+          return;
+        }
+        notify(errText(e));
       }
     });
 
@@ -652,9 +707,13 @@ function Acceptance(props: {
         <>
           <p className="muted">Удалите строки, которые не принимаете, и сохраните — затем «Применить пакет + коммит».</p>
           <RestoredNote state={ds} />
+          {conflict && (
+            <FileConflict name="пакет_канона.md" disk={d.canon_batch ?? ""} mine={batch} busy={pending}
+              onReread={() => { ds.discard(); setConflict(false); }} onOverwrite={() => saveBatch(true)} onClose={() => setConflict(false)} />
+          )}
           <textarea aria-label="пакет_канона.md" style={{ minHeight: 260 }} value={batch} onChange={(e) => ds.setText(e.target.value)} />
           <div className="actions">
-            <button className="primary" disabled={pending || !ds.dirty} onClick={saveBatch}>Сохранить пакет</button>
+            <button className="primary" disabled={pending || !ds.dirty} onClick={() => saveBatch()}>Сохранить пакет</button>
             {ds.dirty && <button disabled={pending} onClick={ds.discard}>Отменить правки</button>}
           </div>
         </>
@@ -662,6 +721,55 @@ function Acceptance(props: {
         <p className="muted">Пакета ещё нет — после приёмки нажмите «Пакет в канон».</p>
       )}
     </>
+  );
+}
+
+// ------------------------------------------------- конфликт версии файла главы (FR-PN-4)
+
+/** правки.md / пакет_канона.md изменены на диске после открытия: «различия / перечитать / перезаписать»,
+ *  как у документов канона (Д-2: конфликт версий решается в панели — вкладка против файла). */
+function FileConflict(props: {
+  name: string; disk: string; mine: string; busy: boolean; onReread: () => void; onOverwrite: () => void; onClose: () => void;
+}) {
+  const { name, disk, mine, busy, onReread, onOverwrite, onClose } = props;
+  const [showDiff, setShowDiff] = useState(false);
+  const rows = useMemo(() => (showDiff ? lineDiff(disk, mine) : null), [showDiff, disk, mine]);
+  const reread = async () => {
+    try {
+      await navigator.clipboard.writeText(mine);
+    } catch {
+      // буфер обмена недоступен — текст остаётся видимым в диффе до перечитывания
+    }
+    onReread();
+  };
+  return (
+    <div className="card conflict" role="alertdialog" aria-labelledby={`conflict-${name}`} data-testid="file-conflict">
+      <strong id={`conflict-${name}`}>На диске новая версия {name}</strong>
+      <p className="muted" style={{ margin: "4px 0 8px" }}>
+        Файл изменён после того, как вы открыли главу (другой процесс, редактор на диске или вторая вкладка).
+        Ваш текст не сохранён и не потерян: выберите, что делать.
+      </p>
+      <div className="actions" style={{ margin: 0 }}>
+        <button onClick={() => setShowDiff(!showDiff)}>{showDiff ? "Скрыть различия" : "Показать различия"}</button>
+        <button disabled={busy} onClick={reread}>Перечитать (мои правки — в буфер обмена)</button>
+        <button className="danger" disabled={busy} onClick={onOverwrite}>Перезаписать всё равно</button>
+        <button onClick={onClose}>Закрыть</button>
+      </div>
+      {rows && (
+        <div className="diff-wrap">
+          <div className="muted">различия: <span className="del">− только на диске</span> · <span className="add">+ только у вас</span></div>
+          <div className="diff">
+            {compactDiff(rows.lines).map((l, i) =>
+              l.kind === "…" ? (
+                <div key={i} className="muted">… {l.count} стр. без изменений …</div>
+              ) : (
+                <div key={i} className={l.kind === "+" ? "add" : l.kind === "-" ? "del" : ""}>{l.kind}{" "}{l.text}</div>
+              ),
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -723,7 +831,7 @@ function ManualTab({ d, reload, notify, busy }: { d: ChapterDetail; reload: () =
         const r = await apiPost<{ text: string }>(`/api/chapter/${d.chapter}/prompt/${kind}`);
         await copy(r.text, what);
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
 
@@ -735,7 +843,7 @@ function ManualTab({ d, reload, notify, busy }: { d: ChapterDetail; reload: () =
         ds.discard(); // принято сервером — черновик больше не нужен
         reload();
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
 
@@ -747,7 +855,7 @@ function ManualTab({ d, reload, notify, busy }: { d: ChapterDetail; reload: () =
         ds.discard();
         reload();
       } catch (e) {
-        notify(String(e));
+        notify(errText(e));
       }
     });
 

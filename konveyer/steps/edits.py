@@ -42,6 +42,29 @@ def resolve(chapter: int, flag_id: str | None = None, decision: str | None = Non
     return resolutions
 
 
+def resolve_all(chapter: int, decision: str, registry: str | None = None) -> list[str]:
+    """Одно решение для всех самоволок без решения («Вычеркнуть все» панели; FR-PN-7 — то же командой).
+    «Отклонить» скопом невозможно: отклонение — по одному флагу и с причиной. Возвращает id решённых флагов."""
+    ws, cfg, lib = _ctx()
+    if decision not in ("вычеркнуть", "канонизировать"):
+        raise StepError("для всех самоволок разом допустимо «вычеркнуть» или «канонизировать»; «отклонить» — по одному флагу с причиной.")
+    if decision == "канонизировать":
+        from ..canonist import registries
+
+        regs = sorted(registries(ws.root))
+        if registry not in regs:
+            raise StepError(f"канонизация требует целевой реестр: --реестр один из {', '.join(regs)}.")
+    resolutions = review_mod.load_resolutions(ws, chapter)
+    todo = [r for r in resolutions if r.decision is None]
+    for r in todo:
+        r.decision = decision  # type: ignore[assignment]
+        r.target_registry = registry if decision == "канонизировать" else None
+    if todo:
+        review_mod.save_resolutions(ws, chapter, resolutions)
+    secho(f"Решено самоволок: {len(todo)} → {decision}{' → ' + registry if registry else ''}.", fg=colors.GREEN)
+    return [r.flag_id for r in todo]
+
+
 def edits(chapter: int) -> list:
     """Предпросмотр правок: как парсер понял правки.md (без вызова Писателя). Возвращает правки."""
     ws, cfg, lib = _ctx()

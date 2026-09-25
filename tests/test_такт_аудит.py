@@ -674,7 +674,7 @@ def test_битый_конфиг_и_недопустимые_значения_б
     cfg.write_text("library_dir: Библиотека\n", encoding="utf-8")
     r = runner.invoke(app, ["статус", "--том", "0"])
     assert r.exit_code == 1 and "≥ 1" in r.output
-    r = runner.invoke(app, ["статус", "42"])
-    assert r.exit_code == 0 and "нет в плане глав" in r.output, r.output
+    r = runner.invoke(app, ["статус", "42"])  # глава вне плана — ошибка номера, как 404 в панели (B3-18)
+    assert r.exit_code == 1 and "нет в плане глав" in r.output and "Traceback" not in r.output, r.output
     r = runner.invoke(app, ["статус", "1"])
     assert r.exit_code == 0 and "нет в плане глав" not in r.output
