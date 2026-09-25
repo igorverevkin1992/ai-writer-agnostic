@@ -44,9 +44,9 @@ def circles(
     scope: str = "всё", chapter: int | None = None, redo: bool = False, to_canon: bool = False,
     yes: bool = False, confirm: Confirm | None = None,
 ) -> dict | None:
-    """Каркасы драматургии по методике проекта (FR-DR-1): книга → акты → главы; черновики в драматургия/.
-    `to_canon` — внести черновики в документ каркасов библиотеки и закоммитить по подтверждению с диффом (FR-DR-4).
-    Возвращает результат прогона."""
+    """Каркасы драматургии по методике проекта (FR-DR-1…FR-DR-6): том → акты → главы; шаги — по методике уровня;
+    черновики аналитика в драматургия/. `to_canon` — внести черновики в документ каркасов тома (тип «каркасы»)
+    и закоммитить по подтверждению автора (FR-DR-4). Возвращает результат прогона."""
     from .. import circles as circles_mod
 
     ws, cfg, lib = _ctx()
@@ -74,7 +74,7 @@ def circles(
             path, commit = circles_mod.commit_to_canon(ws, cfg, lib)
         except RuntimeError as e:
             raise StepError(str(e)) from e
-        secho(f"Круги внесены в канон: {path}. Коммит: {commit}", fg=colors.GREEN)
+        secho(f"Каркасы внесены в канон: {path}. Коммит: {commit}", fg=colors.GREEN)
         echo("Окна глав теперь содержат секцию «Драматургия»; пересоберите начатые главы (`konveyer собрать N`).")
         return None
     result = circles_mod.run(ws, cfg, scope, chapter, only_missing=not redo, library=lib)

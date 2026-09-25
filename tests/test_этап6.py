@@ -187,7 +187,8 @@ def test_панель_вид_журналы_и_регрессия(panel):
 # команды, которые по смыслу остаются в терминале: создание проекта, установка, сама панель, разбор произвольного файла
 CLI_ONLY = {"init", "начать", "panel", "панель", "проект", "типы", "types", "check", "проверка", "библиотека-отделить", "library-split",
             "dashboard", "дашборд", "нормы", "norms", "метрики", "metrics", "золотой", "add-golden", "log", "журнал",
-            "status", "статус", "find", "найти", "edits", "правки", "diff", "дифф"}
+            "status", "статус", "find", "найти", "edits", "правки", "diff", "дифф",
+            "импорт-прозы", "import-prose"}  # импорт готовой прозы (сценарий В): файлы автора с диска — из терминала
 # CLI ↔ панель: команда → действие панели (фоновая команда или POST-путь)
 PARITY = {
     "export": "export", "compile": "compile", "write": "write", "verify1": "verify1", "verify2": "verify2", "review": "review",
@@ -196,6 +197,7 @@ PARITY = {
     "rollback": "rollback", "regress": "regress", "canon-commit": "canon-commit", "backup": "backup-archive",
     "пере-тест": "retest", "импорт": "import", "онбординг": "onboarding", "учёт": "accounting", "том": "volume-close",
     "retest": "retest", "import": "import", "onboarding": "onboarding", "accounting": "accounting", "volume": "volume-close",
+    "отбор": "retest", "select": "retest",  # отборочный тест Писателя (этап 8) = пакет пере-теста
 }
 
 

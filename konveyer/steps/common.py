@@ -36,7 +36,8 @@ COMMAND_NAMES = {
     "snapshot": "снапшот", "doctor": "доктор", "rollback": "откат", "regress": "регрессия", "add-golden": "золотой",
     "dashboard": "дашборд", "run": "такт", "canon-commit": "канон-коммит", "library-split": "библиотека-отделить",
     "backup": "бэкап", "init": "начать", "нормы": "norms", "метрики": "metrics", "учёт": "accounting",
-    "импорт": "import", "онбординг": "onboarding", "пере-тест": "retest", "типы": "types",
+    "импорт": "import", "онбординг": "onboarding", "пере-тест": "retest", "типы": "types", "отбор": "select",
+    "импорт-прозы": "import-prose",
 }
 # группа `volume` и её подкоманды
 GROUP_NAMES = {"volume": "том", "volume open": "том открыть", "volume close": "том закрыть", "volume status": "том статус"}
@@ -119,7 +120,7 @@ def current_chapter(n: int | None) -> None:
 
 def confirm_or_reject(yes: bool, confirm: Confirm | None, prompt: str, *, abort: bool = False) -> None:
     """Подтверждение автора (Д-17): `yes` — без вопроса; иначе вопрос через `confirm`; без `confirm`
-    или при отказе — `Rejected` (код 0; с `abort` — «Aborted!», код 1)."""
+    или при отказе — `Rejected` (код 0; с `abort` — «Отменено автором.», код 1)."""
     if yes:
         return
     if confirm is None or not confirm(prompt):
