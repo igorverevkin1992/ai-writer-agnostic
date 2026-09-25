@@ -822,9 +822,12 @@ def cmd_backup(
 @_friendly
 def cmd_init(
     demo: bool = typer.Option(False, "--демо", "--demo", help="Развернуть демо-библиотеку и золотые тесты — играбельный пример."),
+    contradictions: bool = typer.Option(False, "--противоречия", "--contradictions",
+                                        help="Вместе с --демо: внести в копию демо-канона заведомые противоречия — учебный набор для линтера."),
 ) -> None:
-    """Создать каркас рабочей области: конфиг.yaml, .env.example, .gitignore, папки (NFR-3)."""
-    setup.init(demo=demo)
+    """Создать каркас рабочей области: конфиг.yaml, .env.example, .gitignore, папки (NFR-1); --демо --противоречия —
+    демо-проект с заведомыми противоречиями для знакомства с линтером (NFR-9)."""
+    setup.init(demo=demo, contradictions=contradictions)
 
 
 @app.command("импорт", rich_help_panel="Онбординг")

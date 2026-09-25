@@ -468,7 +468,11 @@ def _line_rules(stoplists: list[StopRule], participants: list[str], year: int | 
             scope_note, epoch = "все линии (речь повествователя)", False
         else:
             scope_note, epoch = "лексика эпохи (весь текст)", True
-        items = sorted(w for w in rule.items if not marker_hit(w, markers))
+        if any(marker_hit(w, markers) or any(marker_hit(m, [w]) for m in markers if m) for w in rule.items):
+            # стоп-лист со словом маркера недоступной фокалу тайны сам подсказывает её содержание («не употреблять —
+            # отец») — правило в окно не идёт целиком; Э1 проверяет стоп-лексику по выгрузке, запрет остаётся в силе
+            continue
+        items = sorted(rule.items)
         if not items:
             continue
         result.append(
