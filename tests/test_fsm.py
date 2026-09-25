@@ -1,4 +1,4 @@
-"""Тесты конечного автомата главы (10.5, §5.4)."""
+"""Тесты конечного автомата главы (FR-TK-2…4, FR-SC-4)."""
 
 import pytest
 
@@ -27,7 +27,7 @@ def test_авто_повтор_при_браке(ws):
     st = ChapterState(ws, 3)
     st.transition("собрано")
     st.transition("сгенерировано")
-    st.transition("сгенерировано")  # брак → повторная генерация (§5.4)
+    st.transition("сгенерировано")  # брак → повторная генерация (FR-TK-3)
     assert st.bump_retries() == 1
 
 
@@ -62,5 +62,43 @@ def test_зафиксировано_терминально(ws):
 def test_состояние_переживает_перезапуск(ws):
     st = ChapterState(ws, 7)
     st.transition("собрано")
-    st2 = ChapterState(ws, 7)  # Д-5: YAML-файл, без БД
+    st2 = ChapterState(ws, 7)  # Д-3: YAML-файл, без БД
     assert st2.state == "собрано"
+
+
+def test_фсм_имена_состояний_тз_как_синонимы(ws):
+    """FR-TK-2: цепочка ТЗ принимается синонимами имён кода; `STATES` покрывает всю цепочку."""
+    from konveyer.fsm import STATES, canonical_state
+
+    chain = ["запланирована", "собрано", "сгенерировано", "проверено-машинно", "проверено-моделью",
+             "на-приёмке", "правки", "дифф-контроль", "принято", "зафиксировано"]
+    assert [canonical_state(s) for s in chain] == STATES
+    st = ChapterState(ws, 8)
+    for s in chain[1:]:
+        st.transition(s)
+    assert st.state == "зафиксировано"
+    st = ChapterState(ws, 9)
+    st.transition("собрано")
+    st.transition("сгенерировано")
+    st.transition("проверено-машинно")
+    st.rollback("запланирована")
+    assert st.state == "не-начато"
+    st.require("запланирована")
+
+
+def test_состояние_несёт_ссылки_на_артефакты(ws):
+    """FR-TK-2: состояние.yaml — состояние, счётчики и пути текущих артефактов (только существующих)."""
+    import yaml
+
+    st = ChapterState(ws, 10)
+    ws.chapter_dir(10).mkdir(parents=True, exist_ok=True)
+    ws.window_path(10).write_text("окно", encoding="utf-8")
+    st.transition("собрано")
+    data = yaml.safe_load(ws.status_path(10).read_text(encoding="utf-8"))
+    assert data["артефакты"] == {"окно": "главы/010/окно.md"}
+    ws.draft_path(10, 2).write_text("текст", encoding="utf-8")
+    (ws.chapter_dir(10) / "вердикт.json").write_text("{}", encoding="utf-8")
+    st.set_draft(2)
+    data = yaml.safe_load(ws.status_path(10).read_text(encoding="utf-8"))
+    assert data["артефакты"] == {"окно": "главы/010/окно.md", "черновик": "главы/010/черновик_2.md", "вердикт": "главы/010/вердикт.json"}
+    assert list(data["артефакты"]) == ["окно", "черновик", "вердикт"]  # порядок шагов такта, детерминированно

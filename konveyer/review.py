@@ -241,7 +241,7 @@ def parse_edits_md(ws: Workspace, chapter: int) -> list[Edit]:
     """FR-E2: правки.md (пары «было → стало» и/или свободные указания) → правки.jsonl."""
     path = ws.chapter_dir(chapter) / "правки.md"
     if not path.exists():
-        raise FileNotFoundError(f"Нет файла правок {path}. Сначала `konveyer review {chapter}`.")
+        raise FileNotFoundError(f"Нет файла правок {path}. Сначала `konveyer приёмка {chapter}`.")
     edits = parse_edits_text(path.read_text(encoding="utf-8"), chapter, path)
     save_edits(ws, chapter, edits)
     return edits
@@ -322,7 +322,7 @@ def render_html(chapter: int, draft: int, summary_lines: list[str], text: str, c
     return ("<!DOCTYPE html><html lang=\"ru\"><head><meta charset=\"utf-8\">"
             f"<title>Приёмка · глава {chapter} · черновик {draft}</title><style>{_HTML_CSS}</style></head><body>"
             f"<h1>Приёмка · Глава {chapter} · черновик {draft}</h1>"
-            "<p>Решения по самоволкам — <code>решения.json</code> (или <code>konveyer resolve</code>); правки — <code>правки.md</code> "
+            "<p>Решения по самоволкам — <code>решения.json</code> (или <code>konveyer решение</code>); правки — <code>правки.md</code> "
             "парами «БЫЛО → СТАЛО» и «УКАЗАНИЕ:».</p><h2>Флаги</h2>" + ("".join(cards) or "<p>флагов нет</p>")
             + f"<h2>Текст</h2><div class=\"text\">{paras}</div></body></html>\n")
 

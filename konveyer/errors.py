@@ -1,10 +1,10 @@
-"""Исключения ядра шагов (аудит 2, п. 30): ядро (`konveyer/steps/*`) не знает typer — оно бросает обычные
+"""Исключения ядра шагов: ядро (`konveyer/steps/*`) не знает typer — оно бросает обычные
 исключения, а интерфейсы (`cli.py`, `server.py`) переводят их в код возврата и статус задачи.
 
 Соответствие прежним кодам typer:
 
 * `StepError` — ожидаемая ошибка шага: «ОШИБКА: …», код 1 (прежний `_fail`);
-* `ManualMode` — API недоступен: «⚠ причина» + «Ручной режим (NFR-3): подсказка», код 2 (прежний `_manual`);
+* `ManualMode` — API недоступен: «⚠ причина» + «Ручной режим: подсказка», код 2 (прежний `_manual`);
   это тот же класс, что `adapters.ManualModeNeeded`;
 * `Rejected` — автор не подтвердил действие: без сообщения, код 0 (прежний `typer.Exit()`);
   с `abort=True` — «Aborted!», код 1 (прежний `typer.Abort()`);
@@ -22,7 +22,7 @@ class StepError(RuntimeError):
 
 
 class ManualMode(StepError):
-    """API недоступен — конвейер деградирует в ручной режим (NFR-3); код возврата 2."""
+    """API недоступен — конвейер деградирует в ручной режим (§1.3, NFR-4); код возврата 2."""
 
     code = 2
 
@@ -33,7 +33,7 @@ class ManualMode(StepError):
 
 
 class Rejected(StepError):
-    """Автор не подтвердил действие (Д-8): ничего не печатается; код 0, с `abort` — 1 («Aborted!»)."""
+    """Автор не подтвердил действие (Д-17): ничего не печатается; код 0, с `abort` — 1 («Aborted!»)."""
 
     def __init__(self, message: str = "", *, abort: bool = False):
         super().__init__(message)
@@ -52,7 +52,7 @@ class StepExit(StepError):
 def describe(e: StepError) -> str:
     """Текст, который интерфейс показывает автору (без цвета); пустая строка — показывать нечего."""
     if isinstance(e, ManualMode):
-        return f"⚠ {e.reason}\nРучной режим (NFR-3): {e.hint}"
+        return f"⚠ {e.reason}\nРучной режим: {e.hint}"
     if isinstance(e, (Rejected, StepExit)):
         return ""
     return f"ОШИБКА: {e}"

@@ -7,38 +7,55 @@ from pathlib import Path
 
 from .. import adapters, backup as backup_mod, dashboard as dashboard_mod, gitops, regression as regression_mod
 from .. import review as review_mod, timing, verifier2
+from ..errors import StepError
 from ..fsm import ChapterState, all_states
 from ..paths import Workspace
-from .common import NEXT_STEP, _chapter_flags_summary, _ctx, _print_verdict, colors, echo, secho
+from .common import _chapter_flags_summary, _ctx, _print_verdict, cmd, colors, echo, next_step, secho
 
 
 def status(chapter: int | None = None, volume: int | None = None) -> list:
     """Состояния глав и следующий шаг (FR-D2); с `chapter` — карточка главы; `volume` — главы тома N.
     Возвращает состояния глав тома (для карточки — список из одной главы)."""
     ws, cfg, lib = _ctx()
+    if volume is not None and int(volume) < 1:
+        raise StepError(f"номер тома должен быть ≥ 1, получено: {volume}.")
     if volume is not None and volume != ws.volume:
         ws = ws.for_volume(volume)
     if chapter is not None:
-        return [_status_detail(ws, chapter)]
+        return [_status_detail(ws, chapter, cfg)]
     states = all_states(ws)
     if not states:
-        echo(f"Глав тома {ws.volume} в работе нет. Начните: `konveyer compile N`.")
+        echo(f"Глав тома {ws.volume} в работе нет. Начните: `{cmd('compile', 'N')}`.")
         return states
     echo(f"Том {ws.volume} · главы в {ws.chapters_root().relative_to(ws.root).as_posix()}/")
     echo(f"{'Глава':>6} | {'Состояние':<18} | {'Чернов.':>7} | {'Э1':<16} | {'Э2':<22} | Дальше")
     echo("-" * 110)
     for st in states:
         e1, e2 = _chapter_flags_summary(ws, st.chapter)
-        hint = NEXT_STEP.get(st.state, "").format(n=st.chapter)
+        hint = next_step(ws, st, cfg)
         echo(f"{st.chapter:>6} | {st.state:<18} | {st.draft:>7} | {e1:<16} | {e2:<22} | {hint}")
     echo(f"Сегодня: {timing.today_author_minutes(ws):g} мин автора (ожидание действий автора по всем главам).")
     return states
 
 
-def _status_detail(ws: Workspace, chapter: int) -> ChapterState:
+def _in_plan(ws: Workspace, chapter: int) -> bool:
+    """Есть ли бриф главы в выгрузках текущего тома; нет выгрузок — считаем, что есть (не ложная тревога, П-5)."""
+    from .. import exporter
+
+    try:
+        briefs = exporter.load_briefs(ws.exports)
+    except (FileNotFoundError, ValueError):
+        return True
+    return any(b.chapter == chapter and b.volume == ws.volume for b in briefs)
+
+
+def _status_detail(ws: Workspace, chapter: int, cfg=None) -> ChapterState:
     """Карточка главы: метрики вердикта, флаги, самоволки, следующий шаг."""
     st = ChapterState(ws, chapter)
     secho(f"Глава {chapter} · состояние «{st.state}» · черновик {st.draft}", bold=True)
+    if st.state == "не-начато" and not _in_plan(ws, chapter):
+        secho(f"⚠ Главы {chapter} нет в плане глав тома {ws.volume} (выгрузки/briefs.json) — проверьте номер "
+              "или заведите бриф в документе плана глав.", fg=colors.YELLOW)
     echo(
         f"Авто-повторов Э1: {st.data.get('авто_повторов', 0)}; итераций правок: {st.data.get('итераций_правок', 0)}"
     )
@@ -64,20 +81,23 @@ def _status_detail(ws: Workspace, chapter: int) -> ChapterState:
     unresolved = review_mod.unresolved_samovolki(ws, chapter)
     if unresolved:
         secho(
-            f"\nБез решения автора: {', '.join(unresolved)} — `konveyer resolve {chapter} <флаг> <решение>`",
+            f"\nБез решения автора: {', '.join(unresolved)} — `{cmd('resolve', chapter, '<флаг> <решение>')}`",
             fg=colors.YELLOW,
         )
-    hint = NEXT_STEP.get(st.state, "").format(n=chapter)
+    hint = next_step(ws, st, cfg)
     secho(f"\nДальше: {hint}", fg=colors.GREEN)
     return st
 
 
 def log(n: int = 15) -> list[dict]:
     """Последние API-вызовы: роль, модель, токены, стоимость (журнал §6.3). Возвращает показанные строки."""
-    from ..apilog import read_log
+    from .. import apilog
 
     ws, cfg, lib = _ctx()
-    rows = read_log(ws.logs)[-n:]
+    rows = apilog.read_log(ws.logs)[-n:]
+    warning = apilog.corrupt_warning(ws.logs)
+    if warning:
+        secho(f"⚠ {warning}", fg=colors.YELLOW)
     if not rows:
         echo("Журнал API пуст.")
         return rows
@@ -115,10 +135,10 @@ def find(query: str) -> dict:
 
 
 def doctor() -> None:
-    """Диагностика установки и готовности конвейера (NFR-1)."""
+    """Диагностика установки и готовности конвейера (NFR-1); работает и вне проекта."""
     import importlib.util
 
-    ws, cfg, lib = _ctx()
+    ws, cfg, lib = _ctx(require_project=False)
 
     def item(ok: bool | None, label: str, hint: str = "") -> None:
         mark, color = {True: ("✓", colors.GREEN), False: ("✗", colors.RED), None: ("~", colors.YELLOW)}[ok]
@@ -127,7 +147,7 @@ def doctor() -> None:
             echo(f"   → {hint}")
 
     secho(f"Рабочая область: {ws.root}", bold=True)
-    item((ws.root / "конфиг.yaml").exists(), "конфиг.yaml", "создайте: `konveyer init`")
+    item((ws.root / "конфиг.yaml").exists(), "конфиг.yaml", "создайте: `konveyer начать`")
     item(lib.exists(), f"библиотека канона: {lib}", "положите Библиотека/ или поправьте library_dir в конфиг.yaml")
     if lib.exists():
         lay = backup_mod.layout(lib, ws.root)
@@ -139,17 +159,24 @@ def doctor() -> None:
                  "git config user.email/user.name или commit_author в конфиг.yaml (Д-8)")
             item(gitops.in_progress(lib) is None, "нет незавершённых операций git в библиотеке",
                  f"завершите или отмените: git {gitops.in_progress(lib) or ''} --abort (в документах могут быть маркеры конфликта)")
-            n_remotes = len(gitops.remotes(lib))
-            item(n_remotes >= cfg.backup_remotes_min, f"удалённых копий: {n_remotes} (нужно ≥{cfg.backup_remotes_min})",
-                 "`konveyer backup --добавить-remote <имя> <url|папка>` — папка на внешнем диске подходит (NFR-6, §1.3)")
+            remotes = gitops.remotes(lib)
+            item(len(remotes) >= cfg.backup_remotes_min, f"удалённых копий: {len(remotes)} (нужно ≥{cfg.backup_remotes_min})",
+                 "`konveyer бэкап --добавить-remote <имя> <url|папка>` — папка на внешнем диске подходит (FR-BK-1, §1.3)")
+            for remote in remotes:
+                lag = gitops.remote_lag(lib, remote)
+                if lag is None:
+                    item(None, f"копия {remote}: состояние неизвестно (в неё ещё не отправляли)", "`konveyer бэкап --push`")
+                else:
+                    item(lag == 0, f"копия {remote}: " + ("актуальна" if lag == 0 else f"отстаёт на {lag} коммит(ов)"),
+                         "`konveyer бэкап --push` (или push_после_приёмки: да в конфиг.yaml)")
     arch_dir = backup_mod.archive_dir(ws, cfg)
     arch_age = backup_mod.archive_age_days(arch_dir)
     if arch_age is None:
         item(None if cfg.backup_dir is None else False, f"архив рабочей области: ещё не делался ({arch_dir})",
-             "`konveyer backup --архив`; backup_dir в конфиг.yaml — архив после каждой приёмки главы (п. 29)")
+             "`konveyer бэкап --архив`; backup_dir в конфиг.yaml — архив после каждой приёмки главы (п. 29)")
     else:
         item(arch_age <= 7, f"архив рабочей области: {arch_age:.1f} дн. назад ({backup_mod.latest_archive(arch_dir)})",
-             "`konveyer backup --архив`")
+             "`konveyer бэкап --архив`")
     if lib.exists():
         from .. import project as project_mod
 
@@ -164,7 +191,13 @@ def doctor() -> None:
          + (f": роли с обучением — {', '.join(training)}" if training else ""),
          "включите режим без обучения у провайдера и отразите его в конфиге (режим_без_обучения) и журнале решений")
     manifest = ws.exports / "индекс.json"
-    item(manifest.exists(), "выгрузки выгрузки/", "выполните `konveyer export`")
+    item(manifest.exists(), "выгрузки выгрузки/", "выполните `konveyer экспорт`")
+    from .. import apilog
+
+    bad_lines = apilog.corrupt_lines(ws.logs)
+    if bad_lines:
+        item(None, f"журнал API: нечитаемых строк {bad_lines} (пропускаются в сводках)",
+             "удалите оборванные строки из журналы/api.jsonl, если нужен чистый журнал")
     providers = {m.provider for m in cfg.roles().values() if not m.manual}
     for provider in sorted(providers):
         names = adapters.KEY_ENV.get(provider, ())
@@ -194,7 +227,7 @@ def doctor() -> None:
         ok, note = adapters.probe_model(mc)
         roles = "/".join(labels.get(r, r) for r, m in explicit.items() if (m.provider, m.model) == (mc.provider, mc.model))
         label = f"модель {mc.model} ({roles}): " + (f"есть в API ({note})" if ok else note)
-        item(ok, label, "смените пин в конфиг.yaml через пере-тест (`konveyer retest`, сценарий В, Д-11)" if ok is False else "")
+        item(ok, label, "смените пин в конфиг.yaml через пере-тест (`konveyer пере-тест`, FR-RT-1, Д-19)" if ok is False else "")
     green = regression_mod.is_green(ws)
     if green is None:
         label = (
@@ -203,9 +236,9 @@ def doctor() -> None:
         )
     else:
         label = "регрессия зелёная" if green else "регрессия КРАСНАЯ"
-    item(green, label, "`konveyer regress`" if green is None else "пропущенные флаги блокируют смену конфигурации (FR-R3)")
+    item(green, label, "`konveyer регрессия`" if green is None else "пропущенные флаги блокируют смену конфигурации (FR-R3)")
     n_tests = len(regression_mod.load_tests(ws)) if ws.regression.exists() else 0
-    item(n_tests > 0, f"золотых тестов: {n_tests}", "корпус пуст — регрессия не может быть зелёной; пополните: `konveyer add-golden` (FR-R1)")
+    item(n_tests > 0, f"золотых тестов: {n_tests}", "корпус пуст — регрессия не может быть зелёной; пополните: `konveyer золотой` (FR-R1)")
 
 
 def dashboard() -> Path:
@@ -227,5 +260,10 @@ def accounting(volume: int | None = None) -> str:
     path = accounting_mod.save(ws, acc, cfg)
     for w in accounting_mod.warnings(ws, cfg):
         secho(f"⚠ {w}", fg=colors.YELLOW)
+    from .. import apilog
+
+    warning = apilog.corrupt_warning(ws.logs)
+    if warning:
+        secho(f"⚠ {warning}", fg=colors.YELLOW)
     echo(f"Сохранено: {path.relative_to(ws.root)}")
     return text

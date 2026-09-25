@@ -73,7 +73,7 @@ def circles(
         except RuntimeError as e:
             raise StepError(str(e)) from e
         secho(f"Круги внесены в канон: {path}. Коммит: {commit}", fg=colors.GREEN)
-        echo("Окна глав теперь содержат секцию «Драматургия»; пересоберите начатые главы (`konveyer compile N`).")
+        echo("Окна глав теперь содержат секцию «Драматургия»; пересоберите начатые главы (`konveyer собрать N`).")
         return None
     result = circles_mod.run(ws, cfg, scope, chapter, only_missing=not redo, library=lib)
     for path in result["готово"]:
@@ -112,7 +112,7 @@ def regress(llm: bool = False) -> dict:
     if not report["всего"]:
         secho(
             "⚠ Корпус золотых тестов ПУСТ (регрессия/золотые/) — регрессия ничего не проверила и зелёной "
-            "считаться не может (FR-RG-3). Пополните корпус: `konveyer add-golden` (FR-RG-1).",
+            "считаться не может (FR-RG-3). Пополните корпус: `konveyer золотой` (FR-RG-1).",
             fg=colors.YELLOW,
         )
     elif not report.get("выполнено"):

@@ -58,7 +58,7 @@ class Workspace:
         return self.root / "снапшоты"
 
     def for_volume(self, volume: int) -> "Workspace":
-        """Та же рабочая область, но с другим текущим томом (`konveyer volume close N`, снапшот тома)."""
+        """Та же рабочая область, но с другим текущим томом (`konveyer том закрыть N`, снапшот тома)."""
         return dataclasses.replace(self, volume=int(volume))
 
     def chapters_root(self, volume: int | None = None) -> Path:
@@ -101,5 +101,6 @@ def find_workspace(start: Path | None = None) -> Workspace:
     for p in [cur, *cur.parents]:
         if (p / "конфиг.yaml").exists() or (p / "проект.yaml").exists():
             return Workspace(p)
-    raise FileNotFoundError(f"рабочая область не найдена: нет конфиг.yaml/проект.yaml в {cur} и выше — перейдите в папку "
-                            "проекта или создайте его: `konveyer проект создать` (либо `konveyer начать` здесь)")
+    raise FileNotFoundError(f"рабочая область не найдена — здесь нет проекта конвейера: нет конфиг.yaml/проект.yaml "
+                            f"в {cur.name}/ и выше. Перейдите в папку проекта или создайте его: `konveyer проект создать` "
+                            "(либо `konveyer начать --демо` здесь)")

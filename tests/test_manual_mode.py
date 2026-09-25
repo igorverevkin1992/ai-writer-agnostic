@@ -1,4 +1,4 @@
-"""Ручной режим без разрывов (NFR-3): CLI write --manual и панель (вставка ответов)."""
+"""Ручной режим без разрывов (§1.3, FR-TK-6, FR-WR-4): CLI write --manual и панель (вставка ответов)."""
 
 import json
 import threading
@@ -95,7 +95,7 @@ def test_панель_manual_flags_и_промпт(panel, ws):
     ws.draft_path(1, 1).write_text("Текст для проверки Э2.", encoding="utf-8")
     st.set_draft(1)
 
-    # промпт Э2 строится по требованию, без API; GET ничего не пишет (аудит 4.3),
+    # промпт Э2 строится по требованию, без API; GET ничего не пишет,
     # файл создаёт POST — его и зовёт кнопка копирования в панели
     data = _get(panel, "/api/chapter/1/prompt/verify2")
     assert "ТЕКСТ ГЛАВЫ" in data["text"] and not (ws.chapter_dir(1) / "промпт_э2.md").exists()

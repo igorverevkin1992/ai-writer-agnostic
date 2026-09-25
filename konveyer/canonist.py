@@ -211,7 +211,7 @@ def apply_batch(ws: Workspace, cfg: Config, library: Path, chapter: int, draft: 
     n_edits = len(review.load_edits(ws, chapter))
     resolutions = review.load_resolutions(ws, chapter)
     n_sam = sum(1 for r in resolutions if r.decision == "канонизировать")
-    message = (f"[глава {chapter}] приёмка: записей в реестры {n_facts}, правок {n_edits}, канонизировано самоволок {n_sam} "
+    message = (f"{gitops.chapter_subject(chapter, ws.volume)} приёмка: записей в реестры {n_facts}, правок {n_edits}, канонизировано самоволок {n_sam} "
                f"(конвейер; решения — {ws.chapter_rel(chapter)}/решения.json)")
     regs = registries(ws.root)
     man = manifest_mod.effective(ws.root, library, catalog.load_types(ws.root))

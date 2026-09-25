@@ -67,7 +67,7 @@ def test_doctor_библиотека_внутри_репозитория_код�
     r = runner.invoke(app, ["doctor"])
     assert r.exit_code == 0, r.output
     assert "библиотека внутри репозитория кода" in r.output
-    assert "git pull" in r.output and "library-split" in r.output
+    assert "git pull" in r.output and "библиотека-отделить" in r.output
 
 
 def test_doctor_библиотека_внутри_чужого_репозитория(ws, library):

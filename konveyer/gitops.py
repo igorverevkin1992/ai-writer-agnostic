@@ -68,18 +68,31 @@ def check_norm_change_message(message: str) -> bool:
     return bool(re.search(r"Р-\d+", message))
 
 
-def find_chapter_commit(repo: Path, chapter: int) -> str | None:
-    """Ищет ДЕЙСТВУЮЩИЙ коммит приёмки главы по шаблонному сообщению (FR-K2).
-    Если самый свежий коммит по главе — её откат (`Revert "[глава N] …"`), приёмки нет (None):
-    иначе повторное применение пакета «нашло бы» уже откачённую приёмку."""
+def chapter_subject(chapter: int, volume: int = 1) -> str:
+    """Шаблонный префикс сообщения коммита приёмки: том 1 — `[глава N]` (совместимость с историей
+    существующих библиотек), тома ≥ 2 — `[том V глава N]`: главы разных томов не путаются."""
+    return f"[глава {chapter}]" if int(volume) == 1 else f"[том {volume} глава {chapter}]"
+
+
+def _chapter_subject_re(chapter: int, volume: int) -> str:
+    if int(volume) == 1:
+        return rf"\[(?:том 1 )?глава {chapter}\]"
+    return rf"\[том {volume} глава {chapter}\]"
+
+
+def find_chapter_commit(repo: Path, chapter: int, volume: int = 1) -> str | None:
+    """Ищет ДЕЙСТВУЮЩИЙ коммит приёмки главы `chapter` тома `volume` по шаблонному сообщению
+    (`chapter_subject`). Если самый свежий коммит по главе — её откат (`Revert "[глава N] …"`),
+    приёмки нет (None): иначе повторное применение пакета «нашло бы» уже откачённую приёмку."""
+    pattern = _chapter_subject_re(chapter, volume)
     out = _git(repo, "log", "--format=%H %s", check=False)
     for line in out.splitlines():
         sha, _, subject = line.partition(" ")
-        if re.match(rf'Revert "\[глава {chapter}\]', subject):
+        if re.match(rf'Revert "{pattern}', subject):
             return None  # откат приёмки новее самой приёмки
         if subject.startswith("Revert "):
             continue
-        if re.match(rf"\[глава {chapter}\]", subject):
+        if re.match(pattern, subject):
             return sha
     return None
 
@@ -130,8 +143,22 @@ def has_identity(repo: Path) -> bool:
 
 
 def push(repo: Path, remote: str) -> None:
-    """Отправка текущей ветки в удалённое место (NFR-6, `konveyer backup --push`)."""
+    """Отправка текущей ветки в удалённое место (FR-BK-1, `konveyer бэкап --push`)."""
     _git(repo, "push", remote, "HEAD")
+
+
+def remote_lag(repo: Path, remote: str) -> int | None:
+    """На сколько коммитов копия в `remote` отстаёт от HEAD (по последнему известному состоянию ветки
+    `remote/<ветка>`; сеть не нужна). None — состояние копии неизвестно (в неё ещё не отправляли или ветка
+    у копии другая)."""
+    branch = current_branch(repo)
+    if not branch or branch == "HEAD":
+        return None
+    ref = f"refs/remotes/{remote}/{branch}"
+    if _git(repo, "rev-parse", "--verify", "-q", ref, check=False) == "":
+        return None
+    out = _git(repo, "rev-list", "--count", f"{ref}..HEAD", check=False)
+    return int(out) if out.isdigit() else None
 
 
 def remotes(repo: Path) -> list[str]:
@@ -174,20 +201,26 @@ def tag(repo: Path, name: str, sha: str) -> str:
 
 
 def delete_tag(repo: Path, name: str) -> None:
-    """Снять тег (перестановка `том-N` при `konveyer volume close N --заново`)."""
+    """Снять тег (перестановка `том-N` при `konveyer том закрыть N --заново`)."""
     _git(repo, "tag", "-d", name, check=False)
 
 
-def tag_chapter(repo: Path, chapter: int, sha: str) -> str | None:
-    """Тег приёмки главы: `глава-N`; повторная приёмка после отката — `глава-N-2`, `-3`…
+def chapter_tag(chapter: int, volume: int = 1) -> str:
+    """Имя тега приёмки: том 1 — `глава-N` (совместимость), тома ≥ 2 — `томV-глава-N`."""
+    return f"глава-{chapter}" if int(volume) == 1 else f"том{volume}-глава-{chapter}"
+
+
+def tag_chapter(repo: Path, chapter: int, sha: str, volume: int = 1) -> str | None:
+    """Тег приёмки главы (`chapter_tag`); повторная приёмка после отката — `…-2`, `-3`…
     Идемпотентно: если на этот коммит тег главы уже стоит, возвращает его. Любой сбой git
     (нет прав, странный репозиторий) — None: тег не обязателен, приёмка уже закоммичена."""
+    base = chapter_tag(chapter, volume)
     try:
-        existing = tags(repo, f"глава-{chapter}") + tags(repo, f"глава-{chapter}-*")
+        existing = tags(repo, base) + tags(repo, f"{base}-*")
         for t in existing:
             if _git(repo, "rev-list", "-n", "1", t, check=False) == sha:
                 return t
-        name = f"глава-{chapter}" if f"глава-{chapter}" not in existing else f"глава-{chapter}-{len(existing) + 1}"
+        name = base if base not in existing else f"{base}-{len(existing) + 1}"
         while name in existing:  # дыры в нумерации после ручного удаления тегов
             name += "-x"
         return tag(repo, name, sha)

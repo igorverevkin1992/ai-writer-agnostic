@@ -123,6 +123,8 @@ def test_сброс_авто_повторов_при_write(ws, monkeypatch):
     st.transition("собрано")
     st.data["авто_повторов"] = 3
     st._save()
+    ws.window_path(1).parent.mkdir(parents=True, exist_ok=True)
+    ws.window_path(1).write_text("окно", encoding="utf-8")
 
     def fake_write(ws_, cfg_, chapter_, k_):
         p = ws_.draft_path(chapter_, k_)

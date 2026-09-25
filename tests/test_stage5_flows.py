@@ -144,7 +144,8 @@ def test_run_пауза_при_нечистом_диффе(ws, monkeypatch):
     monkeypatch.setattr(writer, "apply_edits", fake_apply)
     r = CliRunner().invoke(app, ["run", "1"])
     assert r.exit_code == 0, r.output
-    assert "дифф-контроль не чист" in r.output and ChapterState(ws, 1).state == "дифф-контроль"
+    # FR-TK-3: самовольные изменения возвращают главу в «правки»; отчёт дифф.json остаётся
+    assert "дифф-контроль не чист" in r.output and ChapterState(ws, 1).state == "правки"
     report = json.loads((ws.chapter_dir(1) / "дифф.json").read_text(encoding="utf-8"))
     assert report["unauthorized"]
 

@@ -1,7 +1,7 @@
 """Сквозной оффлайн-такт (без API): review → правки → канонизация → атомарный коммит.
 
 Проверяет критерии этапа 2: приёмка порождает корректный атомарный коммит;
-запись в библиотеку — только через канониста (FR-K2/K3); корпус пересчитан.
+запись в библиотеку — только через канониста (FR-CN-2, П-3); корпус пересчитан.
 """
 
 import json
@@ -35,7 +35,7 @@ def test_полный_такт_с_коммитом(ws, library):
     cfg = Config()
     chapter = 1
 
-    # машинные шаги такта (черновик кладём руками — API в тесте нет, NFR-3)
+    # машинные шаги такта (черновик кладём руками — API в тесте нет, ручной режим)
     compiler.compile_window(ws, library, chapter)
     st = ChapterState(ws, chapter)
     st.transition("собрано", "compile")
@@ -97,7 +97,7 @@ def test_полный_такт_с_коммитом(ws, library):
     commit = canonist.apply_batch(ws, cfg, library, chapter, 2)
     st.transition("зафиксировано", "canonize --apply")
 
-    # атомарный коммит с шаблонным сообщением (FR-K2)
+    # атомарный коммит с шаблонным сообщением (FR-CN-2)
     assert commit != head_before
     log = subprocess.run(
         ["git", "-C", str(library), "log", "-1", "--format=%s"], capture_output=True, text=True, encoding="utf-8"
@@ -140,3 +140,69 @@ def test_разбор_edits_md(ws):
     assert edits[0].before == "Чай остыл." and edits[0].after == "Чай остыл давно."
     assert edits[1].note == "свободное указание"
     assert (d / "правки.jsonl").exists()  # 5.3
+
+
+def _accepted(ws, library, chapter: int = 1) -> None:
+    """Глава текущего тома `ws.volume` доведена до «принято» с пакетом Канониста (без моделей)."""
+    import shutil
+
+    from konveyer import exporter, verifier1, verifier2
+
+    exporter.run_export(library, ws.exports, ws.logs, ws.volume, ws.root)
+    compiler.compile_window(ws, library, chapter)
+    st = ChapterState(ws, chapter)
+    st.transition("собрано", "compile")
+    ws.draft_path(chapter, 1).write_text("Каширин нашёл записку утром возле хлебницы.", encoding="utf-8")
+    st.set_draft(1)
+    for state, cmd in (("сгенерировано", "write"), ("верифицировано-1", "verify1"), ("верифицировано-2", "verify2")):
+        st.transition(state, cmd)
+    verifier2.save_flags(ws, chapter, [])
+    review.build_review_pack(ws, chapter, 1)
+    st.transition("на-приёмке", "review")
+    review.save_edits(ws, chapter, [])
+    shutil.copyfile(ws.draft_path(chapter, 1), ws.draft_path(chapter, 2))
+    st.set_draft(2)
+    st.transition("правки", "apply-edits")
+    verifier1.diff_check(ws, chapter, 1, 2, [])
+    st.transition("дифф-контроль", "diff-check")
+    st.transition("принято", "accept")
+    canonist.build_batch(ws, Config(), chapter, 2)
+
+
+def test_приёмка_одноимённой_главы_во_втором_томе(ws, library, monkeypatch):
+    """Глава 1 тома 2 не «восстанавливается» по коммиту главы 1 тома 1: свой коммит, своя проза, свой тег;
+    откат зафиксированной главы тома 2 ревертит именно её коммит."""
+    from konveyer.config import set_volume
+    from konveyer.steps import canon as canon_steps, tact
+
+    monkeypatch.chdir(ws.root)
+    _git(library, "init")
+    _git(library, "config", "user.email", "автор@example.com")
+    _git(library, "config", "user.name", "Автор")
+    _git(library, "add", "-A")
+    _git(library, "commit", "-m", "канон: начальное состояние")
+
+    _accepted(ws, library, 1)
+    c1 = tact.canonize(1, apply=True, yes=True)
+    assert gitops.find_chapter_commit(library, 1) == c1 and gitops.find_chapter_commit(library, 1, 2) is None
+
+    set_volume(ws, 2)
+    ws2 = ws.for_volume(2)
+    _accepted(ws2, library, 1)
+    c2 = tact.canonize(1, apply=True, yes=True)
+    assert c2 != c1 and gitops.head(library) == c2
+    assert (library / "Проза" / "Том2_Глава01.md").exists()
+    assert ChapterState(ws2, 1).state == "зафиксировано" and ChapterState(ws2, 1).data["коммит_приёмки"] == c2
+    subject = subprocess.run(["git", "-C", str(library), "log", "-1", "--format=%s"], capture_output=True,
+                             text=True, encoding="utf-8").stdout
+    assert subject.startswith("[том 2 глава 1]")
+    assert gitops.find_chapter_commit(library, 1, 2) == c2 and gitops.find_chapter_commit(library, 1, 1) == c1
+    assert gitops.tags(library) == ["глава-1", "том2-глава-1"]
+
+    # откат главы тома 2 ревертит её коммит, а не коммит тома 1
+    st = ChapterState(ws2, 1)
+    st.data.pop("коммит_приёмки")
+    st._save()
+    canon_steps.rollback(1, to="принято", yes=True)
+    assert gitops.find_chapter_commit(library, 1, 2) is None and gitops.find_chapter_commit(library, 1, 1) == c1
+    assert (library / "Проза" / "Том1_Глава01.md").exists() and not (library / "Проза" / "Том2_Глава01.md").exists()

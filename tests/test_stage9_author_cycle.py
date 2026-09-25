@@ -1,5 +1,5 @@
-"""Этап 4 аудита 2 — цикл автора: правки кодом (п. 19, Р-023), время такта по задачам (п. 23),
-повторный Э2 после правок и варианты A/B (п. 24), точки отмены (cancel.py)."""
+"""Цикл автора: правки кодом (FR-ED-1), время такта по задачам (FR-CT-2),
+повторный Э2 после правок (FR-V2-7) и варианты A/B (FR-WR-2), точки отмены (FR-AD-7)."""
 
 import json
 from datetime import datetime, timedelta, timezone
@@ -88,7 +88,7 @@ def test_apply_edits_кодом_без_модели_и_чистый_дифф(ws,
     assert "применено кодом 2, Писателю 0" in r.output and not called
     st = ChapterState(ws, 1)
     assert st.state == "правки" and st.draft == 2
-    assert st.data.get("итераций_правок", 0) == 0  # бюджет FR-E3 не расходуется без модели
+    assert st.data.get("итераций_правок", 0) == 0  # бюджет FR-ED-1 не расходуется без модели
     assert ws.draft_path(1, 2).read_text(encoding="utf-8") == "Первая фраза. Другая фраза.\n"
     meta = json.loads((ws.chapter_dir(1) / "черновик_2.meta.json").read_text(encoding="utf-8"))
     assert meta["mode"] == "правки (код)" and meta["применено_кодом"] == [1, 2]
@@ -110,7 +110,7 @@ def test_apply_edits_смешанные_промпт_от_промежуточн
     )
     r = runner.invoke(app, ["apply-edits", "1"])  # без ключа — ручной режим, код 2
     assert r.exit_code == 2, r.output
-    assert "Правок кодом: 1" in r.output and "Писателю: 2" in r.output
+    assert "правок кодом: 1" in r.output.lower() and "Писателю: 2" in r.output
     prompt = (ws.chapter_dir(1) / "промпт_правок.md").read_text(encoding="utf-8")
     assert "Другая фраза." in prompt and "Вторая фраза." not in prompt.split("## ЧЕРНОВИК")[1]
     assert "оживить финал" in prompt and "Нет такой." in prompt
@@ -137,14 +137,14 @@ def test_apply_edits_лимит_итераций_не_мешает_правка�
     r = runner.invoke(app, ["apply-edits", "1"])
     assert r.exit_code == 0, r.output
     assert ChapterState(ws, 1).state == "правки"
-    # а свободное указание при исчерпанном бюджете — по-прежнему стоп FR-E3
+    # а свободное указание при исчерпанном бюджете — по-прежнему стоп FR-ED-3
     ChapterState(ws, 1).rollback("на-приёмке")
     st = ChapterState(ws, 1)
     st.data["итераций_правок"] = 3
     st._save()
     (ws.chapter_dir(1) / "правки.md").write_text("УКАЗАНИЕ: переписать\n", encoding="utf-8")
     r = runner.invoke(app, ["apply-edits", "1"])
-    assert r.exit_code == 1 and "FR-E3" in r.output + (r.stderr or "")
+    assert r.exit_code == 1 and "лимит" in r.output + (r.stderr or "")
 
 
 # ------------------------------------------------------------ п. 23: время такта
@@ -181,7 +181,8 @@ def test_run_объединяет_шаги_в_одну_задачу(ws, monkeypa
 
 
 def test_сегодняшнее_авторское_время_по_всем_главам(ws):
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    # «сейчас» — полдень местной даты: «сегодня» считается по местной дате, и интервал не уедет во «вчера»
+    now = datetime.now(timezone.utc).astimezone().replace(hour=12, minute=0, second=0, microsecond=0)
     for n, minutes in ((1, 10), (2, 5)):
         st = ChapterState(ws, n)
         ws.chapter_dir(n).mkdir(parents=True, exist_ok=True)
@@ -323,14 +324,15 @@ def test_отмена_между_вариантами(ws, monkeypatch):
 # ------------------------------------------------------------ отмена в cmd_run
 
 
-def test_отмена_такта_между_шагами(ws, monkeypatch):
+def test_отмена_такта_между_шагами(ws, monkeypatch, passing_draft):
     monkeypatch.chdir(ws.root)
     _chapter_generated(ws, 1)
 
     calls = []
+    good = passing_draft  # проходит Э1
 
     def fake_write(ws_, cfg, chapter, k):
-        writer._save_draft(ws_, chapter, k, "Первая фраза. Вторая фраза.\n", cfg, mode="генерация")
+        writer._save_draft(ws_, chapter, k, good, cfg, mode="генерация")
         if not calls:
             cancel.request()  # автор нажал «Остановить» во время первой генерации
         calls.append(k)
@@ -340,10 +342,10 @@ def test_отмена_такта_между_шагами(ws, monkeypatch):
     assert r.exit_code == 2, r.output
     assert "остановлено автором" in r.output and "сгенерировано" in r.output and "Traceback" not in r.output
     assert ChapterState(ws, 1).state == "сгенерировано"  # write завершён, verify1 не начат
-    # флаг сброшен: следующая команда идёт нормально
+    # флаг сброшен: следующая команда идёт нормально — ровно успех, без «любого из двух исходов»
     r = runner.invoke(app, ["verify1", "1"])
-    assert r.exit_code in (0, 1), r.output
-    assert ChapterState(ws, 1).state in ("верифицировано-1", "сгенерировано")
+    assert r.exit_code == 0 and "остановлено" not in r.output, r.output
+    assert ChapterState(ws, 1).state == "верифицировано-1" and not cancel.requested()
 
 
 def test_запрос_отмены_до_старта_команды_не_действует(ws, monkeypatch):
