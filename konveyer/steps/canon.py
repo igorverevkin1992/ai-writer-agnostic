@@ -294,7 +294,7 @@ def _retest_fix(ws: Workspace, cfg: Config, no_pack: bool) -> Path:
             else "отчёт регрессии устарел (изменились конфиг.yaml, шаблоны или нормы)"
             if regression_mod.is_stale(ws) else "регрессия не запускалась"
         )
-        raise StepError(f"фиксация retest запрещена: {why} (FR-RG-3). Сначала `konveyer регрессия` с непустым корпусом.")
+        raise StepError(f"фиксация пере-теста запрещена: {why} (FR-RG-3). Сначала `konveyer регрессия` с непустым корпусом.")
     pack = _latest_pack_with_answers(ws, cfg)
     if pack is None and not no_pack:
         raise StepError(
@@ -469,7 +469,7 @@ def _compile_window_to(ws: Workspace, cfg: Config, lib: Path, chapter: int, targ
 
 
 def canon_commit(message: str, yes: bool = False, confirm: Confirm | None = None) -> str | None:
-    """Правка канона автором (сценарий Б): валидация структуры, перегенерация выгрузок, коммит.
+    """Правка канона автором (сценарий Г): валидация структуры, перегенерация выгрузок, коммит.
     Возвращает SHA коммита (None — коммитить было нечего)."""
     ws, cfg, lib = _ctx()
     if not gitops.is_repo(lib):
@@ -625,6 +625,9 @@ def backup(
             f"Архив рабочей области: {arch_age:.1f} дн. назад ({backup_mod.latest_archive(arch_dir)})." if arch_age is not None
             else f"Архив рабочей области ещё не делался ({arch_dir}): `konveyer бэкап --архив`."
         )
+    echo("Восстановление: распакуйте zip в новую папку проекта, склонируйте библиотеку из любого места хранения "
+         "(`git clone <bare-папка или url> Библиотека`), проверьте library_dir в конфиг.yaml, затем `konveyer экспорт` и "
+         "`konveyer доктор` (подробно — Запуск.md, «Восстановление»).")
     if push:
         if not remotes:
             raise StepError("нет удалённых репозиториев — добавьте: `konveyer бэкап --добавить-remote <имя> <url|папка>`.")

@@ -1,28 +1,13 @@
 """Этап 2 аудита (находки 1.8, 1.10): карточка сцены поглавника, фильтр клауз для читателя/инструмента,
 поля «Запреты» / «Не знает» главы, вывод в окно Писателя."""
 
-from pathlib import Path
 
 import pytest
 
-from konveyer import compiler, exporter, guard
+from konveyer import compiler, exporter
 from tests import профиль
 from tests.профиль import realcanon
-from konveyer.paths import Workspace
 from konveyer.schemas import Brief, Scene
-
-REPO = Path(__file__).resolve().parent.parent
-LIBRARY = REPO / "Библиотека"
-real_only = pytest.mark.skipif(not LIBRARY.exists(), reason="реальная библиотека не подключена")
-
-
-@pytest.fixture
-def real(tmp_path):
-    (tmp_path / "конфиг.yaml").write_text(f'library_dir: "{LIBRARY.as_posix()}"\n', encoding="utf-8")
-    ws = Workspace(tmp_path)
-    guard.set_library_dir(LIBRARY)
-    exporter.run_export(LIBRARY, ws.exports, ws.logs)
-    return ws
 
 
 def _sections(window: str) -> dict[str, str]:
@@ -137,62 +122,6 @@ def test_карточка_и_строка_сцены_для_окна():
     assert "кладём" not in line and "читатель" not in line
     assert compiler.scene_line(Scene(number="8.2", place="Комната", exits="рапорт с дырой")) \
         == "**Сц. 8.2** · Комната · выходит: рапорт с дырой"
-
-
-# ------------------------------------------------- 1.8 / 1.10 реальная библиотека
-
-
-@real_only
-def test_гл5_запреты_и_не_знает_из_поглавника(real):
-    b5 = exporter.load_brief(real.exports, 5)
-    assert b5.bans == [
-        "Оружие не упоминать",
-        "Лемм не говорит и не объясняется",
-        "никаких догадок Степана о том, зачем Лемм пришёл ночью",
-        "сцена заканчивается в пределах кабинета/коридора, без продолжения",
-    ]
-    assert b5.not_knows == ["Любых тайн Лемма", "любых причин для настоящей тревоги", "чего-либо о прошлом Лемма до революции"]
-    assert b5.scene_cards[0].time == "за полночь" and b5.scene_cards[0].place == "МУР, кабинет Лемма"
-    assert b5.beats == ["Ночной обыск стола Лемма. Застигнут. Сцена без слов: пауза, сухая саркастическая улыбка, стыд"]
-    # остальные главы — задача автора: полей пока нет
-    assert exporter.load_brief(real.exports, 6).bans == [] and exporter.load_brief(real.exports, 8).not_knows == []
-
-
-@real_only
-def test_окно_гл5_карточка_сцены_закладки_запреты(real):
-    w = compiler.compile_window(real, LIBRARY, 5)[0].read_text(encoding="utf-8")
-    s = _sections(w)
-    brief = s["бриф"]
-    assert ("- **Сц. 5.1** · МУР, кабинет Лемма · за полночь · Степан; Лемм (появление в финале) · обыск стола по приказу "
-            "куратора («посмотрите бумаги, вам ключи доверены») · входит: стыд, оправданный долгом; сцена строится на "
-            "предметах стола (порядок Лемма как портрет) · выходит: застигнут — Лемм в дверях, пауза, сухая усмешка, "
-            "ни слова; Степан раздавлен\n") in brief
-    assert "- Оружие не упоминать\n- Лемм не говорит и не объясняется\n" in brief
-    tz = s["техзадание — закладки"]
-    assert "кладём" not in brief and "читатель знает" not in brief + tz and "саспенс" not in brief + tz
-    plants = s["техзадание — закладки"]
-    assert "- сц. 5.1: пауза с непоказанным револьвером\n- сц. 5.1: ноль улик в столе — Лемм не хранит на службе ничего\n" in plants
-    assert "(закладок в этой главе нет)" not in plants
-    knows = s["что знает фокал"]
-    assert "- Любых тайн Лемма\n- любых причин для настоящей тревоги\n- чего-либо о прошлом Лемма до революции\n" in knows
-
-
-@real_only
-def test_окна_гл1_6_8_9_без_пометок_читателю(real):
-    for ch, absent, present in [
-        (1, ["арка-парабола"], ["- сц. 1.2: пик уверенности Заварзина\n", "**Сц. 1.1** · Контора товарищества (место кражи) · утро ·"]),
-        (6, ["ЗАКЛАДКА", "→ т.6", "читатель узнаёт, что", "⚠"], ["**Сц. 6.2** · Квартира Лемма · рассвет · Лемм ·", "[З-04]"]),
-        (8, ["читатель знает", "тайник", "⚠"], ["- сц. 8.1: первая трещина: решение не писать\n", "**Сц. 8.2** · Комната Степана · ночь ·"]),
-        (9, ["матрица №", "→ т.9", "закладка →"], ["- сц. 9.1: **картотека как метод и объект**\n", "- сц. 9.1: Ася двигает сюжет, не понимая находки\n"]),
-    ]:
-        w = compiler.compile_window(real, LIBRARY, ch)[0].read_text(encoding="utf-8")
-        s = _sections(w)
-        text = s["бриф"] + s["техзадание — закладки"]
-        for a in absent:
-            assert a not in text, f"гл. {ch}: «{a}»"
-        for p in present:
-            assert p in text, f"гл. {ch}: нет «{p}»"
-        assert "кладём" not in text
 
 
 def test_демо_окно_без_карточек_показывает_строки_сцен(ws, library):

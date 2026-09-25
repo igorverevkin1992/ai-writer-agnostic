@@ -10,6 +10,14 @@ from konveyer.paths import Workspace
 DEMO = Path(str(resources.files("konveyer").joinpath("data/демо")))
 
 
+@pytest.fixture(autouse=True)
+def _offline(monkeypatch):
+    """Тесты идут без ключей моделей (NFR-9): все роли — в ручном режиме, сеть не используется.
+    Тест, которому нужен ключ, задаёт его сам через monkeypatch.setenv."""
+    for var in ("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+
+
 @pytest.fixture
 def ws(tmp_path: Path) -> Workspace:
     """Рабочая область с демо-библиотекой и стартовым регрессионным корпусом."""

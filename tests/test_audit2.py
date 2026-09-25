@@ -15,12 +15,6 @@ from konveyer.schemas import Edit, Norm
 runner = CliRunner()
 
 
-@pytest.fixture(autouse=True)
-def _no_api_keys(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-
-
 # --- свободные указания не блокируют приёмку (FR-V1.10 / FR-E4)
 
 
@@ -180,7 +174,7 @@ def test_export_атомарен_при_ошибке(ws, library):
     # и меняем нормы, чтобы проверить, что новая версия НЕ записана
     p02 = library / "02_Стиль_и_голос.md"
     p02.write_text(p02.read_text(encoding="utf-8").replace("| — | 1 |", "| — | 9 |"), encoding="utf-8")
-    with pytest.raises(Exception):
+    with pytest.raises(exporter.ExportErrors, match="Поглавник"):
         exporter.run_export(library, ws.exports, ws.logs)
     for name, text in before.items():
         assert (ws.exports / name).read_text(encoding="utf-8") == text, name

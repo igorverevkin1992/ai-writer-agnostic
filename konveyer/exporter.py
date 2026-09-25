@@ -544,7 +544,7 @@ def _postprocess(col: Collected, volume: int, library: Path, root: Path, types: 
     d["acts.json"] = acts
     d["parts.json"] = [{"part": a.act, "title": a.title, "period": a.parts, "from_chapter": a.from_chapter,
                         "to_chapter": a.to_chapter} for a in acts]
-    # нормы без числового значения (каркас стартового комплекта, «—») — нормы нет: метрика не считается (FR-MT-3);
+    # нормы без числового значения (каркас стартового комплекта, «—») — нормы нет: метрика не считается (§7.5);
     # о незаполненной норме объёма скажет `доктор` (FR-LC-2а)
     for norm_id, n in list(d["norms.json"].items()):
         if n.min is None and n.max is None and n.brak is None:

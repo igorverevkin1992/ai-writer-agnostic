@@ -7,8 +7,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-import subprocess
 import sys
 import types
 from pathlib import Path
@@ -16,36 +14,17 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from konveyer import adapters, canonist, exporter, gitops, guard, mdparse, regression, review, verifier1, verifier2
+from konveyer import adapters, canonist, exporter, gitops, guard, regression, review, verifier1, verifier2
 from konveyer.cli import app
 from konveyer.config import ApiConfig, Config, ModelConfig
 from konveyer.fsm import STATES, ChapterState, TransitionError
 from konveyer.mdparse import MarkupError
 from konveyer.paths import Workspace
 from konveyer.schemas import Edit, Flag, GoldenTest, Resolution
+from tests.общие import _git, _init_repo
 
 runner = CliRunner()
 REPO = Path(__file__).resolve().parent.parent
-REAL_LIBRARY = REPO / "Библиотека"
-
-
-@pytest.fixture(autouse=True)
-def _no_api_keys(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-
-
-def _git(path: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", "-C", str(path), *args], check=True, capture_output=True, text=True, encoding="utf-8"
-    ).stdout
-
-
-def _init_repo(root: Path) -> None:
-    for args in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"], ["add", "-A"],
-                 ["commit", "-q", "-m", "init"]):
-        _git(root, *args)
 
 
 def _chapter(ws: Workspace, n: int, *states: str, draft: int = 1) -> ChapterState:
@@ -226,72 +205,6 @@ def test_canonize_apply_без_git_отказ_до_записи(ws, library, mon
     assert r.exit_code == 1 and "не под git" in r.output
     assert ChapterState(ws, n).state == "принято"                     # FSM не переведён
     assert not (library / "Проза" / "Том1_Глава01.md").exists()        # ничего не записано
-
-
-# ============================================================ 2.7 реестры реальной библиотеки
-
-
-pytest_real = pytest.mark.skipif(not REAL_LIBRARY.exists(), reason="реальная библиотека не подключена")
-
-
-@pytest_real
-def test_реальная_библиотека_строки_реестров_без_сирот(tmp_path):
-    lib = tmp_path / "Библиотека"
-    shutil.copytree(REAL_LIBRARY, lib)
-    (tmp_path / "конфиг.yaml").write_text("library_dir: Библиотека\n", encoding="utf-8")
-    ws = Workspace(tmp_path)
-    guard.set_library_dir(lib)
-    exporter.run_export(lib, ws.exports, ws.logs)
-    _init_repo(lib)
-    chapter = 6  # закладка З-04 «Недогоревший знак…» лежит в гл. 6 (§7 реестра)
-    rows = {
-        "эпистемика": "| — | Лемм заметил остаток знака в золе | (сформулировать) |",
-        "закладки": "| P-101 | недогоревший знак в золе | т1 гл6 | т6 | 🔧 |",
-        "континуити": "| 20.04.1926 | печь, знак догорает не до конца | 6 | — |",
-    }
-    ws.draft_path(chapter, 1).parent.mkdir(parents=True, exist_ok=True)
-    ws.draft_path(chapter, 1).write_text("Лемм стоял у печи. Знак догорал не до конца.", encoding="utf-8")
-    (ws.chapter_dir(chapter) / "пакет_канона.json").write_text(
-        json.dumps({"facts": [{"registry": k, "row": v} for k, v in rows.items()]}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    (ws.chapter_dir(chapter) / "пакет_канона.md").write_text(
-        "# Пакет\n\n## Новые факты\n" + "\n".join(f"- РЕЕСТР {k} → {v}" for k, v in rows.items()) + "\n",
-        encoding="utf-8",
-    )
-    matrix_before = mdparse.parse_tables(lib / "31_Эпистемическая_матрица_Том1.md")
-    wide_before = next(t for t in matrix_before if "Факт" in t.headers)
-    facts_before = len(exporter.load_matrix(ws.exports))
-
-    commit = canonist.apply_batch(ws, Config(), lib, chapter, 1).commit
-    assert commit == gitops.head(lib) and not gitops.dirty(lib)
-
-    # 3.1: строка внутри широкой матрицы, № = max + 1, цитата в «Факт», пометка не в колонке субъекта
-    matrix_after = mdparse.parse_tables(lib / "31_Эпистемическая_матрица_Том1.md")  # структура валидна
-    wide_after = next(t for t in matrix_after if "Факт" in t.headers)
-    assert len(wide_after.rows) == len(wide_before.rows) + 1
-    new_row = wide_after.rows[-1]
-    assert int(new_row["#"]) == max(int(r["#"]) for r in wide_before.rows) + 1
-    assert new_row["Факт"].startswith("Лемм заметил остаток знака в золе") and "сформулировать" in new_row["Факт"]
-    assert all(new_row[h] == "—" for h in wide_after.headers if h not in ("#", "Факт"))
-    text31 = (lib / "31_Эпистемическая_матрица_Том1.md").read_text(encoding="utf-8")
-    assert "| — | Лемм заметил" not in text31  # сиротской строки демо-формата нет
-    assert len(exporter.load_matrix(ws.exports)) > facts_before  # экспортёр видит новый факт
-
-    # 3.2 и 3.3: таблиц с нужными заголовками в реальном каноне нет → «Входящие», а не сироты
-    assert not any(ln.startswith("|") for ln in (lib / "33_Континуити_трекер.md").read_text(encoding="utf-8").splitlines())
-    inbox = (lib / canonist.INBOX_DOC).read_text(encoding="utf-8")
-    assert "## Глава 6" in inbox and "РЕЕСТР закладки" in inbox and "РЕЕСТР континуити" in inbox and "недогоревший знак" in inbox
-
-    # статус закладки главы — в §7 реестра информрежима, и парсер §7 читает её по-прежнему
-    reg = next(lib.glob("*Реестр_информационного_режима*.md")).read_text(encoding="utf-8")
-    row = next(ln for ln in reg.splitlines() if "Недогоревший знак" in ln and ln.startswith("|"))
-    assert "положена ✓" in row
-    plant = next(p for p in exporter.load_plants(ws.exports) if p.plant_id == "З-04")
-    assert plant.chapters == [6] and "Недогоревший знак" in plant.what
-
-    # всё по-прежнему разбирается целиком
-    exporter.run_export(lib, ws.exports, ws.logs)
 
 
 def test_демо_реестр_без_подходящей_таблицы_во_входящие(ws, library):

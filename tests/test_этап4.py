@@ -14,6 +14,7 @@ from konveyer.cli import app
 from konveyer.config import ApiConfig, Config, ModelConfig
 from konveyer.fsm import ChapterState
 from konveyer.steps import canon as canon_steps
+from tests.общие import _accepted_chapter, _init_repo
 
 runner = CliRunner()
 
@@ -21,9 +22,6 @@ runner = CliRunner()
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch, ws):
     monkeypatch.chdir(ws.root)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
 
 
 # ------------------------------------------------------------------ 9. адаптеры
@@ -138,7 +136,7 @@ def test_регрессия_пополнение_и_отпечаток(ws, monke
     (ws.root / "конфиг.yaml").write_text("library_dir: Библиотека\nwindow_soft_limit_chars: 70000\n", encoding="utf-8")
     assert regression.is_stale(ws)
     r = runner.invoke(app, ["пере-тест", "--зафиксировать"])
-    assert r.exit_code == 1 and "фиксация retest запрещена" in r.output
+    assert r.exit_code == 1 and "фиксация пере-теста запрещена" in r.output
 
 
 # ------------------------------------------------------------------ 7.14 пере-тест и пины
@@ -207,7 +205,6 @@ def test_доктор_пин_не_найден_и_не_проверен(ws, monk
 
 
 def test_бэкап_второе_место_и_bare_папка(ws, library, tmp_path):
-    from tests.test_stage6_reliability import _init_repo
 
     _init_repo(library)
     r = runner.invoke(app, ["doctor"])
@@ -219,7 +216,6 @@ def test_бэкап_второе_место_и_bare_папка(ws, library, tmp_
 
 
 def test_архив_ротация_и_после_приёмки(ws, library, tmp_path):
-    from tests.test_stage6_reliability import _accepted_chapter, _init_repo
 
     _init_repo(library)
     dest = tmp_path / "архивы"

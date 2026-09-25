@@ -1,4 +1,4 @@
-"""Обзор: status (FR-D2), log (журнал API §6.3), find (поиск по канону), doctor (NFR-1), dashboard (FR-D1)."""
+"""Обзор: status (§8.2), log (журнал API §6.3), find (поиск по канону), doctor (NFR-1), dashboard (§8.2)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from .common import _chapter_flags_summary, _ctx, _print_verdict, cmd, colors, e
 
 
 def status(chapter: int | None = None, volume: int | None = None) -> list:
-    """Состояния глав и следующий шаг (FR-D2); с `chapter` — карточка главы; `volume` — главы тома N.
+    """Состояния глав и следующий шаг (FR-CL-3); с `chapter` — карточка главы; `volume` — главы тома N.
     Возвращает состояния глав тома (для карточки — список из одной главы)."""
     ws, cfg, lib = _ctx()
     if volume is not None and int(volume) < 1:
@@ -250,7 +250,7 @@ def doctor() -> None:
 
 
 def dashboard() -> Path:
-    """Собрать дашборд.html (FR-D1). Возвращает путь файла."""
+    """Собрать дашборд.html (§8.2). Возвращает путь файла."""
     ws, cfg, lib = _ctx()
     path = dashboard_mod.build_dashboard(ws)
     secho(f"Дашборд: {path}", fg=colors.GREEN)

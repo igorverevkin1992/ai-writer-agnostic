@@ -20,6 +20,7 @@ from konveyer.fsm import ChapterState, all_states
 from konveyer.paths import Workspace
 from konveyer.schemas import Edit, Flag, Resolution
 from konveyer.steps import edits as edits_steps, tact
+from tests.общие import _init_repo
 
 runner = CliRunner()
 DRAFT = "Каширин нашёл записку утром возле хлебницы. Бумага пахла чужим табаком. Он положил её в карман.\n"
@@ -28,14 +29,6 @@ DRAFT = "Каширин нашёл записку утром возле хлеб
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch, ws):
     monkeypatch.chdir(ws.root)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-
-
-def _init_repo(root: Path) -> None:
-    for args in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"], ["add", "-A"],
-                 ["commit", "-q", "-m", "init"]):
-        subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
 
 
 def _to_review(ws: Workspace, library: Path, chapter: int = 1, flags: list[Flag] | None = None) -> ChapterState:

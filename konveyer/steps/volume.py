@@ -26,7 +26,7 @@ def volume_status(volume: int | None = None):
     plan = str(stats.chapters_total) if stats.chapters_total is not None else "поглавник недоступен"
     echo(f"Главы в {ws.chapters_root(volume).relative_to(ws.root).as_posix()}/; глав в поглавнике: {plan}")
     if stats.chapters_total is None:
-        secho(f"⚠ Поглавник тома {volume} не прочитан (нет документов тома или сломана разметка) — "
+        secho(f"⚠ План глав тома {volume} не прочитан (нет документов тома или сломана разметка) — "
               f"сводка без плана глав; проверьте `konveyer том открыть {volume}`.", fg=colors.YELLOW)
     echo(f"Зафиксировано: {len(stats.fixed)}" + (f" ({', '.join(map(str, stats.fixed))})" if stats.fixed else ""))
     echo(f"В работе: {len(stats.in_work)}" + (" — " + "; ".join(f"гл. {n}: {st}" for n, st in stats.in_work.items()) if stats.in_work else ""))

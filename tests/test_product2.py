@@ -15,12 +15,6 @@ from konveyer.schemas import Flag, Resolution
 runner = CliRunner()
 
 
-@pytest.fixture(autouse=True)
-def _no_api_keys(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-
-
 # --- HTML-пакет приёмки (этап 3: «чтение с флагами» без сервера)
 
 

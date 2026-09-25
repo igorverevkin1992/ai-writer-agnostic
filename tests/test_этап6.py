@@ -33,8 +33,6 @@ PANELS = {"Настройка проекта", "Онбординг", "Такт �
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch, ws):
     monkeypatch.chdir(ws.root)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
 
 # ------------------------------------------------------------------ 8.1 CLI

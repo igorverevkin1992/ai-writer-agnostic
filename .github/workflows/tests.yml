@@ -5,15 +5,22 @@ on:
     branches: ["**"]
   pull_request:
 
+# Библиотека эталона нужна миграционным тестам профиля (tests/профиль_угар, FR-MG-1…4; критерий приёмки 14.3.8:
+# «профиль эталона проверяется в каждом прогоне»). Репозиторий публичный; если он станет приватным — положите
+# токен чтения в секрет ETALON_TOKEN. Без библиотеки шаг падает с сообщением, тесты профиля не пропускаются молча.
+env:
+  PYTHONUTF8: "1"
+  ETALON_REPO: igorverevkin1992/ugar-library
+
 jobs:
   pytest:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # macOS — потому что `Запустить_панель.command` и кириллические пути должны работать и там (аудит 2, п. 31)
+        # macOS — потому что `Запустить_панель.command` и кириллические пути должны работать и там (NFR-2)
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,13 +28,23 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Git с кириллическими путями
         run: git config --global core.quotepath off
+      - name: Библиотека эталона (миграционные тесты профиля)
+        shell: bash
+        env:
+          ETALON_TOKEN: ${{ secrets.ETALON_TOKEN }}
+        run: |
+          url="https://${ETALON_TOKEN:+${ETALON_TOKEN}@}github.com/${ETALON_REPO}"
+          dest="${RUNNER_TEMP}/ugar-library"
+          if ! git clone -q --depth 1 "$url" "$dest"; then
+            echo "::error::Библиотека эталона ${ETALON_REPO} недоступна (репозиторий приватный или удалён). Миграционные тесты профиля обязательны в CI (14.3.8): дайте доступ или положите токен чтения в секрет ETALON_TOKEN."
+            exit 1
+          fi
+          echo "KONVEYER_ETALON=${dest}" >> "$GITHUB_ENV"
       - name: Установка
         run: pip install -e ".[dev]"
       - name: Линт кода (ruff)
         run: ruff check konveyer tests
-      - name: Тесты
-        env:
-          PYTHONUTF8: "1"
+      - name: Тесты (с профилем эталона)
         run: python -m pytest tests/ -q
 
   pytest-llm-sdk:
@@ -59,6 +76,26 @@ jobs:
           pip install -e . --no-deps
       - name: Тесты
         run: python -m pytest tests/ -q
+
+  wheel:
+    # колесо собирается и содержит подпакеты и данные движка (типы, модули, методики, языки, шаблоны, панель, профили)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Сборка колеса и установка без editable
+        run: |
+          pip install build
+          python -m build --wheel --outdir dist
+          pip install dist/*.whl
+      - name: Установленный пакет работает вне репозитория
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -c "import konveyer.steps.tact, konveyer.onboarding.extract, konveyer.server"
+          konveyer --version
+          konveyer типы > /dev/null
 
   panel:
     runs-on: ubuntu-latest

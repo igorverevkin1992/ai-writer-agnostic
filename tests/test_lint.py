@@ -1,8 +1,6 @@
 """Линтер канона: проверки противоречий (демо и реальная библиотека), исправления, наблюдатель, API панели, CLI."""
 
 import json
-import re
-import threading
 import time
 import urllib.error
 import urllib.parse
@@ -15,18 +13,8 @@ from typer.testing import CliRunner
 from konveyer import canonwatch, guard, lint, server
 from konveyer.cli import app
 from konveyer.config import Config
-from konveyer.paths import Workspace
 from konveyer.schemas import LintFix
-
-REPO = Path(__file__).resolve().parent.parent
-LIBRARY = REPO / "Библиотека"
-real_only = pytest.mark.skipif(not LIBRARY.exists(), reason="реальная библиотека не подключена")
-
-
-@pytest.fixture(autouse=True)
-def _offline(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+from tests.общие import panel_server
 
 
 def _edit(path: Path, old: str, new: str) -> None:
@@ -103,35 +91,6 @@ def test_модельный_слой_без_api_сохраняет_промпт�
     assert not findings and len(prompts) == 1 and Path(prompts[0]).exists()
 
 
-@real_only
-def test_реальная_библиотека_без_ошибок(tmp_path):
-    """Реальный канон: ошибок уровня «ошибка» нет; предупреждения — подсветка для автора, а не шум.
-    Работает на копии библиотеки во временной папке pytest — живой канон автора не трогается, мусора не остаётся."""
-    import shutil
-
-    lib = tmp_path / "Библиотека"
-    shutil.copytree(LIBRARY, lib, ignore=shutil.ignore_patterns(".git"))
-    ws = Workspace(tmp_path)
-    guard.set_library_dir(lib)
-    report = lint.run_lint(lib, ws.exports, ws.logs, root=ws.root)
-    assert report.errors == 0, [f.message for f in report.findings if f.severity == "ошибка"]
-    codes = {f.code for f in report.findings}
-    # расхождение реестра и матрицы по Т-07 снято автором (Р-033): на чистом каноне ТАЙНА-1 нет
-    assert "ТАЙНА-1" not in codes
-    # возраст «гл. 41 т.1» больше не принимается за возраст (ложных ДОСЬЕ-1 нет)
-    assert not any(f.code == "ДОСЬЕ-1" and "41" in f.message for f in report.findings)
-    # участники сцен без карточки досье и карточки без «Физики» — заметки для автора
-    notes = {f.code: [x.message for x in report.findings if x.code == f.code] for f in report.findings}
-    assert all(f.severity == "заметка" for f in report.findings if f.code in ("ПОГЛ-2", "ДОСЬЕ-6"))
-    who = {re.search(r"«([^»]+)»", m).group(1) for m in notes["ПОГЛ-2"]}
-    assert {"Куратор ОГПУ", "тело Клюева у сейфа", "Веры Холодовой", "поляк", "посредник", "оперативник"} <= who
-    assert not any(w.lower().startswith(("чекист", "резидент")) for w in who)  # «чекистской мистификации», резидент = Штерн
-    assert next(m for m in notes["ПОГЛ-2"] if "«поляк»" in m).endswith("(гл. 29, 31, 37, 40)")
-    no_physique = {m.split(":")[0] for m in notes["ДОСЬЕ-6"]}
-    assert {"РОМАН ЗАВАРЗИН", "АСЯ ГРИНБЕРГ", "ФРОЛ БУГАЕВ", "ОЛЬГА ЛЕММ"} <= no_physique and len(no_physique) == 7
-    assert not any(n.startswith(("АРИСТАРХ", "СТЕПАН", "АНДРЕЙ")) for n in no_physique)  # у Лемма, Степана, Штерна «Физика» есть
-
-
 # ------------------------------------------------------------- наблюдатель
 
 
@@ -151,12 +110,8 @@ def test_наблюдатель_замечает_изменение(library):
 @pytest.fixture
 def panel(ws, library, monkeypatch):
     monkeypatch.chdir(ws.root)
-    srv = server.serve(ws, Config(), library, port=0, watch=False)
-    port = srv.server_address[1]
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{port}", srv.api  # type: ignore[attr-defined]
-    srv.shutdown()
-    srv.server_close()
+    with panel_server(ws, library, watch=False) as (port, srv):
+        yield f"http://127.0.0.1:{port}", srv.api
 
 
 def _get(url: str):

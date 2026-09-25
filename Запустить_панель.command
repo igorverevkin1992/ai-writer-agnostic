@@ -1,6 +1,7 @@
 #!/bin/bash
 # КОНВЕЙЕР — панель в браузере одним щелчком (macOS: двойной клик; Linux: ./Запустить_панель.command)
 cd "$(dirname "$0")" || exit 1
+export PYTHONUTF8=1
 PY=$(command -v python3 || command -v python)
 if [ -z "$PY" ]; then echo "Не найден Python 3.11+ (python.org или brew install python)."; read -r -p "Enter…"; exit 1; fi
 if [ ! -x ".venv/bin/python" ]; then

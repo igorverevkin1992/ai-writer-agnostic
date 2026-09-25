@@ -11,10 +11,21 @@ from .common import _ctx, colors, echo, secho
 from .. import steps as _steps
 
 
-def import_materials(source: str) -> importer.ImportReport:
-    """`konveyer импорт <путь>`: файл, папка или .zip → сырьё/ (FR-ON-4…FR-ON-6)."""
+def import_materials(source: str | list[str]) -> importer.ImportReport:
+    """`konveyer импорт <путь> [<путь>…]`: файлы, папки или .zip → сырьё/ (FR-ON-4…FR-ON-6).
+    Несколько источников импортируются по очереди в один индекс; отчёт — сводный."""
     ws, cfg, lib = _ctx()
-    rep = importer.import_path(ws, Path(source))
+    sources = [source] if isinstance(source, str) else list(source)
+    if not sources:
+        raise FileNotFoundError("укажите хотя бы один файл, папку или .zip с материалами")
+    rep = importer.ImportReport()
+    for src in sources:
+        part = importer.import_path(ws, Path(src))
+        rep.added += part.added
+        rep.changed += part.changed
+        rep.skipped += part.skipped
+        rep.rejected += part.rejected
+        rep.index_path = part.index_path
     secho(f"Импорт: новых {len(rep.added)}, новых версий {len(rep.changed)}, уже были {len(rep.skipped)}, "
           f"без извлечения {len(rep.rejected)} → {rep.index_path}", fg=colors.GREEN)
     bad: list[importer.RawEntry] = []

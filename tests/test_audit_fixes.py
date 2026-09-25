@@ -3,7 +3,6 @@
 import json
 import subprocess
 
-import pytest
 from typer.testing import CliRunner
 
 from konveyer import adapters, exporter, regression, review, textutils
@@ -13,12 +12,6 @@ from konveyer.fsm import ChapterState
 from konveyer.schemas import Flag
 
 runner = CliRunner()
-
-
-@pytest.fixture(autouse=True)
-def _no_api_keys(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
 
 # --- баг: typer.OptionInfo истинен → run шёл по веткам --manual/--авторская-правка
@@ -62,7 +55,7 @@ def test_apply_edits_лимит_итераций_стоп(ws, monkeypatch):
     (ws.chapter_dir(2) / "правки.md").write_text("БЫЛО: а\nСТАЛО: б\n", encoding="utf-8")
     r = runner.invoke(app, ["apply-edits", "2"])
     assert r.exit_code == 1
-    assert "лимит" in r.output + (r.stderr or "") and "--manual" in r.output
+    assert "лимит" in r.output + (r.stderr or "") and "--manual" in r.output + (r.stderr or "")
     assert ChapterState(ws, 2).state == "на-приёмке"  # состояние не тронуто
 
 

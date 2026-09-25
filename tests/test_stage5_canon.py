@@ -12,16 +12,7 @@ from konveyer import canonchange, exporter, gitops, guard, server
 from konveyer.config import Config
 from konveyer.fsm import ChapterState
 from konveyer.mdparse import MarkupError
-
-
-def _git(repo: Path, *args: str) -> str:
-    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True, encoding="utf-8").stdout.strip()
-
-
-def _init_repo(root: Path) -> None:
-    for args in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"], ["add", "-A"],
-                 ["commit", "-q", "-m", "init"]):
-        _git(root, *args)
+from tests.общие import _git, _init_repo
 
 
 def _append(path: Path, text: str) -> None:

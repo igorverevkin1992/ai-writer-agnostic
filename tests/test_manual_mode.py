@@ -1,7 +1,6 @@
 """Ручной режим без разрывов (§1.3, FR-TK-6, FR-WR-4): CLI write --manual и панель (вставка ответов)."""
 
 import json
-import threading
 import urllib.request
 
 import pytest
@@ -11,25 +10,16 @@ from konveyer import compiler, server
 from konveyer.cli import app
 from konveyer.config import Config
 from konveyer.fsm import ChapterState
+from tests.общие import panel_server
 
 runner = CliRunner()
-
-
-@pytest.fixture(autouse=True)
-def _no_api_keys(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
 
 @pytest.fixture
 def panel(ws, library, monkeypatch):
     monkeypatch.chdir(ws.root)
-    srv = server.serve(ws, Config(), library, port=0)
-    port = srv.server_address[1]
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{port}"
-    srv.shutdown()
-    srv.server_close()
+    with panel_server(ws, library) as (port, srv):
+        yield f"http://127.0.0.1:{port}"
 
 
 def _post(base, path, body):

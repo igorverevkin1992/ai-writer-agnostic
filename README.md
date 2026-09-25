@@ -9,10 +9,11 @@
 - Соглашения типов документов и реестр метрик — [docs/](docs/) (генерируются командой `konveyer типы --документация`).
 
 ```
-pip install -e ".[llm,dev]"
+pip install -e ".[llm,onboarding]"            # Python 3.11+, без обязательного venv; ярлыки панели ставят всё сами
 konveyer проект создать ~/Серия --имя "Моя серия" --томов 3
 konveyer доктор
 konveyer такт 1
 ```
 
-Тесты: `PYTHONUTF8=1 python -m pytest tests/ -q`; линт: `ruff check konveyer tests`.
+Тесты: `PYTHONUTF8=1 python -m pytest tests/ -q`; линт: `ruff check konveyer tests`;
+тесты профиля эталона: `KONVEYER_ETALON=/путь/к/ugar-library pytest tests/профиль_угар`.

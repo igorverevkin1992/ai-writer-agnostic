@@ -15,23 +15,28 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Верхние границы — по мажорным версиям (аудит 2, п. 31): смена мажора SDK меняет HTTP-стек и типы;
-# точные версии проверенной установки — requirements.lock, порядок обновления — ЗАПУСК.md, шаг 7.
+# Верхние границы SDK — по мажорным версиям: смена мажора меняет HTTP-стек и типы; точные версии
+# проверенной установки — requirements.lock, порядок обновления — Запуск.md, раздел «Обновление».
 llm = ["google-genai>=1.0,<3", "anthropic>=0.40,<2"]
-docx = ["python-docx>=1.1"]   # рукопись тома в .docx (`konveyer volume close`); без неё — только .md
-# онбординг (раздел 5): извлечение из .docx/.xlsx/.pdf; без библиотек формат регистрируется «без извлечения» с причиной
-onboarding = ["python-docx>=1.1", "openpyxl>=3.1", "pypdf>=4"]
-# тесты форматов онбординга (test_импорт_форматы) нуждаются в этих библиотеках — они входят в dev (§14.3.8, CI на трёх ОС)
-dev = ["pytest>=7.4", "ruff>=0.5", "python-docx>=1.1", "openpyxl>=3.1", "pypdf>=4"]
+# Тяжёлые разборщики форматов необязательны (NFR-12): без них импорт таких файлов даёт понятное сообщение.
+docx = ["python-docx>=1.1"]   # импорт .docx и рукопись тома в .docx (`konveyer том закрыть`); без неё — только .md
+xlsx = ["openpyxl>=3.1"]      # импорт .xlsx
+pdf = ["pypdf>=4.0"]          # импорт .pdf
+onboarding = ["python-docx>=1.1", "openpyxl>=3.1", "pypdf>=4.0"]
+dev = ["pytest>=7.4", "ruff>=0.5", "python-docx>=1.1", "openpyxl>=3.1", "pypdf>=4.0"]
 
 [project.scripts]
 konveyer = "konveyer.cli:app"
 
-[tool.setuptools]
-packages = ["konveyer"]
+[tool.setuptools.packages.find]
+# подпакеты (steps, onboarding) входят в колесо; проверяется тестом tests/test_упаковка.py
+include = ["konveyer*"]
 
 [tool.setuptools.package-data]
 konveyer = ["data/**/*", "шаблоны/*", "типы/*.yaml", "модули/**/*", "методики/**/*", "языки/*.yaml"]
+
+[tool.setuptools.exclude-package-data]
+konveyer = ["**/__pycache__/*", "**/*.pyc"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

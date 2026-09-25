@@ -153,7 +153,7 @@ def volume_exports(ws: Workspace, library: Path | None, volume: int) -> Iterator
 
 
 def volume_briefs(ws: Workspace, library: Path | None, volume: int) -> list[Brief] | None:
-    """Поглавник тома (см. `volume_exports`); None — недоступен."""
+    """План глав тома (см. `volume_exports`); None — недоступен."""
     from . import exporter
 
     with volume_exports(ws, library, volume) as exports:

@@ -5,15 +5,13 @@ from __future__ import annotations
 
 import shutil
 
-import pytest
 
 from konveyer import compiler, lint, textutils, verifier1
-from tests.профиль_угар.test_миграция import ETALON, ugar  # noqa: F401 — фикстура проекта из профиля
+# фикстура `ugar` (проект профиля с копией библиотеки эталона) — из tests/профиль_угар/conftest.py;
+# без KONVEYER_ETALON тесты пропускаются
 
-pytestmark = pytest.mark.skipif(not ETALON.is_dir(), reason="библиотека эталона не подключена")
 
-
-def test_средняя_длина_принятых_глав_не_сдвинулась(ugar):  # noqa: F811
+def test_средняя_длина_принятых_глав_не_сдвинулась(ugar):
     """Правки сплиттера не ломают калибровку норм эталона: сдвиг средней — в пределах 0,3 слова."""
     ws, lib, man = ugar
     for name, was in (("Том1_Глава05.md", 6.2), ("Том1_Глава04_МАКЕТ.md", 7.29)):
@@ -23,7 +21,7 @@ def test_средняя_длина_принятых_глав_не_сдвинул
         assert abs(avg - was) <= 0.3, (name, avg)
 
 
-def test_ttr_окно_считается_по_тому_а_не_по_части(ugar):  # noqa: F811
+def test_ttr_окно_считается_по_тому_а_не_по_части(ugar):
     ws, lib, man = ugar
     ws.chapter_dir(5).mkdir(parents=True, exist_ok=True)
     shutil.copyfile(lib / "Проза" / "Том1_Глава05.md", ws.draft_path(5, 1))
@@ -33,7 +31,7 @@ def test_ttr_окно_считается_по_тому_а_не_по_части(u
     assert "брак 0.4" in ttr.threshold  # порог брака TTR — из документа стиля эталона
 
 
-def test_линтер_подсвечивает_принятую_главу_вне_норм(ugar):  # noqa: F811
+def test_линтер_подсвечивает_принятую_главу_вне_норм(ugar):
     """Принятая глава 5 с средней 6,2 при норме 9–12 — автор должен видеть противоречие (ПРОЗА-3)."""
     ws, lib, man = ugar
     report = lint.run_lint(lib, ws.exports, ws.logs, export=False, root=ws.root, use_cache=False)

@@ -50,13 +50,13 @@ def _save_draft(ws: Workspace, chapter: int, k: int, text: str, cfg: Config, mod
 
 
 def write_chapter(ws: Workspace, cfg: Config, chapter: int, k: int) -> None:
-    """FR-W1: отправляет окно, сохраняет ответ как черновик_k.md. Контекст — только окно."""
+    """§7.4: отправляет окно, сохраняет ответ как черновик_k.md. Контекст — только окно."""
     window = ws.window_path(chapter).read_text(encoding="utf-8")
     text = require_text(adapters.call_model(cfg.writer, cfg.api, "", window, ws.logs, role="писатель", chapter=chapter), "Писатель")
     _save_draft(ws, chapter, k, text, cfg, mode="генерация")
 
 
-# ------------------------------------------------------------ варианты A/B (аудит 2, п. 24б)
+# ------------------------------------------------------------ варианты A/B (FR-WR-4)
 
 
 def variant_suffix(label: str) -> str:
@@ -194,7 +194,7 @@ def apply_edits_text(text: str, edits: list[Edit]) -> LocalEdits:
 
 def apply_edits_locally(ws: Workspace, cfg: Config, chapter: int, черновик_k: int, edits: list[Edit],
                         new_k: int | None = None) -> tuple[int, LocalEdits]:
-    """Правки кодом от черновика черновик_k (база приёмки, FR-E3): новый черновик_{new_k} с mode «правки (код)».
+    """Правки кодом от черновика черновик_k (база приёмки, §7.8): новый черновик_{new_k} с mode «правки (код)».
     Возвращает (номер нового черновика, итог). Если что-то осталось Писателю — черновик НЕ пишется:
     промежуточный текст отдаётся в `apply_edits(..., base_text=…)`."""
     base_text = ws.draft_path(chapter, черновик_k).read_text(encoding="utf-8")
@@ -225,7 +225,7 @@ def edit_prompt(ws: Workspace, chapter: int, черновик_k: int, edits: lis
 
 def apply_edits(ws: Workspace, cfg: Config, chapter: int, черновик_k: int, edits: list[Edit], new_k: int | None = None,
                 base_text: str | None = None, applied_locally: list[int] | None = None) -> int:
-    """Вызов Писателя в режиме правок от черновика черновик_k (база приёмки, FR-E3); возвращает номер нового черновика.
+    """Вызов Писателя в режиме правок от черновика черновик_k (база приёмки, §7.8); возвращает номер нового черновика.
     `base_text` — текст с уже применёнными кодом правками (Писателю уходят только `edits`)."""
     prompt = edit_prompt(ws, chapter, черновик_k, edits, draft_text=base_text)
     guard.write_text(ws.chapter_dir(chapter) / "промпт_правок.md", prompt)

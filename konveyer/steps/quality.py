@@ -15,7 +15,7 @@ from .common import Confirm, _ctx, _print_verdict, colors, confirm_or_reject, ec
 def check(
     file: Path, chapter: int | None = None, focal: str = "", year: int | None = None, volume_words: int | None = None,
 ) -> str:
-    """Прогнать проверки Э1 по произвольному файлу — вне такта и FSM (ручной режим, NFR-3).
+    """Прогнать проверки Э1 по произвольному файлу — вне такта и FSM (ручной режим, FR-RL-3).
     Возвращает итог: PASS / FLAG / BRAK."""
     ws, cfg, lib = _ctx()
     from ..schemas import Brief

@@ -116,7 +116,7 @@ def build_manuscript(ws: Workspace, library: Path, volume: int) -> tuple[Path, P
 
 
 def _briefs_of(ws: Workspace, library: Path, volume: int) -> list[Brief]:
-    """Поглавник тома: из выгрузок или временного экспорта тома (`accounting.volume_briefs`); нет — пусто."""
+    """План глав тома: из выгрузок или временного экспорта тома (`accounting.volume_briefs`); нет — пусто."""
     return accounting.volume_briefs(ws, library, volume) or []
 
 
@@ -289,7 +289,7 @@ def close_volume(ws: Workspace, cfg: Config, library: Path, volume: int, *, agai
     не оставляет том «полузакрытым». Как и приёмка, требует библиотеку под git (иначе нет ни коммита, ни тега).
     Выгрузки должны быть тома `volume` (закрывается текущий том; другой — сначала `konveyer том открыть N`)."""
     if not author_confirmed:
-        raise PermissionError("закрытие тома без подтверждения автора запрещено (FR-K2, Д-8).")
+        raise PermissionError("закрытие тома без подтверждения автора запрещено (FR-RL-1).")
     if volume != ws.volume:
         raise RuntimeError(
             f"закрывается только текущий том рабочей области (сейчас том {ws.volume}); "

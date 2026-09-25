@@ -17,7 +17,7 @@ from konveyer.cli import app
 from konveyer.config import Config, ModelConfig
 from konveyer.fsm import ChapterState
 
-from tests.test_stage6_reliability import _accepted_chapter, _git, _init_repo
+from tests.общие import _accepted_chapter, _git, _init_repo
 
 runner = CliRunner()
 
@@ -25,9 +25,6 @@ runner = CliRunner()
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch, ws):
     monkeypatch.chdir(ws.root)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
 
 
 def _with_spec(mod: types.ModuleType) -> types.ModuleType:
@@ -190,7 +187,8 @@ def test_backup_архив_создаёт_zip_и_ротирует(ws, library, t
     assert len(archives) == 2  # backup_keep = 2
     assert all(p.name.startswith("рабочая_область_") and p.suffix == ".zip" for p in archives)
     names = zipfile.ZipFile(archives[-1]).namelist()
-    assert "главы/001/черновик_1.md" in names and "конфиг.yaml" in names
+    assert "главы/001/черновик_1.md" in names and "конфиг.yaml" in names and "проект.yaml" in names  # манифест — в архиве
+    assert "Восстановление:" in r.output  # процедура восстановления называется в выводе бэкапа
     assert any(n.startswith("регрессия/золотые/") for n in names)
     assert not any(n.endswith(".tmp") for n in names)
     assert not list(dest.glob("*.tmp"))

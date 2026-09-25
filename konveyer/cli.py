@@ -452,7 +452,7 @@ def cmd_resolve(
     reason: str = typer.Option("", "--причина", "--reason", help="Причина отклонения флага (обязательна для «отклонить»)."),
     all_: bool = typer.Option(False, "--все", "--all", help="Одно решение для всех самоволок без решения: `решение N вычеркнуть --все`."),
 ) -> None:
-    """Решения по флагам без ручной правки JSON (FR-RV-2): самоволку — вычеркнуть или канонизировать, любой флаг — отклонить с причиной.
+    """Решения по флагам без ручной правки JSON (§7.7): самоволку — вычеркнуть или канонизировать, любой флаг — отклонить с причиной.
 
     Без аргументов — список; с флагом и решением — записывает решение; `--все` — решение для всех самоволок без решения.
     """
@@ -530,7 +530,7 @@ def cmd_types(
 @app.command("учёт", rich_help_panel="Обзор")
 @_friendly
 def cmd_accounting(volume: int | None = typer.Option(None, "--том", "--volume", help="Номер тома (по умолчанию — текущий).")) -> None:
-    """Стоимость и время по главам, тому и ролям; прогноз остатка тома (FR-CT-3, FR-EC-4)."""
+    """Стоимость и время по главам, тому и ролям; прогноз остатка тома (FR-CT-3)."""
     overview.accounting(volume)
 
 
@@ -832,10 +832,12 @@ def cmd_init(
 
 @app.command("импорт", rich_help_panel="Онбординг")
 @_friendly
-def cmd_import(source: str = typer.Argument(..., metavar="ПУТЬ", help="Файл, папка или .zip с материалами автора.")) -> None:
-    """Импортировать материалы в сырьё/: копии оригиналов, извлечения в Markdown, индекс (раздел 5.1)."""
+def cmd_import(
+    sources: list[str] = typer.Argument(..., metavar="ПУТЬ...", help="Файлы, папки или .zip с материалами автора (можно несколько)."),
+) -> None:
+    """Импортировать материалы в сырьё/: копии оригиналов, извлечения в Markdown, индекс (§5.1)."""
     try:
-        onboarding_steps.import_materials(source)
+        onboarding_steps.import_materials(sources)
     except FileNotFoundError as e:
         _fail(str(e))
 
