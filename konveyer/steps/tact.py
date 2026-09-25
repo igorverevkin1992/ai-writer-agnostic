@@ -514,9 +514,12 @@ def accept(chapter: int, yes: bool = False, confirm: Confirm | None = None) -> N
 
 def canonize(
     chapter: int, apply: bool = False, yes: bool = False, redo: bool = False, confirm: Confirm | None = None,
+    manual: bool = False, answer: Path | None = None,
 ) -> str | Path | None:
     """Канонист: пакет записей в канон (FR-CN-1); применение — только после подписи (FR-CN-2).
-    Без `apply` возвращает путь пакета, с `apply` — SHA коммита приёмки."""
+    Без `apply` возвращает путь пакета, с `apply` — SHA коммита приёмки.
+    `manual` — ручной режим (FR-RL-3): пакет собирается из ответа модели, который автор положил
+    в `главы/N/ответ_канониста.json` (или в файл `answer`); пакет, уже правленный автором, при этом пересобирается."""
     ws, cfg, lib = _ctx()
     current_chapter(chapter)  # порог «стоимость главы» в хуке перед вызовом модели
     if not isinstance(redo, bool):
@@ -525,6 +528,16 @@ def canonize(
     st.require("принято")
     batch_path = ws.chapter_dir(chapter) / "пакет_канона.md"
     if not apply:
+        answer_text = None
+        if manual or answer is not None:
+            answer_path = Path(answer) if answer is not None else ws.chapter_dir(chapter) / canonist.ANSWER_FILE
+            if not answer_path.exists():
+                raise StepError(
+                    f"ручной режим Канониста: нет файла ответа {ws.chapter_rel(chapter)}/{canonist.ANSWER_FILE} — "
+                    f"прогоните {ws.chapter_rel(chapter)}/{canonist.PROMPT_FILE} вручную и сохраните JSON-ответ в этот файл."
+                )
+            answer_text = answer_path.read_text(encoding="utf-8")
+            redo = True
         if batch_path.exists():
             current = _sha256(batch_path)
             edited = st.data.get("пакет_хэш") != current
@@ -541,8 +554,8 @@ def canonize(
                 guard.write_text(keep, batch_path.read_text(encoding="utf-8"))
                 secho(f"Прежний пакет сохранён: {ws.chapter_rel(chapter)}/{keep.name}", fg=colors.YELLOW)
         try:
-            path = canonist.build_batch(ws, cfg, chapter, st.draft)
-        except RuntimeError as e:
+            path = canonist.build_batch(ws, cfg, chapter, st.draft, answer=answer_text)
+        except (RuntimeError, ValueError) as e:
             raise StepError(str(e)) from e
         st.data["пакет_хэш"] = _sha256(path)
         st._save()
@@ -572,12 +585,32 @@ def canonize(
         )
         return existing
     confirm_or_reject(yes, confirm, f"Применить пакет главы {chapter} к библиотеке и закоммитить? (y)")
-    commit = canonist.apply_batch(ws, cfg, lib, chapter, st.draft)
+    result = canonist.apply_batch(ws, cfg, lib, chapter, st.draft)
+    commit = result.commit
     st.data["коммит_приёмки"] = commit  # откат зафиксированной главы — строго по этому SHA
     st.transition("зафиксировано", "canonize --apply")
     secho(f"Глава {chapter} зафиксирована. Коммит: {commit}", fg=colors.GREEN)
+    _print_lint_summary(result)
     _after_canonize(ws, cfg, lib, chapter, commit)
     return commit
+
+
+def _print_lint_summary(result) -> None:
+    """Линтер прошёл по канону сразу после записи пакета (FR-CN-2): противоречия, внесённые приёмкой,
+    автор должен увидеть, а не найти позже в журнале."""
+    report = getattr(result, "lint", None)
+    if report is None:
+        return
+    if report.errors or report.warnings:
+        secho(
+            f"⚠ Линтер после приёмки: ошибок {report.errors}, предупреждений {report.warnings} — "
+            f"см. журналы/линтер.md; коммит приёмки уже создан, противоречия правьте в каноне (`konveyer канон-коммит`).",
+            fg=colors.YELLOW,
+        )
+        for f in [x for x in report.findings if x.severity in ("ошибка", "предупреждение")][:8]:
+            echo(f"  - {f.code} {f.file}{':' + str(f.line) if f.line else ''}: {f.message}")
+    else:
+        echo("Линтер после приёмки: противоречий нет.")
 
 
 def _after_canonize(ws: Workspace, cfg: Config, lib: Path, chapter: int, commit: str) -> None:

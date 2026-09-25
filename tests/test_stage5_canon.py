@@ -97,6 +97,34 @@ def test_canon_change_откат_при_сбое_writer(ws, library):
     assert not gitops.dirty(library) and gitops.head(library) == head
 
 
+def test_сессия_записи_откат_при_сбое_коммита(ws, library, monkeypatch):
+    """FR-SC-2: сбой самого `git commit` (хук, lock-файл, права) — библиотека откатывается к HEAD, выгрузки
+    пересчитываются, повтор возможен (библиотека чиста)."""
+    _init_repo(library)
+    head = gitops.head(library)
+    doc = library / "02_Стиль_и_голос.md"
+    before = doc.read_text(encoding="utf-8")
+    exporter.run_export(library, ws.exports, ws.logs, ws.volume, ws.root)  # индекс несёт дату коммита HEAD
+    exports_before = {p.name: p.read_bytes() for p in ws.exports.glob("*.json")}
+
+    def broken_commit(*a, **k):
+        raise RuntimeError("pre-commit hook отказал")
+
+    monkeypatch.setattr(canonchange.gitops, "commit_all", broken_commit)
+    with pytest.raises(RuntimeError, match="git commit не удался.*откачена"):
+        canonchange.canon_change(ws, Config(), library, lambda: _append(doc, "\n<!-- правка -->\n"), "x",
+                                 commit=True, author_confirmed=True)
+    assert not gitops.dirty(library) and gitops.head(library) == head
+    assert doc.read_text(encoding="utf-8") == before
+    assert {p.name: p.read_bytes() for p in ws.exports.glob("*.json")} == exports_before  # выгрузки пересчитаны к HEAD
+    # грязная на входе (сценарий Б, canon-commit) — откат не делается, правки автора на диске целы
+    doc.write_text(before + "\nправка автора\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="незакоммиченными"):
+        canonchange.canon_change(ws, Config(), library, lambda: None, "x", commit=True, author_confirmed=True,
+                                 require_clean=False)
+    assert "правка автора" in doc.read_text(encoding="utf-8")
+
+
 def test_canon_change_не_откатывает_чужие_правки(ws, library):
     """Библиотека грязная на входе (правки автора на диске) — сбой writer НЕ делает `git checkout`."""
     _init_repo(library)

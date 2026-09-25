@@ -24,7 +24,7 @@ from typing import Callable
 
 from jinja2 import Environment
 
-from . import adapters, cancel, catalog, exporter, guard, llmjson, manifest as manifest_mod, names, textutils, verifier1
+from . import adapters, cancel, catalog, declparse, exporter, guard, llmjson, manifest as manifest_mod, names, textutils, verifier1
 from .config import Config
 from .mdparse import MarkupError
 from .paths import Workspace
@@ -77,7 +77,7 @@ def parse_year(text: str) -> int | None:
 def _months(text: str) -> set[int]:
     """Месяцы периода («май–июнь» → {5, 6}); имена собственные с похожим началом («Майор») месяцами не считаются."""
     found = [num for _, num in sorted((m.start(), num) for rx, num in _month_table() for m in rx.finditer(text or ""))]
-    if len(found) >= 2 and found[0] <= found[-1]:
+    if len(found) >= 2 and found[0] <= found[-1]:  # не порог
         return set(range(found[0], found[-1] + 1))
     return set(found)
 
@@ -101,7 +101,7 @@ def _lines(path: Path | None) -> list[str]:
             _LINES_CACHE[key] = path.read_text(encoding="utf-8").splitlines()
         except OSError:
             _LINES_CACHE[key] = []
-        if len(_LINES_CACHE) > 500:
+        if len(_LINES_CACHE) > 500:  # не порог
             for old in list(_LINES_CACHE)[:250]:
                 _LINES_CACHE.pop(old, None)
     return _LINES_CACHE[key]
@@ -266,7 +266,7 @@ def check_chronology(ctx: LintContext) -> list[LintFinding]:
             if year is not None and ly is not None:
                 earlier = (year, mon, day) < (ly, lm, ld)
             else:
-                earlier = (mon, day) < (lm, ld) and not (lm == 12 and mon == 1)
+                earlier = (mon, day) < (lm, ld) and not (lm == 12 and mon == 1)  # не порог: смена года
             if earlier:
                 when = f"{ld:02d}.{lm:02d}" + (f".{ly}" if ly else "")
                 out.append(_f("ХРОН-2", "ошибка", file, line,
@@ -331,7 +331,7 @@ _CAP_WORD_RE = re.compile(r"[А-ЯЁа-яё]{4,}")
 
 def _event_keys(event: str) -> set[str]:
     words = _CAP_WORD_RE.findall(event.replace("*", " "))
-    return {w.lower()[:7] for i, w in enumerate(words) if i and w[0].isupper() and len(w) >= 6}
+    return {w.lower()[:7] for i, w in enumerate(words) if i and w[0].isupper() and len(w) >= 6}  # не порог
 
 
 def _brief_text(b: Brief) -> str:
@@ -351,7 +351,7 @@ def check_chronicle_dates(ctx: LintContext) -> list[LintFinding]:
         day, month = int(m.group(1)), int(m.group(2))
         for key in sorted(_event_keys(ev.event)):
             hits = [ch for ch, text in texts.items() if key in text]
-            if not hits or len(hits) > 2:
+            if not hits or len(hits) > 2:  # не порог
                 continue
             for ch in hits:
                 d = parse_date(by_ch[ch].date)
@@ -977,7 +977,7 @@ _STEM_END_RE = re.compile(r"(?:ами|ями|ого|ому|ыми|ими|ой|е
 
 
 def _stems(text: str) -> set[str]:
-    return {s for w in re.findall(r"[а-яёa-z]{3,}", text.lower()) if len(s := _STEM_END_RE.sub("", w)) >= 3}
+    return {s for w in re.findall(r"[а-яёa-z]{3,}", text.lower()) if len(s := _STEM_END_RE.sub("", w)) >= 3}  # не порог
 
 
 def _prose(ctx: LintContext) -> list[tuple[int, Path, Brief | None]]:
@@ -1103,6 +1103,43 @@ def check_prose_names(ctx: LintContext) -> list[LintFinding]:
             out.append(_f("ПРОЗА-4", "заметка", ctx.rel(path), text[: m.start()].count("\n") + 1,
                           f"«{full}» — имя из принятой прозы, которого нет ни в карточках, ни в континуити: новый факт прозы, не внесённый в канон",
                           "внесите в карточку/континуити или уберите из прозы", quote=full))
+    return out
+
+
+# ------------------------------------------------------------------ дубли строк реестров (КАНОН-2)
+
+
+@check("КАНОН-2")
+def check_registry_duplicates(ctx: LintContext) -> list[LintFinding]:
+    """Полностью одинаковые строки в таблице реестра (типы с колонкой-ключом): дубль от повторной приёмки
+    или ручной вставки. Одинаковый ключ у разных строк допустим (эпистемика: факт × субъект)."""
+    out: list[LintFinding] = []
+    for name, spec in sorted(ctx.types.items()):
+        fmt = next((f for ext in spec.extractions for f in ext.get("форматы", []) if f.get("вид") == "таблица"), None)
+        if fmt is None:
+            continue
+        columns = fmt.get("колонки") or {}
+        if not any(isinstance(sp, dict) and sp.get("роль") == "ключ" for sp in columns.values()):
+            continue
+        for path in ctx.docs(name):
+            entry = ctx.manifest.entry_for(ctx.rel(path))
+            overrides = entry.колонки if entry else {}
+            pctx = declparse.ParseContext(volume=ctx.volume, overrides=overrides, project_root=ctx.root, library=ctx.library,
+                                          sections=(entry.секции if entry else {}), extraction=name)
+            for table in declparse._tables(path, fmt, pctx):
+                if declparse.match_columns(table.headers, columns, overrides) is None:
+                    continue
+                seen: dict[tuple[str, ...], int] = {}
+                for i, row in enumerate(table.rows, start=1):
+                    sig = tuple((row.get(h) or "").strip() for h in table.headers)
+                    if not any(sig):
+                        continue
+                    line = table.line + 1 + i
+                    if sig in seen:
+                        out.append(_f("КАНОН-2", "ошибка", ctx.rel(path), line,
+                                      f"строка реестра «{sig[0]}» повторяет строку {seen[sig]} целиком", "удалите дубль"))
+                    else:
+                        seen[sig] = line
     return out
 
 
@@ -1333,7 +1370,8 @@ def apply_fix(library: Path, fix: LintFix) -> Path:
 
 
 def _template(root: Path | None = None) -> str:
-    for cand in ([root / "промпты" / "линтер.md", root / "шаблоны" / "линтер_канона_система.md"] if root else []):
+    for cand in ([root / "промпты" / "линтер_канона_система.md", root / "промпты" / "линтер.md",
+                  root / "шаблоны" / "линтер_канона_система.md"] if root else []):
         if cand.exists():
             return cand.read_text(encoding="utf-8")
     return resources.files("konveyer").joinpath("шаблоны/линтер_канона_система.md").read_text(encoding="utf-8")

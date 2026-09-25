@@ -27,13 +27,13 @@ from pathlib import Path
 from typing import Iterator
 
 from .. import cancel, guard, timing
-from ..errors import ManualMode, Rejected, StepError, StepExit, describe
+from ..errors import ManualMode, Rejected, StepError, StepExit, describe, hide_paths
 from ..fsm import StatusFileError, TransitionError
 from ..mdparse import MarkupError
 from ..paths import find_workspace
 
 __all__ = [
-    "EXPECTED_ERRORS", "JOB_LOCK", "ManualMode", "Rejected", "StepError", "StepExit", "describe", "job_context",
+    "EXPECTED_ERRORS", "JOB_LOCK", "ManualMode", "Rejected", "StepError", "StepExit", "describe", "hide_paths", "job_context",
     "outcome",
 ]
 

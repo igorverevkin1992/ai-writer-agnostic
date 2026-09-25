@@ -199,7 +199,7 @@ def test_apply_batch_откатывает_библиотеку_при_сбое(w
     assert "табаком" not in (library / "31_Матрица_знаний.md").read_text(encoding="utf-8")
     # повтор после исправления — проходит (не заблокирован «грязным git»)
     monkeypatch.setattr(canonist.exporter, "run_export", real_export)
-    commit = canonist.apply_batch(ws, Config(), library, 1, 1)
+    commit = canonist.apply_batch(ws, Config(), library, 1, 1).commit
     assert commit != head and not gitops.dirty(library)
     assert "табаком" in (library / "31_Матрица_знаний.md").read_text(encoding="utf-8")
 
@@ -263,7 +263,7 @@ def test_реальная_библиотека_строки_реестров_б�
     wide_before = next(t for t in matrix_before if "Факт" in t.headers)
     facts_before = len(exporter.load_matrix(ws.exports))
 
-    commit = canonist.apply_batch(ws, Config(), lib, chapter, 1)
+    commit = canonist.apply_batch(ws, Config(), lib, chapter, 1).commit
     assert commit == gitops.head(lib) and not gitops.dirty(lib)
 
     # 3.1: строка внутри широкой матрицы, № = max + 1, цитата в «Факт», пометка не в колонке субъекта

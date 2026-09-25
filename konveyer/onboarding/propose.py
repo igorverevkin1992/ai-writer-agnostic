@@ -365,8 +365,10 @@ def _system_prompt(ws: Workspace, types: dict[str, catalog.TypeSpec]) -> str:
 
     man = manifest_mod.load(ws.root)
     series = man.проект.имя if man else "серия"
-    tpl_path = ws.root / "промпты" / "архивариус.md"
-    template = tpl_path.read_text(encoding="utf-8") if tpl_path.exists() else \
+    # переопределение проекта — по имени движкового файла (FR-RL-2); старое имя `архивариус.md` — синоним
+    tpl_path = next((c for c in (ws.root / "промпты" / "архивариус_система.md", ws.root / "промпты" / "архивариус.md")
+                     if c.exists()), None)
+    template = tpl_path.read_text(encoding="utf-8") if tpl_path else \
         resources.files("konveyer").joinpath("шаблоны/архивариус_система.md").read_text(encoding="utf-8")
     # весь каталог, включая типы без машинного чтения (проза, снапшоты…): иначе модель их не знает и зовёт «сырьё»
     return Environment().from_string(template).render(series=series, types=[

@@ -1,4 +1,4 @@
-"""Review: пакет приёмки автора и разбор правок (FR-E1, FR-E2, FR-V2.5)."""
+"""Review: пакет приёмки автора (FR-RV-1), решения по флагам (FR-RV-2) и разбор правок (FR-RV-3)."""
 
 from __future__ import annotations
 
@@ -6,23 +6,34 @@ import json
 import re
 from pathlib import Path
 
-from . import guard, verifier2
+from . import guard, verifier2, writer
 from .paths import Workspace
 from .schemas import CheckResult, Edit, Flag, Resolution, Verdict
 
+NOT_FOUND_NOTE = "цитата не найдена в тексте — проверьте вручную"
+DECISIONS = ("принять", "вычеркнуть", "канонизировать", "отклонить")
+
+
+def quote_found(text: str, quote: str) -> bool:
+    """Цитата флага есть в тексте — с той же терпимостью к пробелам и переносам, что у применения правок."""
+    return bool(writer.find_quote(text, quote))
+
 
 def _anchor(text: str, quote: str, marker: str) -> str:
-    """Якорь флага в тексте (FR-E1): маркер после первого вхождения цитаты."""
-    quote = quote.strip()
-    if quote and quote in text and marker not in text:
-        return text.replace(quote, quote + marker, 1)
+    """Якорь флага в тексте (FR-RV-1): маркер после первого вхождения цитаты (пробелы и переносы — не в счёт)."""
+    hits = writer.find_quote(text, quote)
+    if hits and marker not in text:
+        end = hits[0][1]
+        return text[:end] + marker + text[end:]
     return text
 
 
 def build_review_pack(ws: Workspace, chapter: int, draft: int) -> Path:
-    """FR-E1: текст с якорями флагов Э1/Э2 + форма правок + форма решений по самоволкам."""
+    """FR-RV-1: текст с якорями флагов Э1/Э2 + форма правок + форма решений по самоволкам (приёмка.md);
+    автономный HTML того же пакета строит `htmlreview.build_review_html`."""
     chdir = ws.chapter_dir(chapter)
     text = ws.draft_path(chapter, draft).read_text(encoding="utf-8")
+    raw = text
 
     verdict_path = chdir / "вердикт.json"
     checks: list[CheckResult] = []
@@ -49,16 +60,19 @@ def build_review_pack(ws: Workspace, chapter: int, draft: int) -> Path:
     lines += ["", "## Флаги Э2 (смысловые)", ""]
     violations = [f for f in flags if f.kind == "violation"]
     samovolki = [f for f in flags if f.kind == "samovolka"]
+    def missing(f: Flag) -> str:
+        return "" if not f.quote.strip() or quote_found(raw, f.quote) else f" ⚠ {NOT_FOUND_NOTE}"
+
     if violations:
         for f in violations:
-            lines.append(f"- **[{f.severity}] {f.flag_id} · {f.type}** — {f.rule}; рекомендация: {f.recommendation}")
+            lines.append(f"- **[{f.severity}] {f.flag_id} · {f.type}** — {f.rule}; рекомендация: {f.recommendation}{missing(f)}")
             lines.append(f"  > {f.quote}")
     else:
         lines.append("- нет")
     lines += ["", "## Самоволки (требуют решения автора: «вычеркнуть» или «канонизировать»)", ""]
     if samovolki:
         for f in samovolki:
-            lines.append(f"- **{f.flag_id}** — {f.rule}")
+            lines.append(f"- **{f.flag_id}** — {f.rule}{missing(f)}")
             lines.append(f"  > {f.quote}")
     else:
         lines.append("- нет")
@@ -66,11 +80,10 @@ def build_review_pack(ws: Workspace, chapter: int, draft: int) -> Path:
     if taste:
         lines += ["", "## Вкус (советы, не блокируют приёмку; правила вкуса документа стиля)", ""]
         for f in taste:
-            lines.append(f"- **{f.flag_id}** — {f.rule}; {f.recommendation}")
+            lines.append(f"- **{f.flag_id}** — {f.rule}; {f.recommendation}{missing(f)}")
             lines.append(f"  > {f.quote}")
     lines += ["", "---", "", "## ТЕКСТ", "", text]
     guard.write_text(chdir / "приёмка.md", "\n".join(lines) + "\n")
-    guard.write_text(chdir / "приёмка.html", render_html(chapter, draft, lines[:-1], text, checks, flags))
 
     # форма правок
     if not (chdir / "правки.md").exists():
@@ -95,10 +108,10 @@ def build_review_pack(ws: Workspace, chapter: int, draft: int) -> Path:
             + "\n",
         )
 
-    # форма решений по самоволкам (FR-V2.5): пересобирается по ТЕКУЩЕМУ флаги.json при каждом
-    # review (2.9) — решения по флагам, которые остались, сохраняются; исчезнувшие флаги
+    # форма решений (FR-RV-2): пересобирается по ТЕКУЩЕМУ флаги.json при каждом review —
+    # решения по флагам, которые остались, сохраняются; исчезнувшие флаги
     # («фантомные самоволки» прошлого прогона Э2) не блокируют приёмку
-    rebuild_resolutions(ws, chapter, samovolki)
+    rebuild_resolutions(ws, chapter, samovolki, flags)
     return chdir / "приёмка.md"
 
 
@@ -137,21 +150,75 @@ def append_second_pass(ws: Workspace, chapter: int, draft: int, flags: list[Flag
     return path
 
 
-def rebuild_resolutions(ws: Workspace, chapter: int, samovolki: list[Flag]) -> list[Resolution]:
+def rebuild_resolutions(ws: Workspace, chapter: int, samovolki: list[Flag], flags: list[Flag] | None = None) -> list[Resolution]:
+    """Форма решений: запись на каждую самоволку (пустая — «без решения») плюс уже принятые решения
+    по остальным флагам текущего флаги.json («отклонить»/«принять» по нарушению не пропадают)."""
     res_path = ws.chapter_dir(chapter) / "решения.json"
     existing: dict[str, Resolution] = {}
     if res_path.exists():
         existing = {r.flag_id: r for r in load_resolutions(ws, chapter)}
     merged = [existing.get(f.flag_id, Resolution(flag_id=f.flag_id)) for f in samovolki]
+    sam_ids = {f.flag_id for f in samovolki}
+    for f in flags or []:
+        if f.flag_id not in sam_ids and f.flag_id in existing and existing[f.flag_id].decision:
+            merged.append(existing[f.flag_id])
     save_resolutions(ws, chapter, merged)
     return merged
+
+
+def decide(ws: Workspace, chapter: int, flag_id: str, decision: str, registry: str | None = None,
+           reason: str = "") -> list[Resolution]:
+    """Решение автора по флагу (FR-RV-2) — общий путь CLI и панели: самоволку — вычеркнуть или канонизировать
+    (с реестром), любой флаг — отклонить с причиной (в журнал) или принять рекомендацию (указание в правки.md).
+    Возвращает решения главы; ValueError — недопустимое решение или нет такого флага."""
+    reason = reason.strip()
+    if decision not in DECISIONS:
+        raise ValueError("решение должно быть «принять», «вычеркнуть», «канонизировать» или «отклонить» (с --причина).")
+    if decision == "отклонить" and not reason:
+        raise ValueError("отклонение флага требует причины: --причина «…» (FR-RV-2).")
+    flags = {f.flag_id: f for f in verifier2.load_flags(ws, chapter)}
+    resolutions = load_resolutions(ws, chapter)
+    flag = flags.get(flag_id)
+    if flag is None and flag_id not in {r.flag_id for r in resolutions}:
+        raise ValueError(f"флаг {flag_id} не найден (см. `konveyer resolve {chapter}`).")
+    is_samovolka = (flag.kind == "samovolka") if flag else True
+    if decision in ("вычеркнуть", "канонизировать") and not is_samovolka:
+        raise ValueError(f"{flag_id} — не самоволка: нарушение можно принять (рекомендацию) или отклонить с причиной.")
+    if decision == "принять" and is_samovolka:
+        raise ValueError(f"{flag_id} — самоволка: её можно только вычеркнуть или канонизировать (FR-RV-2).")
+    if flag_id not in {r.flag_id for r in resolutions}:
+        resolutions.append(Resolution(flag_id=flag_id))
+    for r in resolutions:
+        if r.flag_id != flag_id:
+            continue
+        r.decision = decision  # type: ignore[assignment]
+        r.target_registry = registry if decision == "канонизировать" else None
+        r.reason = reason if decision == "отклонить" else ""
+    save_resolutions(ws, chapter, resolutions)
+    if decision == "отклонить":
+        log_rejected(ws, chapter, flag, flag_id, reason)
+    elif decision == "принять" and flag is not None:
+        _accept_recommendation(ws, chapter, flag)
+    return resolutions
+
+
+def _accept_recommendation(ws: Workspace, chapter: int, flag: Flag) -> None:
+    """«Принять правку»: рекомендация флага — указанием в правки.md (один раз на флаг)."""
+    path = ws.chapter_dir(chapter) / "правки.md"
+    text = path.read_text(encoding="utf-8") if path.exists() else f"# Правки автора · Глава {chapter}\n\n"
+    marker = f"(по флагу {flag.flag_id})"
+    if marker in text:
+        return
+    what = flag.recommendation.strip() or flag.rule.strip()
+    quote = f" — цитата: «{' '.join(flag.quote.split())}»" if flag.quote.strip() else ""
+    guard.write_text(path, text.rstrip("\n") + f"\n\nУКАЗАНИЕ: {what}{quote} {marker}\n")
 
 
 # ------------------------------------------------------------ разбор правки.md
 
 
 class EditsFormatError(ValueError):
-    """Ошибка формата правки.md с номером строки (FR-E2)."""
+    """Ошибка формата правки.md с номером строки (FR-RV-3)."""
 
     def __init__(self, path: Path, line: int, message: str):
         super().__init__(f"{path.name}:{line}: {message}")
@@ -159,14 +226,15 @@ class EditsFormatError(ValueError):
         self.line = line
 
 
-_MARKER_RE = re.compile(r"^\s*(?P<kind>БЫЛО|СТАЛО|УКАЗАНИЕ)\s*:\s?(?P<rest>.*)$")
+_MARKER_RE = re.compile(r"^\s*(?P<kind>БЫЛО|СТАЛО|УКАЗАНИЕ)\s*:\s?(?P<rest>.*)$", re.IGNORECASE)
 _FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
 
 
 def parse_edits_text(text: str, chapter: int, path: Path | None = None) -> list[Edit]:
-    """Построчный автомат (2.4): маркеры `БЫЛО:` / `СТАЛО:` / `УКАЗАНИЕ:` в начале строки;
-    значение — до следующего маркера или пустой строки (многострочные цитаты допустимы);
-    пустое «СТАЛО» = удаление цитаты; «БЫЛО» без «СТАЛО» — ошибка с номером строки;
+    """Построчный автомат (FR-RV-3): маркеры `БЫЛО:` / `СТАЛО:` / `УКАЗАНИЕ:` в начале строки (регистр
+    не важен: «Было:» тоже маркер); значение — до следующего маркера или пустой строки (многострочные
+    цитаты допустимы); пустое «СТАЛО:» = удаление цитаты, правка на этом закончена — следующая строка
+    в неё не втягивается; «БЫЛО» без «СТАЛО» — ошибка с номером строки;
     «УКАЗАНИЕ» сразу после пары — отдельная правка, а не хвост «СТАЛО».
     """
     src = path or Path("правки.md")
@@ -202,7 +270,7 @@ def parse_edits_text(text: str, chapter: int, path: Path | None = None) -> list[
     for n, line in enumerate(text.splitlines(), start=1):
         m = _MARKER_RE.match(line)
         if m:
-            kind, rest = m.group("kind"), m.group("rest")
+            kind, rest = m.group("kind").upper(), m.group("rest")
             if kind == "БЫЛО":
                 require_after(n, f"строка {n}: новое «БЫЛО:»")
                 flush()
@@ -213,6 +281,8 @@ def parse_edits_text(text: str, chapter: int, path: Path | None = None) -> list[
                 if state not in ("before", "before_done"):
                     raise EditsFormatError(src, n, "«СТАЛО:» без предшествующего «БЫЛО:»")
                 value, state = [rest], "after"
+                if not rest.strip():
+                    flush()  # пустое «СТАЛО:» — удаление: правка завершена, пояснение ниже — не замена
             else:  # УКАЗАНИЕ
                 require_after(n, f"строка {n}: «УКАЗАНИЕ:»")
                 flush()
@@ -238,10 +308,10 @@ def parse_edits_text(text: str, chapter: int, path: Path | None = None) -> list[
 
 
 def parse_edits_md(ws: Workspace, chapter: int) -> list[Edit]:
-    """FR-E2: правки.md (пары «было → стало» и/или свободные указания) → правки.jsonl."""
+    """FR-RV-3: правки.md (пары «было → стало» и/или свободные указания) → правки.jsonl."""
     path = ws.chapter_dir(chapter) / "правки.md"
     if not path.exists():
-        raise FileNotFoundError(f"Нет файла правок {path}. Сначала `konveyer приёмка {chapter}`.")
+        raise FileNotFoundError(f"Нет файла правок {ws.chapter_rel(chapter)}/правки.md. Сначала `konveyer приёмка {chapter}`.")
     edits = parse_edits_text(path.read_text(encoding="utf-8"), chapter, path)
     save_edits(ws, chapter, edits)
     return edits
@@ -280,51 +350,20 @@ def load_resolutions(ws: Workspace, chapter: int) -> list[Resolution]:
 
 
 def unresolved_samovolki(ws: Workspace, chapter: int) -> list[str]:
-    return [r.flag_id for r in load_resolutions(ws, chapter) if r.decision is None]
+    """Самоволки без решения: записи решения.json с пустым decision плюс самоволки из флаги.json, у которых
+    записи вообще нет (флаги.json дополнен после review — руками или ручным режимом Э2)."""
+    resolutions = {r.flag_id: r for r in load_resolutions(ws, chapter)}
+    out = [fid for fid, r in resolutions.items() if r.decision is None]
+    for f in verifier2.load_flags(ws, chapter):
+        if f.kind == "samovolka" and f.flag_id not in resolutions:
+            out.append(f.flag_id)
+    return out
 
 
-# ------------------------------------------------------------ автономный HTML (FR-RV-1) и журнал отклонённых флагов
+# ------------------------------------------------------------ журнал отклонённых флагов (FR-RV-2)
 
 
 REJECTED_LOG = "отклонённые_флаги.jsonl"
-_HTML_CSS = """body{font:16px/1.5 Georgia,serif;max-width:60em;margin:2em auto;padding:0 1em;color:#222;background:#fff}
-h1,h2{font-family:sans-serif}mark{background:#ffe58a;padding:0 .15em}mark.e2{background:#c9e7ff}mark.sam{background:#ffc9c9}
-.flag{border-left:3px solid #ccc;padding:.3em .8em;margin:.4em 0;font-family:sans-serif;font-size:.9em}
-.flag.критично{border-color:#c00}.flag.важно{border-color:#e90}.flag.мелочь{border-color:#999}.text p{margin:.6em 0}
-a{color:#06c}@media (prefers-color-scheme: dark){body{background:#151515;color:#ddd}mark{color:#111}}"""
-
-
-def _esc(s: str) -> str:
-    import html as _html
-
-    return _html.escape(s, quote=True)
-
-
-def render_html(chapter: int, draft: int, summary_lines: list[str], text: str, checks: list[CheckResult],
-                flags: list[Flag]) -> str:
-    """Автономный HTML пакета приёмки: без сети, CDN и внешних ресурсов; цитаты флагов подсвечены в тексте
-    по якорям 【id】 и ведут на карточки флагов."""
-    body = _esc(text)
-    for c in checks:
-        body = body.replace(_esc(f"【{c.check_id}】"), f'<mark id="q-{c.check_id}" title="{_esc(c.check_id)}">【{_esc(c.check_id)}】</mark>')
-    for f in flags:
-        cls = "sam" if f.kind == "samovolka" else "e2"
-        body = body.replace(_esc(f"【{f.flag_id}】"), f'<mark class="{cls}" id="q-{_esc(f.flag_id)}"><a href="#f-{_esc(f.flag_id)}">【{_esc(f.flag_id)}】</a></mark>')
-    paras = "".join(f"<p>{p}</p>" for p in body.split("\n\n") if p.strip())
-    cards = []
-    for c in checks:
-        cards.append(f'<div class="flag" id="f-{_esc(c.check_id)}"><b>[{_esc(c.status)}] {_esc(c.check_id)}</b> — порог: {_esc(c.threshold)}; '
-                     f'факт: {_esc(c.actual)} <i>({_esc(c.rule_source)})</i></div>')
-    for f in flags:
-        kind = "самоволка — нужно решение автора" if f.kind == "samovolka" else f.severity
-        cards.append(f'<div class="flag {_esc(f.severity)}" id="f-{_esc(f.flag_id)}"><b>{_esc(f.flag_id)} · {_esc(f.type)}</b> [{_esc(kind)}] — '
-                     f'{_esc(f.rule)}; рекомендация: {_esc(f.recommendation)}<br><a href="#q-{_esc(f.flag_id)}">→ к цитате</a>: «{_esc(f.quote)}»</div>')
-    return ("<!DOCTYPE html><html lang=\"ru\"><head><meta charset=\"utf-8\">"
-            f"<title>Приёмка · глава {chapter} · черновик {draft}</title><style>{_HTML_CSS}</style></head><body>"
-            f"<h1>Приёмка · Глава {chapter} · черновик {draft}</h1>"
-            "<p>Решения по самоволкам — <code>решения.json</code> (или <code>konveyer решение</code>); правки — <code>правки.md</code> "
-            "парами «БЫЛО → СТАЛО» и «УКАЗАНИЕ:».</p><h2>Флаги</h2>" + ("".join(cards) or "<p>флагов нет</p>")
-            + f"<h2>Текст</h2><div class=\"text\">{paras}</div></body></html>\n")
 
 
 def log_rejected(ws: Workspace, chapter: int, flag: Flag | None, flag_id: str, reason: str) -> None:

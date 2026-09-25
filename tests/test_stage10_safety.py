@@ -410,7 +410,7 @@ def test_doctor_без_ключей_пины_не_проверены(ws):
 
 
 def test_thinking_config_писателя_пробрасывается_как_есть():
-    """конфиг.yaml корня репозитория задаёт thinking_config в форме google-genai; адаптер отдаёт params без правок."""
+    """конфиг.пример.yaml из данных пакета задаёт thinking_config в форме google-genai; адаптер отдаёт params без правок."""
     import yaml
 
     root_cfg = yaml.safe_load((Path(__file__).resolve().parent.parent / "konveyer" / "data" / "конфиг.пример.yaml").read_text(encoding="utf-8"))

@@ -1,4 +1,4 @@
-"""Единый конвейер изменения канона (этап 5, п. 25; аудит 4.9).
+"""Единый конвейер изменения канона (FR-SC-1, FR-SC-2).
 
 ЛЮБАЯ запись в `Библиотека/` проходит через `canon_change()`:
 
@@ -7,7 +7,7 @@
 
 Только этот модуль открывает `guard.canon_write_session()` (статический тест): приёмка главы (канонист), внесение кругов истории,
 правка документа и исправление линтера из панели, `konveyer канон-коммит` — все идут здесь.
-Подтверждение автора (FR-K2, Д-8) вызывающий даёт явно флагом `author_confirmed`.
+Подтверждение автора (FR-CN-2, FR-RV-4) вызывающий даёт явно флагом `author_confirmed`.
 """
 
 from __future__ import annotations
@@ -90,7 +90,7 @@ def _rollback(library: Path, ws: Workspace, error: BaseException) -> None:
     except RuntimeError as e:
         raise RuntimeError(
             f"изменение канона сорвалось ({error}), и откат библиотеки не удался: {e}. "
-            f"Восстановите вручную: git -C «{library}» checkout -- . && git clean -fd -- ."
+            "Восстановите вручную в папке библиотеки: git checkout -- . && git clean -fd -- ."
         ) from error
     try:
         exporter.run_export(library, ws.exports, ws.logs, ws.volume, ws.root)
@@ -117,15 +117,15 @@ def canon_change(
     * `writer` выполняется внутри `guard.canon_write_session()` и пишет через `guard.write_text`/`append_text`;
       `writer=lambda: None` — изменения уже на диске (автор правил документы сам, `konveyer канон-коммит`).
     * затем экспорт (валидация Д-1) и линт по свежим выгрузкам (сбой линтера — находка ЛИНТ-0, не откат);
-    * `commit=True` — `git commit` всех изменений папки библиотеки с авторством `cfg.commit_author` (Д-8);
+    * `commit=True` — `git commit` всех изменений папки библиотеки с авторством `cfg.commit_author` (Д-17);
       `confirm(result)` — последняя возможность отказаться от коммита уже после линта (вопрос автору);
       `commit=False` — изменения остаются на диске, результат несёт `uncommitted=True`;
-    * исключение в `writer`/экспорте откатывает библиотеку к HEAD (2.6) — только если она под git
-      и была чистой на входе (иначе откат стёр бы правки автора, сделанные до вызова).
+    * исключение в `writer`/экспорте и сбой самого `git commit` откатывают библиотеку к HEAD (FR-SC-2) —
+      только если она под git и была чистой на входе (иначе откат стёр бы правки автора, сделанные до вызова).
     * `require_clean=False` — коммит поверх незакоммиченных правок автора допустим (сценарий Б).
     """
     if not author_confirmed:
-        raise PermissionError("изменение канона без подтверждения автора запрещено (FR-K2, Д-8).")
+        raise PermissionError("изменение канона без подтверждения автора запрещено (FR-CN-2, FR-RL-1).")
     repo = gitops.is_repo(library)
     clean_at_entry = check_git(library, commit=commit, require_clean=require_clean, action=action)
     try:
@@ -147,7 +147,22 @@ def canon_change(
         result.message = "библиотека не под git — коммит пропущен, настройте git (git init в библиотеке)!"
         return result
     if commit and (confirm is None or confirm(result)):
-        result.commit = gitops.commit_all(library, message, author=cfg.commit_author)
+        try:
+            result.commit = gitops.commit_all(library, message, author=cfg.commit_author)
+        except BaseException as e:
+            # сбой самого коммита (хук, lock-файл, права): библиотека не должна остаться грязной
+            # с применённым, но незакоммиченным изменением — иначе повтор отказал бы «требует чистого git»
+            if clean_at_entry:
+                _rollback(library, ws, e)
+                raise RuntimeError(
+                    f"{action}: git commit не удался ({e}); библиотека откачена к предыдущему коммиту, "
+                    "выгрузки пересчитаны — устраните причину и повторите."
+                ) from e
+            raise RuntimeError(
+                f"{action}: git commit не удался ({e}); изменения остались на диске незакоммиченными "
+                "(библиотека была грязной на входе, откат не выполнялся) — устраните причину и выполните "
+                "`konveyer канон-коммит`."
+            ) from e
         if result.commit is None:
             result.message = "изменений в каноне нет — коммитить нечего."
         else:

@@ -20,6 +20,8 @@ def check(
     ws, cfg, lib = _ctx()
     from ..schemas import Brief
 
+    if not Path(file).exists():
+        raise StepError(f"нет файла {Path(file).name} — укажите существующий файл с текстом для проверки.")
     if chapter is not None:
         # тот же контекст, что у такта: окно главы, корпус без самой главы, язык и словарь проекта
         brief = exporter.load_brief(ws.exports, chapter)
@@ -150,6 +152,8 @@ def add_golden(
     бриф главы (фокал, год, том, объём, «НЕ знает») и её окно из папки главы; `window_file` — своё окно (утечка окна);
     `use_corpus` — прогон против корпуса (межглавные повторы); `volume_words` — объём брифа. Возвращает путь теста."""
     ws, cfg, lib = _ctx()
+    if not Path(fragment_file).exists():
+        raise StepError(f"нет файла фрагмента {Path(fragment_file).name} — укажите существующий файл.")
     test = GoldenTest(
         test_id=test_id,
         fragment=fragment_file.read_text(encoding="utf-8"),

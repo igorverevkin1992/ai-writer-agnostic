@@ -463,14 +463,20 @@ class PanelAPI:
             "next": next_step(self.ws, st, self.cfg),
         }
 
+    def _draft_text(self, n: int, k: int) -> str:
+        path = self.ws.draft_path(n, k)
+        if k < 1 or not path.exists():
+            raise FileNotFoundError(f"нет черновика {k} у главы {n}")
+        return path.read_text(encoding="utf-8")
+
     def draft(self, n: int, k: int) -> dict:
-        return {"chapter": n, "draft": k, "text": self.ws.draft_path(n, k).read_text(encoding="utf-8")}
+        return {"chapter": n, "draft": k, "text": self._draft_text(n, k)}
 
     def diff(self, n: int, k1: int, k2: int) -> dict:
         import difflib
 
-        a = self.ws.draft_path(n, k1).read_text(encoding="utf-8").splitlines()
-        b = self.ws.draft_path(n, k2).read_text(encoding="utf-8").splitlines()
+        a = self._draft_text(n, k1).splitlines()
+        b = self._draft_text(n, k2).splitlines()
         return {"lines": list(difflib.unified_diff(a, b, f"черновик_{k1}", f"черновик_{k2}", lineterm="", n=2))}
 
     def api_log(self, n: int = 30) -> list[dict]:
@@ -494,7 +500,10 @@ class PanelAPI:
         на диск можно отдельным POST (`save_prompt`).
         """
         if kind == "verify2":
-            system, user = verifier2.build_prompt(self.ws, n, ChapterState(self.ws, n).draft)
+            k = ChapterState(self.ws, n).draft
+            if k < 1 or not self.ws.draft_path(n, k).exists():
+                raise FileNotFoundError(f"у главы {n} ещё нет черновика — промпт Э2 строить не из чего")
+            system, user = verifier2.build_prompt(self.ws, n, k)
             text = f"<!-- system -->\n{system}\n\n<!-- user -->\n{user}\n"
             return {"text": text, "target": "флаги.json", "file": "промпт_э2.md"}
         if kind == "edits":
@@ -616,8 +625,8 @@ class PanelAPI:
         from .canonist import registries
 
         regs = registries()
-        if decision not in ("вычеркнуть", "канонизировать", "отклонить"):
-            raise ValueError("решение: «вычеркнуть», «канонизировать» или «отклонить»")
+        if decision not in review.DECISIONS:
+            raise ValueError("решение: «принять», «вычеркнуть», «канонизировать» или «отклонить»")
         if decision == "канонизировать" and registry not in regs:
             raise ValueError(f"реестр: один из {', '.join(regs)}")
 
@@ -628,26 +637,18 @@ class PanelAPI:
         r.reason = reason if decision == "отклонить" else ""
 
     def resolve(self, n: int, flag_id: str, decision: str, registry: str | None, reason: str = "") -> dict:
+        """Решение по флагу — тем же путём, что `konveyer resolve` (FR-RV-2, паритет с CLI)."""
         self._check_decision(decision, registry)
-        if decision == "отклонить" and not reason.strip():
-            raise ValueError("отклонение флага требует причины (FR-RV-2)")
         with self.jobs.exclusive():
-            resolutions = review.load_resolutions(self.ws, n)
-            flags = {f.flag_id: f for f in verifier2.load_flags(self.ws, n)}
-            if decision == "отклонить" and flag_id in flags and flag_id not in {r.flag_id for r in resolutions}:
-                resolutions.append(review.Resolution(flag_id=flag_id))
-            for r in resolutions:
-                if r.flag_id == flag_id:
-                    self._decide(r, decision, registry, reason.strip())
-                    if decision == "отклонить":
-                        review.log_rejected(self.ws, n, flags.get(flag_id), flag_id, reason.strip())
-                    review.save_resolutions(self.ws, n, resolutions)
-                    return {"ok": True}
-        raise ValueError(f"флаг {flag_id} не найден")
+            review.decide(self.ws, n, flag_id, decision, registry, reason)
+        return {"ok": True}
 
     def resolve_all(self, n: int, decision: str, registry: str | None) -> dict:
-        """Одно решение для всех самоволок без решения (5.6, «Вычеркнуть все»); уже решённые не трогаются."""
+        """Одно решение для всех самоволок без решения (5.6, «Вычеркнуть все»); уже решённые не трогаются.
+        Только «вычеркнуть»/«канонизировать»: отклонение требует причины по каждому флагу, принятие — не для самоволок."""
         self._check_decision(decision, registry)
+        if decision not in ("вычеркнуть", "канонизировать"):
+            raise ValueError("решение для всех самоволок: «вычеркнуть» или «канонизировать»")
         with self.jobs.exclusive():
             resolutions = review.load_resolutions(self.ws, n)
             todo = [r for r in resolutions if r.decision is None]
@@ -700,8 +701,23 @@ class PanelAPI:
             _captured(lambda: _job(tact.verify2, n, manual=True), "флаги не приняты")
         return {"ok": True, "flags": len(flags)}
 
+    def manual_canonist(self, n: int, text: str) -> dict:
+        """Ручной режим Канониста (FR-RL-3): вставленный JSON-ответ модели → ответ_канониста.json + пакет на подпись
+        (`canonize --manual`); применение пакета — по-прежнему отдельное подтверждение автора."""
+        if not text.strip():
+            raise ValueError("пустой ответ Канониста")
+        from . import canonist as canonist_mod, guard
+
+        with self.jobs.exclusive():
+            st = ChapterState(self.ws, n)
+            if st.state != "принято":  # проверка ДО записи файла
+                raise ValueError(f"из состояния «{st.state}» ответ Канониста не принимается (нужно «принято»)")
+            guard.write_text(self.ws.chapter_dir(n) / canonist_mod.ANSWER_FILE, text)
+            output = _captured(lambda: _job(tact.canonize, n, apply=False, yes=True, manual=True), "пакет не собран")
+        return {"ok": True, "output": output}
+
     def accept(self, n: int) -> dict:
-        """Приёмка: подтверждение автор дал кнопкой + диалогом в панели (Д-8)."""
+        """Приёмка: подтверждение автор дал кнопкой + диалогом в панели (FR-RV-4)."""
         with self.jobs.exclusive():
             output = _captured(lambda: _job(tact.accept, n, yes=True), "приёмка отклонена")
         return {"ok": True, "output": output}
@@ -741,6 +757,8 @@ class PanelAPI:
 
     def circle_prompt(self, stem: str) -> dict:
         path = self.ws.root / "драматургия" / "промпты" / f"{stem}.md"
+        if not path.exists():
+            raise FileNotFoundError(f"нет промпта драматургии «{stem}» — сначала соберите каркасы")
         return {"text": path.read_text(encoding="utf-8")}
 
     def manual_circle(self, scope: str, key, text: str) -> dict:
@@ -991,8 +1009,8 @@ class PanelAPI:
 PANEL_ACTIONS = {
     "state", "chapter", "draft", "diff", "window", "prompt", "find", "circles", "lint", "canon", "log", "job",
     "project", "onboarding", "journals", "regression", "resolve", "resolve-all", "edits", "canon-batch", "canon-doc",
-    "lint-fix", "lint-manual", "circles-manual", "circles-preview", "manual-draft", "manual-flags", "accept", "rollback",
-    "onboarding-decision", "onboarding-manual-answer",
+    "lint-fix", "lint-manual", "circles-manual", "circles-preview", "manual-draft", "manual-flags", "manual-canonist",
+    "accept", "rollback", "onboarding-decision", "onboarding-manual-answer",
     "job-cancel",
 }
 
@@ -1019,20 +1037,9 @@ def _local_hosts(port: int) -> set[str]:
 
 
 def _sanitize(message: str, api: PanelAPI) -> str:
-    """Сообщение об ошибке без абсолютных путей машины автора (5.4): корень рабочей области и
-    библиотеки заменяются словами. Порядок — от длинного к короткому, чтобы вложенный путь
-    библиотеки не превратился в «рабочая область/Библиотека»."""
-    pairs: list[tuple[str, str]] = []
-    for root, word in ((api.library, "библиотека"), (api.ws.root, "рабочая область")):
-        forms = {str(root), str(root.resolve()), root.as_posix(), root.resolve().as_posix()}
-        # Windows: в тексте исключения путь бывает в виде repr — с удвоенными «\\»
-        forms |= {v.replace("\\", "\\\\") for v in forms if "\\" in v}
-        for variant in forms:
-            if variant and variant not in ("/", "."):
-                pairs.append((variant, word))
-    for variant, word in sorted(pairs, key=lambda p: -len(p[0])):
-        message = message.replace(variant + "/", word + "/").replace(variant + "\\", word + "/").replace(variant, word)
-    return message
+    """Сообщение об ошибке без абсолютных путей машины автора (FR-SC-9): корень рабочей области и
+    библиотеки заменяются словами (общая с CLI санитизация — `errors.hide_paths`)."""
+    return steps.hide_paths(message, [(api.library, "библиотека"), (api.ws.root, "рабочая область")])
 
 
 def _log_exception(api: PanelAPI, method: str, path: str) -> None:
@@ -1243,6 +1250,9 @@ def make_handler(api: PanelAPI):
                 m = re.fullmatch(r"/api/chapter/(\d+)/manual-flags", path)
                 if m:
                     return self._json(api.manual_flags(int(m.group(1)), str(body.get("text", ""))))
+                m = re.fullmatch(r"/api/chapter/(\d+)/manual-canonist", path)
+                if m:
+                    return self._json(api.manual_canonist(int(m.group(1)), str(body.get("text", ""))))
                 m = re.fullmatch(r"/api/chapter/(\d+)/accept", path)
                 if m:
                     return self._json(api.accept(int(m.group(1))))

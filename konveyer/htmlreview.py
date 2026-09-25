@@ -13,10 +13,12 @@ import html
 import json
 from pathlib import Path
 
-from . import guard, verifier2
+from . import guard, verifier2, writer
 from .fsm import ChapterState
 from .paths import Workspace
 from .schemas import CheckResult, Flag, Resolution, Verdict
+
+NOT_FOUND_NOTE = "цитата не найдена в тексте — проверьте вручную"
 
 # статусные цвета (référence-палитра dataviz; статус ходит с текстом, не в одиночку)
 CSS = """
@@ -68,21 +70,19 @@ Mark = tuple[str, str, str, str]
 def plan_marks(text: str, marks: list[Mark]) -> list[tuple[int, int, str, str, str]]:
     """Позиции подсветок в СЫРОМ тексте (аудит 5.3).
 
-    Для каждой цитаты — первое вхождение; пересекающиеся и вложенные
-    отбрасываются: остаётся более ранняя, при равном начале — более длинная.
-    Повтор якоря (та же цитата дважды) тоже отбрасывается. Возвращает
-    (начало, конец, класс, якорь, тултип), отсортированные по началу.
+    Для каждой цитаты — первое вхождение (пробелы и переносы — с той же терпимостью, что при применении
+    правок, `writer.find_quote`); пересекающиеся и вложенные отбрасываются: остаётся более ранняя,
+    при равном начале — более длинная. Повтор якоря (та же цитата дважды) тоже отбрасывается.
+    Возвращает (начало, конец, класс, якорь, тултип), отсортированные по началу.
     Та же логика — в панели (panel/src/highlight.ts).
     """
     found = []
     for order, (quote, cls, anchor, tooltip) in enumerate(marks):
-        q = quote.strip()
-        if not q:
+        hits = writer.find_quote(text, quote)
+        if not hits:
             continue
-        pos = text.find(q)
-        if pos < 0:
-            continue
-        found.append((pos, -len(q), order, cls, anchor, tooltip))
+        pos, end = hits[0]
+        found.append((pos, pos - end, order, cls, anchor, tooltip))
     found.sort()
     chosen: list[tuple[int, int, str, str, str]] = []
     seen: set[str] = set()
@@ -163,10 +163,12 @@ def build_review_html(ws: Workspace, chapter: int, draft: int) -> Path:
                 decision = f'<div class="unresolved">БЕЗ РЕШЕНИЯ — konveyer решение {chapter} {f.flag_id} …</div>'
         badge = "самоволка" if f.kind == "samovolka" else f.severity
         type_part = "" if _norm_eq(f.type, badge) else f" · {_esc(f.type)}"
+        found = not f.quote.strip() or bool(writer.find_quote(raw, f.quote))
+        anchor = (f'<a class="anchor" href="#a-{html.escape(f.flag_id, quote=True)}">¶</a>' if found
+                  else f'<span class="unresolved">⚠ {_esc(NOT_FOUND_NOTE)}</span>')
         return (
             f'<div class="card"><span class="badge b-{f.kind}">{badge}</span> '
-            f"<strong>{_esc(f.flag_id)}</strong>{type_part} "
-            f'<a class="anchor" href="#a-{html.escape(f.flag_id, quote=True)}">¶</a>'
+            f"<strong>{_esc(f.flag_id)}</strong>{type_part} {anchor}"
             f"<blockquote>{_esc(f.quote)}</blockquote>"
             f'<div class="rule">{_esc(f.rule)}. {_esc(f.recommendation)}</div>{decision}</div>'
         )

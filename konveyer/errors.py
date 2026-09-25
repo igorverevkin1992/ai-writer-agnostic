@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 
 class StepError(RuntimeError):
     """Ожидаемая ошибка шага: читаемое сообщение вместо трейсбека, код возврата 1."""
@@ -56,3 +58,24 @@ def describe(e: StepError) -> str:
     if isinstance(e, (Rejected, StepExit)):
         return ""
     return f"ОШИБКА: {e}"
+
+
+def hide_paths(message: str, roots: list[tuple[Path | None, str]]) -> str:
+    """Сообщение без абсолютных путей машины автора (FR-SC-9): каждый корень (библиотека, рабочая область)
+    заменяется словом. Порядок — от длинного к короткому, чтобы вложенный путь библиотеки не превратился
+    в «рабочая область/Библиотека»; Windows-варианты с удвоенными «\\» (repr исключения) тоже заменяются."""
+    pairs: list[tuple[str, str]] = []
+    for root, word in roots:
+        if root is None:
+            continue
+        root = Path(root)
+        forms = {str(root), root.as_posix()}
+        try:
+            forms |= {str(root.resolve()), root.resolve().as_posix()}
+        except OSError:
+            pass
+        forms |= {v.replace("\\", "\\\\") for v in forms if "\\" in v}
+        pairs += [(v, word) for v in forms if v and v not in ("/", ".")]
+    for variant, word in sorted(pairs, key=lambda p: -len(p[0])):
+        message = message.replace(variant + "/", word + "/").replace(variant + "\\", word + "/").replace(variant, word)
+    return message

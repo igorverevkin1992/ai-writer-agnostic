@@ -58,14 +58,27 @@ def _root(
     """КОНВЕЙЕР — производственный такт главы (ТЗ v1.0)."""
 
 
+def _hide_paths(message: str) -> str:
+    """FR-SC-9: абсолютные пути библиотеки и рабочей области в сообщениях об ошибках — словами."""
+    from . import guard
+    from .paths import find_workspace
+
+    roots: list = [(guard._library_dir_raw, "библиотека"), (guard._library_dir, "библиотека")]
+    try:
+        roots.append((find_workspace().root, "рабочая область"))
+    except OSError:
+        pass
+    return steps.hide_paths(message, roots)
+
+
 def _fail(message: str) -> None:
-    typer.secho(f"ОШИБКА: {message}", fg=typer.colors.RED, err=True)
+    typer.secho(f"ОШИБКА: {_hide_paths(message)}", fg=typer.colors.RED, err=True)
     raise typer.Exit(code=1)
 
 
 def _manual(e: steps.ManualMode) -> None:
-    typer.secho(f"⚠ {e.reason}", fg=typer.colors.YELLOW)
-    typer.echo(f"Ручной режим: {e.hint}")
+    typer.secho(f"⚠ {_hide_paths(e.reason)}", fg=typer.colors.YELLOW)
+    typer.echo(f"Ручной режим (NFR-3): {_hide_paths(e.hint)}")
     raise typer.Exit(code=2)
 
 
@@ -236,9 +249,11 @@ def cmd_canonize(
     apply: bool = typer.Option(False, "--apply", help="Применить подписанный пакет (правки MD + export + git-коммит)."),
     yes: bool = typer.Option(False, "--yes", "-y"),
     redo: bool = typer.Option(False, "--заново", "--redo", help="Пересобрать пакет, даже если автор его уже правил (правки пропадут)."),
+    manual: bool = typer.Option(False, "--manual", "--ручной", help="Ручной режим: собрать пакет из ответа модели в главы/N/ответ_канониста.json (FR-RL-3)."),
+    answer: Path | None = typer.Option(None, "--ответ", "--answer", help="Файл с JSON-ответом Канониста (ручной режим)."),
 ) -> None:
     """Канонист: пакет записей в канон (FR-CN-1); применение — только после подписи (FR-CN-2)."""
-    tact.canonize(chapter, apply=apply, yes=yes, redo=redo, confirm=typer.confirm)
+    tact.canonize(chapter, apply=apply, yes=yes, redo=redo, confirm=typer.confirm, manual=manual, answer=answer)
 
 
 # ------------------------------------------------------------- сервисные
