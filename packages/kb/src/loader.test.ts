@@ -260,3 +260,23 @@ describe('episodeRange', () => {
     expect(episodeRange([45, 49])).toEqual({ min: 45, max: 49 });
   });
 });
+
+describe('review fixes', () => {
+  it('reports a rule or checklist item naming an anchor the frame does not have', () => {
+    const dir = kbCopy();
+    edit(dir, 'rules/revenge_thriller.yaml', (t) => t.replace('only: [anchor.mask]', 'only: [anchor.maks]').replace('near: [secret_turn, midpoint]', 'near: [secret_turn, midpoin]'));
+    edit(dir, 'checklist/season20.yaml', (t) => t.replace('season_frame.anchor.fall', 'season_frame.anchor.fal'));
+    const msgs = loadError(dir).issues.map((i) => i.message);
+    expect(msgs).toEqual(expect.arrayContaining([
+      'Нет опорной точки «maks» в frames/season60.yaml (жанр revenge_thriller)',
+      'Нет опорной точки «midpoin» в frames/season60.yaml (жанр revenge_thriller)',
+      'Нет опорной точки «fal» в frames/season60.yaml (жанр revenge_thriller)',
+    ]));
+  });
+
+  it('a broken genre file does not cause false «unused constraints» errors', () => {
+    const dir = kbCopy();
+    edit(dir, 'genres/revenge_thriller.yaml', (t) => `${t}extra_key: 1\n`);
+    expect(loadError(dir).issues.map((i) => i.file)).toEqual(['genres/revenge_thriller.yaml']);
+  });
+});

@@ -111,6 +111,8 @@ export const Checklist = z.strictObject({
         text: Text,
         points: z.int().min(1),
         rule: z.string().optional(),
+        /** Only these code-check findings of the rule count for this item, e.g. "season_frame.anchor.fall". */
+        only: z.array(Text).optional(),
       }),
     )
     .min(1),

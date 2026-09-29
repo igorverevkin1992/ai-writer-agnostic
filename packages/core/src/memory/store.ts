@@ -27,6 +27,9 @@ import { Script as ScriptSchema, type Script } from '../schemas/script.ts';
 
 export type Author = 'producer' | 'agent';
 
+/** Prefix of links added by hand with link(): replaceLinks never touches them. */
+const MANUAL = 'manual:';
+
 export interface EditMeta {
   author: Author;
   note?: string;
@@ -90,14 +93,31 @@ export class ProjectMemory {
 
   // ---- bible and fact base ----
 
-  /** Stores the bible and fills the fact base tables from it. */
+  /**
+   * Stores the bible and fills the fact base tables from it. Facts the producer or the agent
+   * added later (answers to findings) survive a new bible unless it defines the same id.
+   */
   importBible(bible: Bible): void {
     const p = this.projectId;
+    const defined = new Set(bible.facts.map((f) => f.id));
+    const kept = this.db
+      .select()
+      .from(facts)
+      .where(and(eq(facts.projectId, p), inArray(facts.source, ['producer', 'agent'])))
+      .all()
+      .filter((f) => !defined.has(f.id));
+    const keptIds = new Set(kept.map((f) => f.id));
+    const keptKnowledge = this.db.select().from(knowledge).where(eq(knowledge.projectId, p)).all().filter((k) => keptIds.has(k.factId));
     this.saveArtifact('bible', bible);
     this.db.transaction((tx) => {
       for (const t of [characters, facts, events, knowledge, worldRules, guns]) tx.delete(t).where(eq(t.projectId, p)).run();
       for (const c of bible.characters) tx.insert(characters).values({ projectId: p, name: c.name, data: c }).run();
       for (const f of bible.facts) tx.insert(facts).values({ projectId: p, id: f.id, text: f.text, sinceEp: f.since_ep ?? null }).run();
+      for (const f of kept) tx.insert(facts).values(f).run();
+      for (const { id: _id, ...k } of keptKnowledge) {
+        void _id;
+        tx.insert(knowledge).values(k).run();
+      }
       for (const e of bible.timeline.events) tx.insert(events).values({ projectId: p, ...e }).run();
       for (const k of bible.knowledge) {
         tx.insert(knowledge).values({ projectId: p, who: k.who, factId: k.fact, sinceEp: k.since_ep, how: k.how ?? null }).run();
@@ -154,9 +174,14 @@ export class ProjectMemory {
     this.replaceLinks('script', [{ ep: script.ep, factIds: [...cardFacts, ...extraFactIds] }], [script.ep]);
   }
 
-  /** Links an episode document to facts or timeline events explicitly (e.g. a flashback to an event). */
+  /**
+   * Links an episode document to facts or timeline events explicitly (e.g. a flashback to an event).
+   * Explicit links are kept apart from the ones derived from acts_on, so re-saving does not drop them.
+   */
   link(target: 'outline' | 'card' | 'script', ep: number, factIds: string[]): void {
-    for (const factId of factIds) this.db.insert(sceneFactLinks).values({ projectId: this.projectId, ep, target, factId }).run();
+    for (const factId of factIds) {
+      this.db.insert(sceneFactLinks).values({ projectId: this.projectId, ep, target: `${MANUAL}${target}`, factId }).run();
+    }
   }
 
   cards(): EpisodeCard[] {
@@ -245,6 +270,19 @@ export class ProjectMemory {
     const rev = this.db.select().from(revisions).where(and(eq(revisions.projectId, p), eq(revisions.id, revisionId))).get();
     if (!rev) throw new Error(`Правка ${revisionId} не найдена`);
     const note = meta.note ?? `Откат правки ${revisionId}`;
+    if (rev.entity === 'fact' && rev.before === null) {
+      // Undo an added fact: remove it and the knowledge that came with it.
+      const added = rev.after as { knowledge?: KnowledgeEntry[] } | null;
+      this.db.delete(facts).where(and(eq(facts.projectId, p), eq(facts.id, rev.entityId))).run();
+      for (const k of added?.knowledge ?? []) {
+        this.db
+          .delete(knowledge)
+          .where(and(eq(knowledge.projectId, p), eq(knowledge.who, k.who), eq(knowledge.factId, k.fact), eq(knowledge.sinceEp, k.since_ep)))
+          .run();
+      }
+      const id = this.logRevision('fact', rev.entityId, rev.after, null, { ...meta, note });
+      return this.propagate([rev.entityId], id);
+    }
     if (rev.entity === 'fact') {
       const b = rev.before as { text: string; since_ep: number | null };
       return this.updateFact(rev.entityId, b, { ...meta, note });
@@ -285,9 +323,26 @@ export class ProjectMemory {
         const eps = this.episodesLinkedTo(issue.events);
         for (const ep of eps.length ? eps : [undefined]) raised.push(this.attach(issue.finding, ep, revisionId));
       }
-      // Knowledge: re-check the affected episodes.
-      const items = [...affected].map((ep) => ({ ep, acts_on: plan?.episodes.find((e) => e.ep === ep)?.acts_on ?? [] }));
-      for (const f of checkKnowledge(items, bible)) raised.push(this.attach(f, f.episode, revisionId));
+      // Knowledge: re-check what the affected episodes act on (plan and cards) and who knows the changed facts.
+      const cards = this.cards();
+      const items = [...affected].map((ep) => ({
+        ep,
+        acts_on: [...(plan?.episodes.find((e) => e.ep === ep)?.acts_on ?? []), ...(cards.find((c) => c.ep === ep)?.acts_on ?? [])],
+      }));
+      for (const f of checkKnowledge(items, bible, { onlyFacts: changedIds })) raised.push(this.attach(f, f.episode, revisionId));
+
+      // Findings raised by earlier edits that no longer hold (e.g. after a rollback) are closed.
+      const allItems = [
+        ...(plan?.episodes ?? []),
+        ...cards,
+      ];
+      const holding = new Set([...checkTimelineDetailed(bible).map((i) => i.finding.id), ...checkKnowledge(allItems, bible).map((f) => f.id)]);
+      const raisedIds = new Set(raised.map((f) => f.id));
+      for (const f of this.findingsOf('memory', 'open')) {
+        if (!raisedIds.has(f.id) && !holding.has(f.id.split('~')[0]!)) {
+          this.setFindingOutcome(f.id, { status: 'resolved', verdict: `Больше не подтверждается после правки №${revisionId}` });
+        }
+      }
     }
     this.saveFindings(raised, 'memory');
     return {
@@ -317,8 +372,15 @@ export class ProjectMemory {
 
   // ---- findings ----
 
+  /**
+   * Saves findings of a check run. A finding closed with a fact (by the producer or the judge)
+   * or dismissed stays closed when the same check raises it again; one closed by the system
+   * (e.g. «сценарий переписан») reopens. The step a finding belongs to never changes.
+   */
   saveFindings(list: Finding[], step: string): void {
     for (const f of list) {
+      const existing = this.finding(f.id);
+      if (existing && (existing.status === 'dismissed' || (existing.status === 'resolved' && existing.resolutionFactId))) continue;
       const row = {
         projectId: this.projectId,
         id: f.id,
@@ -335,7 +397,13 @@ export class ProjectMemory {
         rule: f.rule ?? null,
         check: f.check ?? null,
       };
-      this.db.insert(findingsTable).values(row).onConflictDoUpdate({ target: [findingsTable.projectId, findingsTable.id], set: row }).run();
+      const { step: _step, ...update } = row;
+      void _step;
+      this.db
+        .insert(findingsTable)
+        .values(row)
+        .onConflictDoUpdate({ target: [findingsTable.projectId, findingsTable.id], set: { ...update, verdict: null } })
+        .run();
     }
   }
 
@@ -421,7 +489,7 @@ export class ProjectMemory {
     return this.db
       .select({ f: sceneFactLinks.factId })
       .from(sceneFactLinks)
-      .where(and(eq(sceneFactLinks.projectId, this.projectId), eq(sceneFactLinks.target, target), eq(sceneFactLinks.ep, ep)))
+      .where(and(eq(sceneFactLinks.projectId, this.projectId), inArray(sceneFactLinks.target, [target, `${MANUAL}${target}`]), eq(sceneFactLinks.ep, ep)))
       .all()
       .map((r) => r.f);
   }

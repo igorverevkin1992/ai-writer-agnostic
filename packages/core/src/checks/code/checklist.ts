@@ -1,7 +1,7 @@
 import type { Checklist, RulesFile } from '@aiw/kb';
 import type { Finding } from '../../schemas/finding.ts';
 import { makeFinding } from './finding.ts';
-import type { CodeCheckResult } from './runner.ts';
+import { codeMatches, type CodeCheckResult } from './runner.ts';
 
 export type ItemStatus = 'ok' | 'fail' | 'unknown';
 
@@ -26,7 +26,10 @@ export function scoreChecklist(checklist: Checklist, rules: RulesFile, result: C
   const items = checklist.items.map((item) => {
     let status: ItemStatus = 'unknown';
     if (item.rule && known.has(item.rule) && result.evaluatedRules.has(item.rule)) {
-      const bad = (result.byRule[item.rule] ?? []).some((f) => f.severity !== 'minor');
+      const only = item.only;
+      const bad = (result.byRule[item.rule] ?? [])
+        .filter((f) => !only || only.some((o) => codeMatches(f.check, o)))
+        .some((f) => f.severity !== 'minor');
       status = bad ? 'fail' : 'ok';
     }
     return { id: item.id, text: item.text, points: item.points, rule: item.rule, status };

@@ -97,7 +97,7 @@ rules:
     check:
       code: "checkVillainLadder"
       run:
-        - {fn: villain_ladder, only: [count, rank, role, on_screen, takedown, order]}
+        - {fn: villain_ladder, only: [count, rank, role, on_screen, takedown, takedown_plan, order]}
     severity: blocker
   - id: R12
     module: revenge_thriller

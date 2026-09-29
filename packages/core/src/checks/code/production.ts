@@ -181,7 +181,9 @@ export function checkLegalMarkers(texts: TextSource[], legal: LegalConstraints):
   const out: Finding[] = [];
   const principles = new Map(legal.principles.map((p) => [p.id, p.text]));
   for (const marker of legal.markers) {
-    const re = new RegExp(`(?<![\\p{L}])(?:${marker.words.map(escape).join('|')})`, 'iu');
+    // A marker is a word or stem: up to 3 more letters (endings), then a word boundary.
+    // So «бьёт» and «сигарету» match, «ментальный» does not match «мент».
+    const re = new RegExp(`(?<![\\p{L}])(?:${marker.words.map(escape).join('|')})\\p{L}{0,3}(?![\\p{L}])`, 'iu');
     for (const t of texts) {
       const m = re.exec(t.text);
       if (!m) continue;
@@ -190,7 +192,8 @@ export function checkLegalMarkers(texts: TextSource[], legal: LegalConstraints):
         makeFinding({
           check: `legal_markers.${marker.category}`,
           controller: 'legal',
-          severity: 'major',
+          // Only a suspicion: the legal model controller confirms it. Minor keeps it from blocking a step.
+          severity: 'minor',
           episode: t.episode,
           quote: sentence.trim(),
           question: `это можно показывать при ${legal.age_rating}?`,

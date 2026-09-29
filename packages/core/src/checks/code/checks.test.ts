@@ -303,3 +303,46 @@ describe('scoreChecklist', () => {
     expect(score.finding?.check).toBe('checklist.score');
   });
 });
+
+describe('review fixes', () => {
+  it('a plan/bible takedown mismatch is not promoted to a rank-5 blocker (only matches whole codes)', () => {
+    ep(3).takedown_rank = undefined;
+    ep(4).takedown_rank = 5;
+    const res = runCodeChecks({ kit, ...p });
+    const f = res.findings.find((x) => x.check === 'villain_ladder.takedown_plan');
+    expect(f).toMatchObject({ rule: 'R11', severity: 'blocker' });
+    expect(res.byRule.R05).toEqual([]);
+  });
+
+  it('when several rules cover a finding, the strictest severity wins', () => {
+    ep(1).anchors = ['betrayal'];
+    ep(5).anchors.push('mask');
+    const f = runCodeChecks({ kit, ...p }).findings.find((x) => x.check === 'season_frame.anchor.mask');
+    expect(f?.severity).toBe('blocker');
+  });
+
+  it('a checklist item counts only its own sub-check', () => {
+    ep(37).anchors = [];
+    ep(40).anchors.push('pinch2');
+    const score = scoreChecklist(kit.checklist, kit.rules, runCodeChecks({ kit, ...p }));
+    expect(score.items.filter((i) => i.status === 'fail')).toEqual([]);
+    expect(score.score).toBe(18);
+  });
+
+  it('legal markers are minor suspicions and match words, not parts of other words', () => {
+    const f = checkLegalMarkers([{ where: 'План', text: 'Разговор о ментальном здоровье. Он закурил сигарету.' }], kit.legal);
+    expect(f.map((x) => [x.check, x.severity])).toEqual([['legal_markers.smoking', 'minor']]);
+  });
+
+  it('a law takedown next to a public-and-legal one is not a repeated punishment', () => {
+    villain('Олег').punishment.type = 'status';
+    villain('Анна').punishment.type = 'law';
+    expect(codes(checkVillainLadder(p.bible, p.plan, frame))).not.toContain('villain_ladder.punishment');
+  });
+
+  it('a rule filter naming a code the check does not emit is an error, not a silent pass', () => {
+    const broken: GenreKit = structuredClone(kit);
+    broken.rules.rules[3]!.check.run = [{ fn: 'rhythm', only: ['suferring'], params: {} }];
+    expect(() => runCodeChecks({ kit: broken, ...p })).toThrow('У проверки «rhythm» нет кода «suferring»');
+  });
+});

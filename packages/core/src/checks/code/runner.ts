@@ -28,6 +28,11 @@ interface CodeCheck {
   run(input: CheckInput, params: Params): Finding[] | undefined;
   /** Runs on every check pass even if no rule names it. Checks that need params do not. */
   always: boolean;
+  /**
+   * Finding codes this check emits (after "<fn>."). A rule's `only` must name one of them,
+   * or a sub-code under it ("anchor.mask" under "anchor"). null — any code (e.g. legal categories).
+   */
+  codes: string[] | null;
 }
 
 const num = (p: Params, key: string): number | undefined => (typeof p[key] === 'number' ? (p[key] as number) : undefined);
@@ -38,45 +43,45 @@ const strs = (p: Params, key: string): string[] =>
 
 /** Every code check a genre rule may reference in check.run[].fn. */
 export const CODE_CHECKS: Record<string, CodeCheck> = {
-  season_frame: { always: true, run: ({ plan, kit }) => plan && checkSeasonFrame(plan, kit.frame) },
-  rhythm: { always: true, run: ({ plan, kit }) => plan && checkRhythm(plan, kit.frame) },
+  season_frame: { always: true, codes: ['count', 'anchor'], run: ({ plan, kit }) => plan && checkSeasonFrame(plan, kit.frame) },
+  rhythm: { always: true, codes: ['response', 'suffering', 'hook_repeat', 'emotions'], run: ({ plan, kit }) => plan && checkRhythm(plan, kit.frame) },
   villain_ladder: {
-    always: true,
+    always: true, codes: ['count', 'rank', 'role', 'on_screen', 'takedown', 'takedown_plan', 'key_to_next', 'counterstrike', 'public_legal', 'order', 'punishment', 'turned_ally', 'infighting'],
     run: ({ bible, plan, kit }, p) =>
       bible && plan && checkVillainLadder(bible, plan, kit.frame, { ranks: nums(p, 'ranks'), min_infighting: num(p, 'min_infighting') } satisfies LadderParams),
   },
-  timeline: { always: true, run: ({ bible }) => bible && checkTimeline(bible) },
+  timeline: { always: true, codes: ['birth', 'born_after', 'dead_before', 'age', 'unknown_ref', 'order'], run: ({ bible }) => bible && checkTimeline(bible) },
   knowledge: {
-    always: true,
+    always: true, codes: ['before_fact', 'unknown_fact', 'fact_not_yet', 'unknown', 'too_early'],
     run: ({ bible, cards, plan }) => {
       const items = cards ?? plan?.episodes;
       return bible && items && checkKnowledge(items, bible);
     },
   },
-  limits: { always: true, run: ({ bible, cards, kit }) => bible && checkLimits(bible, cards ?? [], kit.production) },
-  guns: { always: true, run: ({ bible, plan, kit }) => bible && checkGuns(bible, kit.frame, plan) },
+  limits: { always: true, codes: ['regular_characters', 'locations', 'location_not_listed', 'speakers'], run: ({ bible, cards, kit }) => bible && checkLimits(bible, cards ?? [], kit.production) },
+  guns: { always: true, codes: ['not_fired', 'order', 'outside'], run: ({ bible, plan, kit }) => bible && checkGuns(bible, kit.frame, plan) },
   script_metrics: {
-    always: true,
+    always: true, codes: ['chars_per_minute', 'line_words', 'overlay_words', 'duration', 'speakers'],
     run: ({ scripts, kit }) => scripts && scripts.flatMap((s) => checkScriptMetrics(s, kit.production, kit.frame)),
   },
   legal_markers: {
-    always: true,
+    always: true, codes: null,
     run: (input) => {
       const texts = collectTexts(input);
       return texts.length ? checkLegalMarkers(texts, input.kit.legal) : undefined;
     },
   },
   betrayal_timing: {
-    always: false,
+    always: false, codes: ['late'],
     run: ({ bible }, p) => bible && checkBetrayalTiming(bible, num(p, 'max_second') ?? Infinity),
   },
-  betrayer_rank: { always: false, run: ({ bible }, p) => bible && checkBetrayerRank(bible, nums(p, 'ranks') ?? []) },
+  betrayer_rank: { always: false, codes: ['rank'], run: ({ bible }, p) => bible && checkBetrayerRank(bible, nums(p, 'ranks') ?? []) },
   paywall_hook: {
-    always: false,
+    always: false, codes: ['content'],
     run: ({ plan }, p) => plan && checkPaywallHook(plan, typeof p.anchor === 'string' ? p.anchor : 'paywall_hook'),
   },
   secret_turns: {
-    always: false,
+    always: false, codes: ['count', 'near'],
     run: ({ bible, kit }, p) =>
       bible && checkSecretTurns(bible, kit.frame, { min: num(p, 'min') ?? 1, near: strs(p, 'near') } satisfies SecretTurnParams),
   },
@@ -95,14 +100,26 @@ export interface CodeCheckResult {
   evaluatedRules: Set<string>;
 }
 
+/** A finding code matches a filter when it is the filter itself or a sub-code under it. */
+export function codeMatches(check: string | undefined, filter: string): boolean {
+  return !!check && (check === filter || check.startsWith(`${filter}.`));
+}
+
 function runOne(input: CheckInput, run: CheckRun): Finding[] | undefined {
   const check = CODE_CHECKS[run.fn];
   if (!check) throw new UnknownCheckError(`Проверка «${run.fn}» из базы знаний не существует в коде`);
+  for (const o of run.only ?? []) {
+    if (check.codes && !check.codes.some((c) => o === c || o.startsWith(`${c}.`))) {
+      throw new UnknownCheckError(`У проверки «${run.fn}» нет кода «${o}». Есть: ${check.codes.join(', ')}`);
+    }
+  }
   const found = check.run(input, run.params);
   if (!found) return undefined;
   const only = run.only;
-  return only ? found.filter((f) => only.some((o) => f.check?.startsWith(`${run.fn}.${o}`))) : found;
+  return only ? found.filter((f) => only.some((o) => codeMatches(f.check, `${run.fn}.${o}`))) : found;
 }
+
+const SEVERITY_RANK = { blocker: 0, major: 1, minor: 2 } as const;
 
 /**
  * Runs code checks: first the ones genre rules name (with their params),
@@ -127,8 +144,11 @@ export function runCodeChecks(input: CheckInput): CodeCheckResult {
     if (complete) evaluatedRules.add(rule.id);
     byRule[rule.id] = found;
     for (const f of found) {
-      if (unique.has(f.id)) continue;
-      unique.set(f.id, { ...f, rule: rule.id, severity: f.severity === 'minor' ? 'minor' : rule.severity });
+      const severity = f.severity === 'minor' ? 'minor' : rule.severity;
+      const prev = unique.get(f.id);
+      // Several rules may cover one finding: the strictest one decides.
+      if (prev && SEVERITY_RANK[prev.severity] <= SEVERITY_RANK[severity]) continue;
+      unique.set(f.id, { ...f, rule: rule.id, severity });
     }
   }
 

@@ -130,7 +130,8 @@ export function loadKb(root: string = DEFAULT_KB_ROOT): Kb {
       if (value) (target as ById<unknown>)[id] = value;
     }
   }
-  for (const file of listFiles(root, 'constraints', '.yaml')) {
+  // With a broken genre file we cannot tell which constraints it used: skip, avoid false alarms.
+  for (const file of genres.failed.size > 0 ? [] : listFiles(root, 'constraints', '.yaml')) {
     if (!usedConstraints.has(basename(file, '.yaml'))) {
       issues.push({ file, message: 'Файл не указан ни в одном жанре (genres/*.yaml), поэтому его нельзя проверить' });
     }
@@ -314,6 +315,29 @@ function crossCheck(
 
     const rules = kb.rules.loaded[g.rules];
     const checklist = kb.checklists.loaded[g.checklist];
+    const frame = kb.frames.loaded[g.frame];
+    if (frame) {
+      const anchors = new Set(Object.keys(frame.anchors));
+      const bad = (where: KbIssue, id: string) =>
+        issues.push({ ...where, message: `Нет опорной точки «${id}» в frames/${g.frame}.yaml (жанр ${g.id})` });
+      rules?.rules.forEach((rule, ri) =>
+        rule.check.run.forEach((run, ki) => {
+          const where = { file: `rules/${g.rules}.yaml`, field: `rules[${ri}].check.run[${ki}]`, message: '' };
+          const named = [
+            ...(run.only ?? []).filter((o) => o.startsWith('anchor.')).map((o) => o.slice('anchor.'.length)),
+            ...(Array.isArray(run.params.near) ? (run.params.near as unknown[]).map(String) : []),
+            ...(typeof run.params.anchor === 'string' ? [run.params.anchor] : []),
+          ];
+          for (const id of named) if (!anchors.has(id)) bad(where, id);
+        }),
+      );
+      checklist?.items.forEach((item, i) => {
+        for (const o of item.only ?? []) {
+          const m = /^season_frame\.anchor\.(.+)$/u.exec(o);
+          if (m && !anchors.has(m[1]!)) bad({ file: `checklist/${g.checklist}.yaml`, field: `items[${i}].only`, message: '' }, m[1]!);
+        }
+      });
+    }
     if (rules && checklist) {
       const ids = new Set(rules.rules.map((r) => r.id));
       checklist.items.forEach((item, i) => {

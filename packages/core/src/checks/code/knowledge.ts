@@ -26,7 +26,7 @@ export function knowledgeIndex(bible: Bible): Map<string, number> {
  * Character knowledge: nobody acts on a fact before the episode they learned it,
  * and nobody learns a fact before it becomes true.
  */
-export function checkKnowledge(items: EpisodeActs[], bible: Bible): Finding[] {
+export function checkKnowledge(items: EpisodeActs[], bible: Bible, opts: { onlyFacts?: string[] } = {}): Finding[] {
   const out: Finding[] = [];
   const facts = new Map(bible.facts.map((f) => [f.id, f]));
   const known = knowledgeIndex(bible);
@@ -41,6 +41,7 @@ export function checkKnowledge(items: EpisodeActs[], bible: Bible): Finding[] {
     ...bible.knowledge.map((k) => ({ who: k.who, fact: k.fact, since: k.since_ep })),
   ];
   for (const k of learned) {
+    if (opts.onlyFacts && !opts.onlyFacts.includes(k.fact)) continue;
     const fact = facts.get(k.fact);
     if (fact?.since_ep !== undefined && k.since < fact.since_ep) {
       add(

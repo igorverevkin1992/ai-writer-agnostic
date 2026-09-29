@@ -96,3 +96,55 @@ describe('edit propagation', () => {
     expect(mem.staleEpisodes().cards).toEqual([]);
   });
 });
+
+describe('review fixes', () => {
+  it('an unrelated edit does not reopen a dismissed finding', () => {
+    mem.updateFact('f_herman_initiator', { since_ep: 35 }, producer);
+    const f = mem.findingsOf('memory', 'open').find((x) => x.check === 'knowledge.before_fact')!;
+    mem.setFindingOutcome(f.id, { status: 'dismissed', resolutionFactId: 'f_twins' });
+    mem.updateFact('f_twins', { text: 'Анна — сестра Веры' }, producer);
+    expect(mem.finding(f.id)).toMatchObject({ status: 'dismissed', resolutionFactId: 'f_twins' });
+  });
+
+  it('a rollback closes the findings the edit raised', () => {
+    const edit = mem.updateEvent('e_father_died', { year: 2006 }, producer);
+    expect(mem.openFindings().map((x) => x.id)).toEqual(edit.findings.map((x) => x.id));
+    mem.rollback(edit.revisionId, producer);
+    expect(mem.openFindings()).toEqual([]);
+  });
+
+  it('an added fact can be rolled back', () => {
+    const rev = mem.addFact({ id: 'f_new', text: 'Новый факт', since_ep: 5 }, [{ who: 'Лиза', fact: 'f_new', since_ep: 5 }], producer);
+    mem.rollback(rev, producer);
+    expect(mem.currentBible()!.facts.map((f) => f.id)).not.toContain('f_new');
+    expect(mem.currentBible()!.knowledge.some((k) => k.fact === 'f_new')).toBe(false);
+  });
+
+  it('explicit links survive re-importing the plan', () => {
+    mem.importPlan(loadGolden().plan);
+    const res = mem.updateEvent('e_father_died', { year: 2006 }, producer);
+    expect(res.findings[0]?.episode).toBe(8);
+  });
+
+  it('knowledge is re-checked against the cards too', () => {
+    mem.saveCard(EpisodeCard.parse({ ...sampleCard, ep: 33, acts_on: [{ who: 'Лиза', fact: 'f_herman_initiator' }] }));
+    const res = mem.updateFact('f_herman_initiator', { since_ep: 35 }, producer);
+    expect(res.findings.map((f) => [f.check, f.episode])).toEqual(expect.arrayContaining([['knowledge.fact_not_yet', 33]]));
+  });
+
+  it('a new bible keeps facts the producer added', () => {
+    mem.addFact({ id: 'f_police', text: 'Полиция не верит без доказательств' }, [{ who: 'Лиза', fact: 'f_police', since_ep: 20 }], producer);
+    mem.importBible(loadGolden().bible);
+    const b = mem.currentBible()!;
+    expect(b.facts.map((f) => f.id)).toContain('f_police');
+    expect(b.knowledge).toContainEqual({ who: 'Лиза', fact: 'f_police', since_ep: 20 });
+  });
+
+  it('a system-closed finding reopens when the same problem comes back', () => {
+    const f = { id: 'x1', controller: 'metro', severity: 'major', quote: 'q', viewerQuestion: 'Зритель спросит: ?', fixes: ['a'], status: 'open' } as const;
+    mem.saveFindings([f], 'scripts');
+    mem.setFindingOutcome('x1', { status: 'resolved', verdict: 'Сценарий переписан' });
+    mem.saveFindings([f], 'scripts');
+    expect(mem.finding('x1')?.status).toBe('open');
+  });
+});
