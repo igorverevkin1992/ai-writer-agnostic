@@ -13,3 +13,5 @@ export * from './prompts/index.ts';
 export * from './checks/llm/index.ts';
 export * from './pipeline/index.ts';
 export * from './text/index.ts';
+export * from './export/index.ts';
+export * from './demo.ts';

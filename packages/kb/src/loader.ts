@@ -383,6 +383,9 @@ function checkFrame(file: string, frame: Frame, issues: KbIssue[]): void {
       issues.push({ file, field: `season_frame.anchors.${name}`, message: `Опорная точка вне сезона (1–${frame.episodes})` });
     }
   }
+  for (const id of Object.keys(frame.anchor_labels)) {
+    if (!(id in frame.anchors)) issues.push({ file, field: `season_frame.anchor_labels.${id}`, message: `Нет опорной точки «${id}» в anchors` });
+  }
   if (frame.free >= frame.episodes) issues.push({ file, field: 'season_frame.free', message: 'Бесплатных серий больше, чем всего' });
 
   let expected = 1;

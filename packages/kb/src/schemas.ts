@@ -70,6 +70,8 @@ export const SeasonFrame = z.strictObject({
     free: z.int().min(0),
     duration_s: z.strictObject({ min: z.int().min(1), max: z.int().min(1), target: z.int().min(1) }),
     anchors: z.record(Text, EpisodeSpec),
+    /** Human names of anchors for screens and exports. */
+    anchor_labels: z.record(Text, Text).default({}),
     /** Optional: genres without a villain ladder omit it. */
     villains: z
       .strictObject({

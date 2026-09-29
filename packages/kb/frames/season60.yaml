@@ -16,6 +16,20 @@ season_frame:
     reveal: [48, 51]
     boss_takedown: [57, 59]
     finale: [59, 60]
+  # Названия опорных точек для экранов и экспорта (SPEC.md, таблица каркаса).
+  anchor_labels:
+    betrayal: Предательство
+    mask: Маска
+    first_strike: Первый удар
+    paywall_hook: Точка оплаты
+    secret_turn: Семейная тайна
+    pinch1: Пинч 1
+    midpoint: Мидпоинт
+    pinch2: Пинч 2
+    fall: Падение
+    reveal: Главное раскрытие
+    boss_takedown: Финальный босс снят
+    finale: Финал
   villains:
     count: 5
     roles: {5: pawn, 4: executor, 3: guardian, 2: right_hand, 1: boss}

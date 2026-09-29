@@ -13,11 +13,27 @@ cp .env.example .env   # вписать ключи API
 pnpm dev               # откроет приложение в браузере: http://localhost:5173
 ```
 
+Без ключей: `pnpm demo` — то же приложение, но модели отвечают заготовками по эталону
+«Муж женился на мне ради крови». Можно пройти весь путь от идеи до экспорта и посмотреть
+все экраны. Демо хранит проекты отдельно (`data/demo.db`) и ничего не тратит.
+
+## Экраны
+
+- **Сейчас** — одна задача и критерий готовности одной строкой, не больше трёх замечаний.
+- **Библия**, **Сезон** (таблица 60 серий, опорные точки, кривая страдания и кайфа),
+  **Серия** (карточка, сценарий, доработка фрагмента — 5 вариантов на выбор),
+  **Проверки** (все замечания), **Экспорт**, **Расходы**.
+
+Экспорт: Word (логлайн, библия, таблица сезона, сценарии), Excel (сезон, карточки,
+замечания, промпты для видео), промпты для ИИ-видео (внешность героев — только из библии),
+Markdown, JSON.
+
 ## Команды
 
 | Команда | Что делает |
 |---|---|
 | `pnpm dev` | Запускает сервер (порт 3001) и интерфейс (порт 5173) |
+| `pnpm demo` | То же без ключей: модели отвечают заготовками по эталону |
 | `pnpm test` | Тесты. Реальные модели не вызываются |
 | `pnpm lint` | Линтер и проверка типов |
 | `pnpm kb:check` | Проверяет базу знаний `packages/kb` и показывает ошибки |
@@ -49,7 +65,8 @@ pnpm dev               # откроет приложение в браузере
 API: `POST /api/projects`, `GET /api/projects/:id`, `POST /api/projects/:id/steps/:step/run|approve|skip`,
 `GET /api/projects/:id/findings?status=open&limit=3`, `POST /api/findings/:id/resolve|dismiss`,
 `GET /api/projects/:id/cards`, `GET /api/projects/:id/scripts/:ep`, `POST /api/projects/:id/polish`,
-`POST /api/projects/:id/polish/choose`, `GET /api/projects/:id/costs`.
+`POST /api/projects/:id/polish/choose`, `GET /api/projects/:id/overview`, `GET /api/projects/:id/export?format=docx|xlsx|json|md|video`,
+`GET /api/projects/:id/costs`.
 
 ## Разные сериалы
 

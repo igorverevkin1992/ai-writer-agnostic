@@ -1,6 +1,12 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import { desc } from 'drizzle-orm';
 import {
   APP_VERSION,
+  EXPORT_FORMATS,
+  exportProject,
+  nextTask,
+  projects,
+  type ExportFormat,
   BudgetExceededError,
   LlmError,
   Pipeline,
@@ -32,6 +38,8 @@ export interface AppDeps {
   db: Db;
   config: ModelsConfig;
   llm: LlmClient;
+  /** Demo mode: models answer from the golden project, no API keys needed. */
+  demo?: boolean;
 }
 
 const SEVERITY_ORDER: Record<string, number> = { blocker: 0, major: 1, minor: 2 };
@@ -41,7 +49,7 @@ function asStep(step: string): StepId {
   return step as StepId;
 }
 
-export function buildApp({ kb, db, config, llm }: AppDeps): FastifyInstance {
+export function buildApp({ kb, db, config, llm, demo = false }: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false });
 
   app.setErrorHandler((err, _req, reply) => {
@@ -54,7 +62,7 @@ export function buildApp({ kb, db, config, llm }: AppDeps): FastifyInstance {
     return reply.status(500).send({ error: err instanceof Error ? err.message : String(err) });
   });
 
-  app.get('/api/health', async () => ({ ok: true, version: APP_VERSION, genres: Object.keys(kb.genres) }));
+  app.get('/api/health', async () => ({ ok: true, version: APP_VERSION, demo, genres: Object.keys(kb.genres) }));
 
   /** Genre packs a new project can be based on. */
   app.get('/api/genres', async () =>
@@ -71,6 +79,34 @@ export function buildApp({ kb, db, config, llm }: AppDeps): FastifyInstance {
       };
     }),
   );
+
+  app.get('/api/projects', async () =>
+    db.select().from(projects).orderBy(desc(projects.createdAt)).all().filter((p) => !p.id.startsWith('eval-')),
+  );
+
+  /** Everything the screens need about a project, and the one task for «Сейчас». */
+  app.get<{ Params: { id: string } }>('/api/projects/:id/overview', async (req) => {
+    const project = getProject(db, req.params.id);
+    const memory = new ProjectMemory(db, project.id);
+    const kit = genreKit(kb, project.genreId ?? '');
+    return {
+      project,
+      demo,
+      genre: { id: kit.genre.id, title: kit.genre.title, episodes: kit.frame.episodes, free: kit.frame.free, anchors: kit.frame.anchors, anchorLabels: kit.frame.anchor_labels, pass: kit.checklist.pass, total: kit.checklist.total },
+      steps: new Pipeline(db, project.id).states(),
+      next: nextTask(db, kb, project.id),
+      idea: (memory.latestArtifact('idea') as { text: string } | undefined)?.text ?? null,
+      concepts: memory.latestArtifact('concept') ?? null,
+      concept: memory.latestArtifact('concept_choice') ?? null,
+      logline: memory.latestArtifact('logline') ?? null,
+      bible: memory.currentBible() ?? null,
+      plan: memory.currentPlan() ?? null,
+      cardBlocks: (memory.latestArtifact('card_blocks') as { approved: number[] } | undefined)?.approved ?? [],
+      scripts: memory.scripts().map((s) => s.ep),
+      polish: memory.latestArtifact('polish') ?? null,
+      budget: costSummary(db, config, project.id),
+    };
+  });
 
   app.post<{ Body: { title: string; genreId: string; idea: string; budgetLimitUsd?: number } }>('/api/projects', async (req, reply) => {
     const id = createProject(db, kb, req.body ?? ({} as never));
@@ -160,7 +196,29 @@ export function buildApp({ kb, db, config, llm }: AppDeps): FastifyInstance {
 
   app.get<{ Params: { id: string } }>('/api/projects/:id/costs', async (req) => costSummary(db, config, req.params.id));
 
-  app.get('/api/projects/:id/export', async (_req, reply) => reply.status(501).send({ error: 'Экспорт появится на вехе M6' }));
+  app.get<{ Params: { id: string }; Querystring: { format?: string } }>('/api/projects/:id/export', async (req, reply) => {
+    getProject(db, req.params.id);
+    const format = req.query.format ?? '';
+    if (!(EXPORT_FORMATS as readonly string[]).includes(format)) {
+      return reply.status(400).send({ error: `Формат: ${EXPORT_FORMATS.join(', ')}` });
+    }
+    const file = await exportProject(db, kb, req.params.id, format as ExportFormat);
+    // The first download completes the export step once everything before it is done.
+    const pipeline = new Pipeline(db, req.params.id);
+    if (pipeline.get('export').status !== 'approved') {
+      try {
+        pipeline.assertCanRun('export');
+        new ProjectMemory(db, req.params.id).saveArtifact('export', { format, at: new Date().toISOString() });
+        pipeline.approve('export');
+      } catch {
+        // Earlier steps are not finished: the file is still given, the step stays open.
+      }
+    }
+    return reply
+      .header('Content-Type', file.contentType)
+      .header('Content-Disposition', `attachment; filename="${file.filename}"`)
+      .send(file.body);
+  });
 
   return app;
 }

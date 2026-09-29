@@ -17,7 +17,8 @@
     "eval": "tsx scripts/eval.ts",
     "kb:check": "pnpm --filter @aiw/kb check",
     "seed-holes": "tsx scripts/seed-holes.ts",
-    "pilot": "tsx scripts/pilot.ts"
+    "pilot": "tsx scripts/pilot.ts",
+    "demo": "pnpm --parallel --filter @aiw/server --filter @aiw/web run dev:demo"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

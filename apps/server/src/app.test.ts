@@ -115,6 +115,29 @@ describe('server', () => {
     expect((await get(`/api/projects/${id}/cards`)).json()).toEqual([]);
   });
 
+  it('gives an overview with the one task and exports files', async () => {
+    const id = (await post('/api/projects', { title: 'Кровь', genreId: 'revenge_thriller', idea: 'идея' })).json().id as string;
+    const ov = (await get(`/api/projects/${id}/overview`)).json();
+    expect(ov.next).toMatchObject({ step: 'concept', action: 'run' });
+    expect(ov.genre).toMatchObject({ episodes: 60, anchorLabels: { paywall_hook: 'Точка оплаты' } });
+
+    const docx = await get(`/api/projects/${id}/export?format=docx`);
+    expect(docx.headers['content-type']).toContain('wordprocessingml');
+    expect(docx.headers['content-disposition']).toBe('attachment; filename="krov.docx"');
+    expect((await get(`/api/projects/${id}/export?format=pdf`)).statusCode).toBe(400);
+    // Earlier steps are not done: the file is given, the export step stays open.
+    expect((await get(`/api/projects/${id}/overview`)).json().steps.at(-1).status).toBe('draft');
+
+    for (const step of ['concept', 'logline', 'bible', 'season_plan', 'episode_cards', 'scripts', 'polish']) {
+      await post(`/api/projects/${id}/steps/${step}/skip`);
+    }
+    await get(`/api/projects/${id}/export?format=xlsx`);
+    const done = (await get(`/api/projects/${id}/overview`)).json();
+    expect(done.steps.at(-1).status).toBe('approved');
+    expect(done.next.task).toBe('Всё готово. Скачайте файлы');
+    expect((await get('/api/projects')).json().map((p: { id: string }) => p.id)).toContain(id);
+  });
+
   it('reports errors clearly', async () => {
     expect((await post('/api/projects', { title: 'X', genreId: 'sitcom', idea: 'Y' })).json().error).toMatch(/Жанр «sitcom» не найден/);
     expect((await get('/api/projects/nope')).statusCode).toBe(404);
