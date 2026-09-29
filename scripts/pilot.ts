@@ -1,6 +1,6 @@
 // M5 acceptance: cards and scripts for the first episodes of the golden project, checklist,
 // script metrics, production rating. Real API calls — run manually.
-// Usage: pnpm pilot [--project=muzh_krov] [--episodes=15] [--budget=40]
+// Usage: pnpm pilot [--project=muzh_krov] [--genre=revenge_thriller] [--episodes=15] [--budget=40]
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { LlmClient, REPO_ROOT, costSummary, loadDotEnv, loadGolden, loadModelsConfig, openDb, renderPilotReport, runPilot } from '@aiw/core';
@@ -10,6 +10,7 @@ const arg = (name: string, fallback: string) => process.argv.find((a) => a.start
 const project = arg('project', 'muzh_krov');
 const episodes = Number(arg('episodes', '15'));
 const budget = Number(arg('budget', '40'));
+const genreId = arg('genre', 'revenge_thriller');
 
 loadDotEnv();
 const config = loadModelsConfig();
@@ -25,7 +26,7 @@ const kb = loadKb();
 console.log(`Пилот: ${project}, серии 1–${episodes}, лимит $${budget}…`);
 try {
   const report = await runPilot({ db, llm: new LlmClient({ config, db }), kb }, loadGolden(project), {
-    genreId: 'revenge_thriller',
+    genreId,
     episodes,
     budgetLimitUsd: budget,
     title: `Пилот ${project}`,

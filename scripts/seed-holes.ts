@@ -1,5 +1,5 @@
 // Plants holes into the golden project and writes the set to fixtures/seeded/.
-// Usage: pnpm seed-holes [--seed=1] [--project=muzh_krov]
+// Usage: pnpm seed-holes [--seed=1] [--project=muzh_krov] [--genre=revenge_thriller]
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
@@ -12,8 +12,8 @@ const seed = Number(arg('seed', '1'));
 const project = arg('project', 'muzh_krov');
 
 const golden = loadGolden(project);
-const kit = genreKit(loadKb(), 'revenge_thriller');
-const holes = seedHoles(golden, seed);
+const kit = genreKit(loadKb(), arg('genre', 'revenge_thriller'));
+const holes = seedHoles(golden, kit, seed);
 
 const dir = join(FIXTURES_DIR, 'seeded');
 mkdirSync(dir, { recursive: true });

@@ -116,6 +116,43 @@ describe('AnthropicProvider', () => {
     );
   });
 
+  it('after a server-side fallback keeps only the serving model answer', async () => {
+    respond = () => ({
+      type: 'text/event-stream',
+      body: sse([
+        ['message_start', {
+          type: 'message_start',
+          message: {
+            id: 'msg_2', type: 'message', role: 'assistant', model: 'm-1', content: [], stop_reason: null, stop_sequence: null,
+            usage: { input_tokens: 10, output_tokens: 1 },
+          },
+        }],
+        ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }],
+        ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '{"a":' } }],
+        ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+        ['content_block_start', {
+          type: 'content_block_start', index: 1,
+          content_block: { type: 'fallback', from: { model: 'm-1' }, to: { model: 'm-2' }, trigger: { type: 'refusal' } },
+        }],
+        ['content_block_stop', { type: 'content_block_stop', index: 1 }],
+        ['content_block_start', { type: 'content_block_start', index: 2, content_block: { type: 'text', text: '' } }],
+        ['content_block_delta', { type: 'content_block_delta', index: 2, delta: { type: 'text_delta', text: '{"ok":true}' } }],
+        ['content_block_stop', { type: 'content_block_stop', index: 2 }],
+        ['message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 20 } }],
+        ['message_stop', { type: 'message_stop' }],
+      ]),
+    });
+    const res = await new AnthropicProvider(env).complete(request, { model: 'm-1', maxOutput: 100, refusalFallback: 'default' });
+    expect(res).toMatchObject({ text: '{"ok":true}', model: 'm-2' });
+  });
+
+  it('a truncated answer carries its usage for the cost log', async () => {
+    respond = () => ({ type: 'text/event-stream', body: anthropicStream('{"a":', 'model_context_window_exceeded') });
+    const err = await new AnthropicProvider(env).complete(request, { model: 'm', maxOutput: 10 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OutputTruncatedError);
+    expect((err as OutputTruncatedError).billed?.usage.outputTokens).toBe(42);
+  });
+
   it('counts tokens with the counting endpoint', async () => {
     respond = () => ({ body: JSON.stringify({ input_tokens: 1234 }) });
     expect(await new AnthropicProvider(env).countTokens(request, 'm-1')).toBe(1234);

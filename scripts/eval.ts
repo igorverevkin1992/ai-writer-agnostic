@@ -1,5 +1,5 @@
 // Auditor evaluation on the golden set and seeded holes. Real API calls — run manually.
-// Usage: pnpm eval [--project=muzh_krov] [--architect=heavy] [--budget=25] [--seeded=all|missed|none]
+// Usage: pnpm eval [--project=muzh_krov] [--genre=revenge_thriller] [--architect=heavy] [--budget=25] [--seeded=all|missed|none]
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parse } from 'yaml';
@@ -30,7 +30,7 @@ const seededModel = arg('seeded', 'all') as 'all' | 'missed' | 'none';
 loadDotEnv();
 const config = loadModelsConfig();
 const kb = loadKb();
-const kit = genreKit(kb, 'revenge_thriller');
+const kit = genreKit(kb, arg('genre', 'revenge_thriller'));
 const db = openDb(resolve(REPO_ROOT, 'data/app.db'));
 const date = new Date().toISOString().slice(0, 10);
 const projectId = `eval-${project}-${heavy ? 'heavy' : 'default'}-${Date.now()}`;

@@ -47,25 +47,32 @@ export class AnthropicProvider implements Provider {
       throw wrap(err);
     }
 
+    // With server-side fallbacks the content may hold the declined model's partial output,
+    // then a `fallback` block, then the serving model's answer: only the last part counts.
+    const lastFallback = msg.content.findLastIndex((b) => b.type === 'fallback');
+    const served = lastFallback >= 0 ? (msg.content[lastFallback] as Anthropic.Beta.BetaFallbackBlock).to.model : msg.model;
+    const usage = {
+      inputTokens: msg.usage.input_tokens,
+      outputTokens: msg.usage.output_tokens,
+      cacheReadTokens: msg.usage.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: msg.usage.cache_creation_input_tokens ?? 0,
+    };
+    const billed = { model: served, usage };
+
     if (msg.stop_reason === 'refusal') {
-      throw new RefusalError(`Модель ${msg.model} отказалась отвечать (${msg.stop_details?.category ?? 'без категории'})`);
+      throw new RefusalError(`Модель ${served} отказалась отвечать (${msg.stop_details?.category ?? 'без категории'})`, billed);
     }
-    if (msg.stop_reason === 'max_tokens') throw new OutputTruncatedError(msg.model, maxOutput);
+    if (msg.stop_reason === 'max_tokens') throw new OutputTruncatedError(served, maxOutput, billed);
+    if (msg.stop_reason === 'model_context_window_exceeded') {
+      throw new OutputTruncatedError(served, maxOutput, billed, 'на пределе контекста модели');
+    }
 
     const text = msg.content
+      .slice(lastFallback + 1)
       .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')
       .map((b) => b.text)
       .join('');
-    return {
-      text,
-      model: msg.model,
-      usage: {
-        inputTokens: msg.usage.input_tokens,
-        outputTokens: msg.usage.output_tokens,
-        cacheReadTokens: msg.usage.cache_read_input_tokens ?? 0,
-        cacheWriteTokens: msg.usage.cache_creation_input_tokens ?? 0,
-      },
-    };
+    return { text, model: served, usage };
   }
 
   async countTokens(req: LlmRequest, model: string): Promise<number> {

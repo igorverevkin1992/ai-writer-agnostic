@@ -28,7 +28,8 @@ export class GoogleProvider implements Provider {
     if (!this.env.GEMINI_API_KEY) throw new MissingKeyError('GEMINI_API_KEY');
     this.client ??= new GoogleGenAI({
       apiKey: this.env.GEMINI_API_KEY,
-      ...(this.env.GEMINI_BASE_URL ? { httpOptions: { baseUrl: this.env.GEMINI_BASE_URL } } : {}),
+      // Retries on rate limits and 5xx; without it one hiccup fails a whole step.
+      httpOptions: { retryOptions: { attempts: 3 }, ...(this.env.GEMINI_BASE_URL ? { baseUrl: this.env.GEMINI_BASE_URL } : {}) },
     });
     return this.client;
   }
@@ -51,25 +52,25 @@ export class GoogleProvider implements Provider {
       throw wrap(err);
     }
 
-    const finish = res.candidates?.[0]?.finishReason;
-    if (res.promptFeedback?.blockReason || (finish && REFUSAL_REASONS.has(finish))) {
-      throw new RefusalError(`Модель ${model} отказалась отвечать (${res.promptFeedback?.blockReason ?? finish})`);
-    }
-    if (finish === FinishReason.MAX_TOKENS) throw new OutputTruncatedError(model, maxOutput);
-
     const u = res.usageMetadata ?? {};
     const cached = u.cachedContentTokenCount ?? 0;
-    return {
-      text: res.text ?? '',
-      model: res.modelVersion ?? model,
-      usage: {
-        inputTokens: (u.promptTokenCount ?? 0) - cached,
-        // Thinking tokens are billed as output.
-        outputTokens: (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0),
-        cacheReadTokens: cached,
-        cacheWriteTokens: 0,
-      },
+    const usage = {
+      inputTokens: (u.promptTokenCount ?? 0) - cached,
+      // Thinking tokens are billed as output.
+      outputTokens: (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0),
+      cacheReadTokens: cached,
+      cacheWriteTokens: 0,
     };
+    const served = res.modelVersion ?? model;
+    const billed = { model: served, usage };
+
+    const finish = res.candidates?.[0]?.finishReason;
+    if (res.promptFeedback?.blockReason || (finish && REFUSAL_REASONS.has(finish))) {
+      throw new RefusalError(`Модель ${model} отказалась отвечать (${res.promptFeedback?.blockReason ?? finish})`, billed);
+    }
+    if (finish === FinishReason.MAX_TOKENS) throw new OutputTruncatedError(model, maxOutput, billed);
+
+    return { text: res.text ?? '', model: served, usage };
   }
 
   async countTokens(req: LlmRequest, model: string): Promise<number> {

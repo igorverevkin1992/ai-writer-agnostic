@@ -10,6 +10,7 @@ import {
   BudgetExceededError,
   InputTooLargeError,
   InvalidOutputError,
+  OutputTruncatedError,
   ProviderUnavailableError,
   SameFamilyError,
 } from './errors.ts';
@@ -311,5 +312,48 @@ describe('database', () => {
     const row = db.select().from(projects).where(eq(projects.id, 'p1')).get();
     expect(row?.title).toBe('Муж женился ради крови');
     expect(row?.createdAt).toBeInstanceOf(Date);
+  });
+});
+
+describe('review fixes: providers', () => {
+  it('a truncated answer is still billed and counts towards the budget', async () => {
+    const usage = { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    anthropic = new FakeProvider('anthropic', [new OutputTruncatedError('a-big', 500, { model: 'a-big', usage })]);
+    await expect(client().complete({ role: 'architect', projectId: 'p1', request: ask })).rejects.toThrow(OutputTruncatedError);
+    expect(rows()[0]).toMatchObject({ status: 'error', outputTokens: 500, priceKnown: true });
+    expect(rows()[0]?.costUsd).toBeCloseTo((1000 * 4 + 500 * 20) / 1e6, 9);
+  });
+
+  it('a model without a price is counted at the highest known price, not as free', async () => {
+    anthropic = new FakeProvider('anthropic', [new ProviderUnavailableError('anthropic', new Error('blocked'))]);
+    const res = await client({ RESERVE_MODEL: 'r-1' }).complete({ role: 'architect', request: ask });
+    expect(res.costUsd).toBeCloseTo((1000 * 10 + 500 * 50) / 1e6, 9);
+    expect(rows()[1]).toMatchObject({ priceKnown: false });
+  });
+
+  it('the reserve takes over when the main provider cannot even count tokens', async () => {
+    google = new FakeProvider('google', ['{"ok":true}'], () => {
+      throw new ProviderUnavailableError('google', new Error('down'));
+    });
+    const res = await client({ RESERVE_MODEL: 'r-1' }).complete({ role: 'writer', request: ask });
+    expect(res.provider).toBe('openai_compatible');
+  });
+
+  it('says so when the reserve fails too', async () => {
+    anthropic = new FakeProvider('anthropic', [new ProviderUnavailableError('anthropic', new Error('blocked'))]);
+    reserve = new FakeProvider('openai_compatible', [new ProviderUnavailableError('openai_compatible', new Error('тоже нет'))]);
+    await expect(client({ RESERVE_MODEL: 'r-1' }).complete({ role: 'architect', request: ask })).rejects.toThrow(/Резерв тоже не ответил/);
+  });
+
+  it('the critic must differ from every author of the text', async () => {
+    await expect(
+      client().complete({ role: 'critic_of_architect', authorProvider: ['anthropic', 'google'], request: ask }),
+    ).rejects.toThrow(SameFamilyError);
+  });
+
+  it('finds JSON after prose with braces and in any fenced block', () => {
+    expect(extractJson('Смотри {это} ответ: {"a": 1}')).toEqual({ a: 1 });
+    expect(extractJson('```\nнет\n```\n```json\n[1, 2]\n```')).toEqual([1, 2]);
+    expect(extractJson('Ответ: {"t": "скобка } внутри"} конец')).toEqual({ t: 'скобка } внутри' });
   });
 });

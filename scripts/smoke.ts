@@ -45,7 +45,13 @@ for (const role of ROLE_NAMES) {
       authorProvider: AUTHOR_OF[role],
       request,
     });
-    const note = res.fallbackUsed ? ' (через резерв!)' : res.model !== model ? ` (ответила ${res.model})` : '';
+    if (res.fallbackUsed) {
+      // The main model did not answer: the key or the model id is wrong, even though work goes on.
+      failed++;
+      console.log(`✗ ${role.padEnd(20)} ${provider}/${model} — не ответила, ответил резерв ${res.model}`);
+      continue;
+    }
+    const note = res.model !== model ? ` (ответила ${res.model})` : '';
     console.log(`✓ ${role.padEnd(20)} ${provider}/${model}${note} — ${Date.now() - started} мс, $${res.costUsd.toFixed(4)}`);
   } catch (err) {
     failed++;
@@ -58,7 +64,7 @@ const reserveModel = fb && process.env[fb.model_env];
 if (fb && reserveModel) {
   const reserve = new OpenAiCompatibleProvider(process.env, fb.base_url_env);
   try {
-    await reserve.complete(request, { model: reserveModel, maxOutput: 100 });
+    await reserve.complete(request, { model: reserveModel, maxOutput: 1000 });
     console.log(`✓ ${'резерв'.padEnd(20)} ${fb.provider}/${reserveModel}`);
   } catch (err) {
     failed++;

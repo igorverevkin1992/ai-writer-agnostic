@@ -1,3 +1,5 @@
+import type { Usage } from './types.ts';
+
 /** Base class for errors that end up in front of the producer. Messages are in Russian. */
 export class LlmError extends Error {
   override name = 'LlmError';
@@ -21,14 +23,31 @@ export class MissingKeyError extends LlmError {
   }
 }
 
+/** What a failed call still cost: the tokens are billed even when the answer is unusable. */
+export interface BilledCall {
+  model: string;
+  usage: Usage;
+}
+
 export class RefusalError extends LlmError {
   override name = 'RefusalError';
+  constructor(
+    message: string,
+    readonly billed?: BilledCall,
+  ) {
+    super(message);
+  }
 }
 
 export class OutputTruncatedError extends LlmError {
   override name = 'OutputTruncatedError';
-  constructor(model: string, maxOutput: number) {
-    super(`Ответ модели ${model} обрезан на лимите ${maxOutput} токенов`);
+  constructor(
+    model: string,
+    maxOutput: number,
+    readonly billed?: BilledCall,
+    why = `на лимите ${maxOutput} токенов`,
+  ) {
+    super(`Ответ модели ${model} обрезан ${why}`);
   }
 }
 

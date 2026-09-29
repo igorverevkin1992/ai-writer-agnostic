@@ -40,19 +40,17 @@ export class OpenAiCompatibleProvider implements Provider {
       throw new ProviderUnavailableError('openai_compatible', err);
     }
     const choice = res.choices[0];
-    if (choice?.finish_reason === 'content_filter') throw new RefusalError(`Модель ${model} отказалась отвечать`);
-    if (choice?.finish_reason === 'length') throw new OutputTruncatedError(model, maxOutput);
     const cached = res.usage?.prompt_tokens_details?.cached_tokens ?? 0;
-    return {
-      text: choice?.message.content ?? '',
-      model: res.model || model,
-      usage: {
-        inputTokens: (res.usage?.prompt_tokens ?? 0) - cached,
-        outputTokens: res.usage?.completion_tokens ?? 0,
-        cacheReadTokens: cached,
-        cacheWriteTokens: 0,
-      },
+    const usage = {
+      inputTokens: (res.usage?.prompt_tokens ?? 0) - cached,
+      outputTokens: res.usage?.completion_tokens ?? 0,
+      cacheReadTokens: cached,
+      cacheWriteTokens: 0,
     };
+    const served = res.model || model;
+    if (choice?.finish_reason === 'content_filter') throw new RefusalError(`Модель ${model} отказалась отвечать`, { model: served, usage });
+    if (choice?.finish_reason === 'length') throw new OutputTruncatedError(model, maxOutput, { model: served, usage });
+    return { text: choice?.message.content ?? '', model: served, usage };
   }
 
   async countTokens(req: LlmRequest): Promise<number> {

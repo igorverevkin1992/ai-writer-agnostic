@@ -353,7 +353,7 @@ holes:
         value: false
   - id: h38
     holeType: 8
-    description: Добавлены три постоянных героя сверх лимита
+    description: "Добавлено постоянных героев: 3, сверх лимита 8"
     patch:
       - op: add
         path: /bible/characters/-

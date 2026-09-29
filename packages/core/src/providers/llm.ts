@@ -11,7 +11,9 @@ import {
   InvalidOutputError,
   LlmError,
   MissingKeyError,
+  OutputTruncatedError,
   ProviderUnavailableError,
+  RefusalError,
   SameFamilyError,
 } from './errors.ts';
 import { assertCrossFamily } from './family.ts';
@@ -110,13 +112,14 @@ export class LlmClient {
     this.checkFamily(opts, primary.provider);
     if (opts.projectId) assertBudget(this.db, this.config, opts.projectId);
 
-    const request = await this.fitInput(opts, primary);
+    // Token counting goes to the provider too: when it is down, the reserve takes over here as well.
+    const attempt = async (r: Resolved, isFallback: boolean) => this.callLogged(opts, r, await this.fitInput(opts, r), isFallback);
 
     let result: ProviderResult & { callId: number };
     let used = primary;
     let fallbackUsed = false;
     try {
-      result = await this.callLogged(opts, primary, request, false);
+      result = await attempt(primary, false);
     } catch (err) {
       const fallback = this.resolveFallback(opts.role);
       const canFallback = err instanceof ProviderUnavailableError || err instanceof MissingKeyError;
@@ -124,7 +127,14 @@ export class LlmClient {
       this.checkFamily(opts, fallback.provider);
       used = fallback;
       fallbackUsed = true;
-      result = await this.callLogged(opts, fallback, request, true);
+      try {
+        result = await attempt(fallback, true);
+      } catch (reserveErr) {
+        throw new ProviderUnavailableError(
+          primary.provider,
+          new Error(`${(err as Error).message}. Резерв тоже не ответил: ${(reserveErr as Error).message}`),
+        );
+      }
     }
 
     return {
@@ -238,11 +248,24 @@ export class LlmClient {
         .get();
       return { ...result, callId: row.id };
     } catch (err) {
+      // A refused or truncated answer is still billed: its tokens count towards the budget.
+      const billed = err instanceof RefusalError || err instanceof OutputTruncatedError ? err.billed : undefined;
+      const cost = billed ? this.cost(billed.model, resolved.target.model, billed.usage) : undefined;
       this.db
         .insert(llmCalls)
         .values({
           ...base,
-          model: resolved.target.model,
+          model: billed?.model ?? resolved.target.model,
+          ...(billed && cost
+            ? {
+                inputTokens: billed.usage.inputTokens,
+                outputTokens: billed.usage.outputTokens,
+                cacheReadTokens: billed.usage.cacheReadTokens,
+                cacheWriteTokens: billed.usage.cacheWriteTokens,
+                costUsd: cost.costUsd,
+                priceKnown: cost.priceKnown,
+              }
+            : {}),
           durationMs: this.now() - started,
           status: 'error',
           error: err instanceof Error ? err.message : String(err),
@@ -252,11 +275,17 @@ export class LlmClient {
     }
   }
 
-  /** Prices by the model that served the call; falls back to the requested model's price. */
+  /**
+   * Prices by the model that served the call; falls back to the requested model's price.
+   * Without a known price the most expensive known one is used, so the budget never
+   * counts an unknown model as free (priceKnown: false marks the estimate).
+   */
   private cost(servedModel: string, requestedModel: string, usage: Usage): { costUsd: number; priceKnown: boolean } {
     const prices = this.config.prices_usd_per_mtok;
     const price = prices[servedModel] ?? prices[requestedModel];
-    return price ? { costUsd: computeCost(price, usage), priceKnown: true } : { costUsd: 0, priceKnown: false };
+    if (price) return { costUsd: computeCost(price, usage), priceKnown: true };
+    const estimates = Object.values(prices).map((p) => computeCost(p, usage));
+    return { costUsd: estimates.length ? Math.max(...estimates) : 0, priceKnown: false };
   }
 
   private markInvalid(callId: number): void {

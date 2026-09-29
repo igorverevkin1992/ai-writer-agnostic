@@ -28,7 +28,8 @@ export function rng(seed: number): () => number {
   };
 }
 
-type Maker = (p: ProjectFixture, rand: () => number) => Omit<SeededHole, 'id'>[];
+/** Makes candidate holes. Everything genre-specific comes from the kit, not from code. */
+type Maker = (p: ProjectFixture, rand: () => number, kit: GenreKit) => Omit<SeededHole, 'id'>[];
 
 const int = (rand: () => number, lo: number, hi: number) => lo + Math.floor(rand() * (hi - lo + 1));
 
@@ -166,7 +167,7 @@ const knowsBeforeFact: Maker = ({ bible }, rand) => {
   return [...fromKnowledge, ...fromVillains];
 };
 
-const neverLearns: Maker = ({ bible }, rand) => {
+const neverLearns: Maker = ({ bible, plan }, rand) => {
   const people = bible.characters.map((c) => c.name);
   return bible.facts.flatMap((f) =>
     people
@@ -177,7 +178,7 @@ const neverLearns: Maker = ({ bible }, rand) => {
           !bible.villains.some((v) => v.name === who && v.knows.some((k) => k.fact === f.id)),
       )
       .map((who) => {
-        const ep = int(rand, Math.max(1, f.since_ep ?? 1), 60);
+        const ep = int(rand, Math.max(1, f.since_ep ?? 1), plan.episodes.length);
         return {
           holeType: 11,
           episode: ep,
@@ -197,27 +198,32 @@ const ruleWithoutReason: Maker = ({ bible }) =>
     patch: [{ op: 'replace' as const, path: `/bible/world_rules/${i}/why`, value: 'Так работает' }],
   }));
 
-const anchorMoved: Maker = ({ plan }) =>
-  plan.episodes.flatMap((e, i) =>
+const anchorMoved: Maker = ({ plan }, _rand, kit) => {
+  // Only anchors fixed to one episode; the shift goes beyond the frame's tolerance.
+  const fixed = new Set(Object.entries(kit.frame.anchors).filter(([, spec]) => typeof spec === 'number').map(([id]) => id));
+  const shift = kit.frame.tolerance + 2;
+  return plan.episodes.flatMap((e, i) =>
     e.anchors
-      .filter((a) => !['fall', 'reveal', 'boss_takedown', 'finale', 'mask', 'first_strike'].includes(a))
-      .filter(() => e.ep + 3 <= plan.episodes.length)
+      .filter((a) => fixed.has(a))
+      .filter(() => e.ep + shift <= plan.episodes.length)
       .map((a) => ({
         holeType: 10,
-        episode: e.ep + 3,
-        description: `«${a}» сдвинута с ${e.ep}-й на ${e.ep + 3}-ю серию`,
+        episode: e.ep + shift,
+        description: `«${a}» сдвинута с ${e.ep}-й на ${e.ep + shift}-ю серию`,
         patch: [
           { op: 'replace' as const, path: `/plan/episodes/${i}/anchors`, value: e.anchors.filter((x) => x !== a) },
-          { op: 'add' as const, path: `/plan/episodes/${i + 3}/anchors/-`, value: a },
+          { op: 'add' as const, path: `/plan/episodes/${i + shift}/anchors/-`, value: a },
         ],
       })),
   );
+};
 
-const heroineSilent: Maker = ({ plan }) =>
+const heroineSilent: Maker = ({ plan }, _rand, kit) =>
   plan.episodes
     .filter((e) => e.strike_by_villain && e.ep < plan.episodes.length)
     .map((e) => {
-      const window = plan.episodes.filter((x) => x.ep > e.ep && x.ep <= e.ep + 3 && x.strike_by_heroine);
+      const within = kit.frame.rhythm.response_within;
+      const window = plan.episodes.filter((x) => x.ep > e.ep && x.ep <= e.ep + within && x.strike_by_heroine);
       return {
         holeType: 3,
         episode: e.ep,
@@ -227,17 +233,22 @@ const heroineSilent: Maker = ({ plan }) =>
     })
     .filter((h) => h.patch.length > 0);
 
-const tooManyCharacters: Maker = ({ bible }) => [
-  {
-    holeType: 8,
-    description: 'Добавлены три постоянных героя сверх лимита',
-    patch: [0, 1, 2].map((n) => ({
-      op: 'add' as const,
-      path: '/bible/characters/-',
-      value: { ...bible.characters[0], name: `Лишний герой ${n + 1}`, regular: true },
-    })),
-  },
-];
+const tooManyCharacters: Maker = ({ bible }, _rand, kit) => {
+  const limit = kit.production.limits.max_regular_characters;
+  const regular = bible.characters.filter((c) => c.regular).length;
+  const extra = Math.max(1, limit - regular + 1);
+  return [
+    {
+      holeType: 8,
+      description: `Добавлено постоянных героев: ${extra}, сверх лимита ${limit}`,
+      patch: Array.from({ length: extra }, (_, n) => ({
+        op: 'add' as const,
+        path: '/bible/characters/-',
+        value: { ...bible.characters[0], name: `Лишний герой ${n + 1}`, regular: true },
+      })),
+    },
+  ];
+};
 
 /** How many holes of each kind a default seeded set contains (40 in total). */
 export const DEFAULT_MIX: [Maker, number][] = [
@@ -256,11 +267,11 @@ export const DEFAULT_MIX: [Maker, number][] = [
 ];
 
 /** Plants holes into a correct project. Deterministic for a given seed. */
-export function seedHoles(project: ProjectFixture, seed = 1, mix: [Maker, number][] = DEFAULT_MIX): SeededHole[] {
+export function seedHoles(project: ProjectFixture, kit: GenreKit, seed = 1, mix: [Maker, number][] = DEFAULT_MIX): SeededHole[] {
   const rand = rng(seed);
   const holes: SeededHole[] = [];
   for (const [make, count] of mix) {
-    const pool = make(project, rand);
+    const pool = make(project, rand, kit);
     for (let n = 0; n < count && pool.length > 0; n++) {
       const pick = pool.splice(Math.floor(rand() * pool.length), 1)[0]!;
       holes.push({ id: `h${String(holes.length + 1).padStart(2, '0')}`, ...pick });

@@ -50,7 +50,7 @@ beforeEach(() => {
 
 describe('auditor evaluation', () => {
   it('measures producer recall, real findings, seeded holes and author replies', async () => {
-    const seeded = seedHoles(golden, 1).slice(0, 6);
+    const seeded = seedHoles(golden, kit, 1).slice(0, 6);
     const report = await runAuditEval({
       llm: client(),
       kb,
@@ -76,7 +76,7 @@ describe('auditor evaluation', () => {
   });
 
   it('audits seeded holes with a targeted pass: one hole type, one block', async () => {
-    const [h] = seedHoles(golden, 1).filter((x) => x.holeType === 11 && x.episode);
+    const [h] = seedHoles(golden, kit, 1).filter((x) => x.holeType === 11 && x.episode);
     await runAuditEval({ llm: client(), kb, kit, golden, projectId: 'ev', seeded: [h!] });
     const seededPass = tasks.filter((t) => t.startsWith('devil_advocate:11:')).slice(-1)[0];
     const block = Math.floor((h!.episode! - 1) / 10) * 10 + 1;
@@ -88,5 +88,31 @@ describe('auditor evaluation', () => {
     const report = await runAuditEval({ llm: client(), kb, kit, golden, projectId: 'tiny', seeded: [] });
     expect(report.stopped).toMatch(/Бюджет проекта исчерпан/);
     expect(renderEvalReport(report, { date: 'd', project: 'p', costUsd: 0.05, architectModel: 'm' })).toContain('Отчёт неполный');
+  });
+
+  it('a seeded hole counts only for a finding the golden project did not already raise', async () => {
+    const same = { id: 's1', holeType: 3, episode: 42, description: 'Та же дыра, что и в эталоне', patch: [] };
+    const report = await runAuditEval({ llm: client(), kb, kit, golden, projectId: 'ev', seeded: [same] });
+    expect(report.seeded).toMatchObject([{ code: false, model: false }]);
+  });
+
+  it('the share of real findings counts every finding, not only matched ones', () => {
+    const f = { controller: 'logic', severity: 'major', viewerQuestion: 'Зритель спросит: ?', fixes: ['a'], status: 'open' } as const;
+    const md = renderEvalReport(
+      {
+        findings: [1, 2, 3, 4].map((n) => ({ ...f, id: `f${n}`, quote: `q${n}`, fixes: ['a'] })),
+        dropped: 0,
+        matches: [{ finding_id: 'f1', hole_id: null, real: true, disputed: false, reason: '' }],
+        producerHoles: 0,
+        producerFound: 0,
+        realFindings: 1,
+        seeded: [],
+        checklist: { code: 0, unknown: 0 },
+        anchors: { total: 1, onPlace: 1 },
+        resolved: { tried: 0, closed: 0, architect: 'architect' },
+      },
+      { date: 'd', project: 'p', costUsd: 0, architectModel: 'm' },
+    );
+    expect(md).toContain('| Доля реальных замечаний | 1 из 4 (25%)');
   });
 });

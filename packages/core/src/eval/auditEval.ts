@@ -80,7 +80,11 @@ function judgeFor(llm: LlmClient, notProvider: string): RoleName {
   return role;
 }
 
-const near = (a: number | undefined, b: number | undefined) => a === undefined || b === undefined || Math.abs(a - b) <= 1;
+/** A finding hits a hole's episode: exactly or next door. A hole without an episode matches any. */
+const hitsEpisode = (finding: number | undefined, hole: number | undefined) =>
+  hole === undefined || (finding !== undefined && Math.abs(finding - hole) <= 1);
+
+const auditKey = (f: Finding) => `${f.holeType}|${f.quote.replace(/\s+/gu, ' ').trim().toLowerCase()}`;
 
 /**
  * Runs the auditor on the golden project and on seeded holes, matches its findings
@@ -142,15 +146,21 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
         },
       });
       report.matches = data.matches;
-      report.realFindings = data.matches.filter((m) => m.real).length;
-      const matched = new Set(data.matches.map((m) => m.hole_id).filter((x): x is string => !!x));
+      // Only matches to findings the auditor really made count, each finding once.
+      const ids = new Set(report.findings.map((f) => f.id));
+      const real = data.matches.filter((m) => m.real && ids.has(m.finding_id));
+      report.realFindings = new Set(real.map((m) => m.finding_id)).size;
+      const matched = new Set(real.map((m) => m.hole_id).filter((x): x is string => !!x));
       report.producerFound = holes.filter((h) => matched.has(h.id)).length;
     }
 
-    // 3. Seeded holes: code first, then a targeted model pass.
+    // 3. Seeded holes: code first, then a targeted model pass. What the golden project
+    // already raises does not count: only findings the hole caused.
+    const baselineCode = new Set(code.findings.map((f) => f.id));
+    const baselineModel = new Set(report.findings.map(auditKey));
     for (const hole of input.seeded) {
       const project = withHole(golden, hole);
-      const codeFound = runCodeChecks({ kit, ...project }).findings.some((f) => f.holeType === hole.holeType);
+      const codeFound = runCodeChecks({ kit, ...project }).findings.some((f) => f.holeType === hole.holeType && !baselineCode.has(f.id));
       let model: boolean | null = null;
       const mode = input.seededModel ?? 'all';
       if (mode === 'all' || (mode === 'missed' && !codeFound)) {
@@ -163,7 +173,7 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
             : { bible: project.bible, authorProvider: llm.resolve('architect').provider },
           { holeTypes: [hole.holeType], episodes: hole.episode ? [hole.episode] : undefined, personas: false },
         );
-        model = res.findings.some((f) => f.holeType === hole.holeType && near(f.episode, hole.episode));
+        model = res.findings.some((f) => f.holeType === hole.holeType && hitsEpisode(f.episode, hole.episode) && !baselineModel.has(auditKey(f)));
       }
       report.seeded.push({ hole, code: codeFound, model });
     }
@@ -194,7 +204,7 @@ const mark = (p: number | null, min: number) => (p === null ? '—' : p >= min ?
 /** Russian Markdown report with the spec thresholds (MVP / v1.0). */
 export function renderEvalReport(r: EvalReport, meta: { date: string; project: string; costUsd: number; architectModel: string }): string {
   const recall = pct(r.producerFound, r.producerHoles);
-  const precision = pct(r.realFindings, r.matches.length);
+  const precision = pct(r.realFindings, r.findings.length);
   const seededFound = r.seeded.filter((s) => s.code || s.model).length;
   const seededPct = pct(seededFound, r.seeded.length);
   const divergence = r.checklist.producer === undefined ? null : Math.abs(r.checklist.producer - r.checklist.code - r.checklist.unknown);
@@ -211,7 +221,7 @@ export function renderEvalReport(r: EvalReport, meta: { date: string; project: s
     '| Метрика | Значение | MVP | v1.0 |',
     '|---|---|---|---|',
     `| Найдено дыр продюсера | ${r.producerHoles ? `${r.producerFound} из ${r.producerHoles} (${fmt(recall)})` : 'нет списка продюсера'} | ≥70% ${mark(recall, 70)} | ≥85% ${mark(recall, 85)} |`,
-    `| Доля реальных замечаний | ${r.matches.length ? `${r.realFindings} из ${r.matches.length} (${fmt(precision)})` : '—'} | ≥50% ${mark(precision, 50)} | ≥65% ${mark(precision, 65)} |`,
+    `| Доля реальных замечаний | ${r.findings.length ? `${r.realFindings} из ${r.findings.length} (${fmt(precision)})` : '—'} | ≥50% ${mark(precision, 50)} | ≥65% ${mark(precision, 65)} |`,
     `| Найдено посеянных дыр | ${seededFound} из ${r.seeded.length} (${fmt(seededPct)}) | ≥80% ${mark(seededPct, 80)} | ≥90% ${mark(seededPct, 90)} |`,
     `| Расхождение с продюсером по чек-листу | ${divergence === null ? 'нет оценки продюсера' : `${divergence} балл.`} | ≤3 ${divergence === null ? '—' : divergence <= 3 ? '✓' : '✗'} | ≤2 ${divergence === null ? '—' : divergence <= 2 ? '✓' : '✗'} |`,
     '| Сцены «можно снимать после лёгкой правки» | считает `pnpm pilot` | ≥40% | ≥60% |',
