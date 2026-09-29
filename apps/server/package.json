@@ -1,0 +1,14 @@
+{
+  "name": "@aiw/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aiw/core": "workspace:*",
+    "fastify": "^5.12.5"
+  }
+}
