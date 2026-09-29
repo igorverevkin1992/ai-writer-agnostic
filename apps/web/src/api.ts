@@ -69,6 +69,10 @@ export interface Overview {
   scripts: number[];
   polish: Doc | null;
   budget: { totalUsd: number; limitUsd: number; calls: number; byRole: Doc[]; byStep: Doc[]; unknownPriceCalls: number };
+  /** Model of each role, from config/models.yaml. */
+  models: Record<string, string>;
+  /** The last run started for the project: runs go on in the background. */
+  job: { step: string; running: boolean; error?: string; startedAt: string } | null;
 }
 
 export const STEP_LABELS: Record<string, string> = {

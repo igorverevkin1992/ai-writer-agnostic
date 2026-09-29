@@ -37,7 +37,7 @@ export function App() {
         </a>
         <DemoBadge />
       </header>
-      {route.projectId ? <ProjectView projectId={route.projectId} tab={route.tab ?? 'now'} /> : <Home />}
+      {route.projectId ? <ProjectView key={route.projectId} projectId={route.projectId} tab={route.tab ?? 'now'} /> : <Home />}
     </div>
   );
 }

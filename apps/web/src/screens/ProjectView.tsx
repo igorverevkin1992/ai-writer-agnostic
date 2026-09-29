@@ -45,6 +45,14 @@ export function ProjectView({ projectId, tab }: { projectId: string; tab: string
     };
   }, [projectId, tab]);
 
+  // While the agent works in the background, the screens follow it.
+  const working = !!data && (data.job?.running || data.steps.some((s) => s.status === 'checking'));
+  useEffect(() => {
+    if (!working) return;
+    const timer = setInterval(() => void refresh(), 3000);
+    return () => clearInterval(timer);
+  }, [working, refresh]);
+
   if (error && !data) return <p className="error">{error}</p>;
   if (!data) return <p className="muted">Загружаю проект…</p>;
   const spent = data.budget.limitUsd ? data.budget.totalUsd / data.budget.limitUsd : 0;

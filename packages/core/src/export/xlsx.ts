@@ -1,6 +1,8 @@
 import ExcelJS from 'exceljs';
-import { anchorLabel, type ProjectBundle } from './bundle.ts';
+import { anchorLabel, cleanText, type ProjectBundle } from './bundle.ts';
 import { videoPrompts } from './video.ts';
+
+const MAX_CELL = 32_767;
 
 const MOOD: Record<string, string> = { suffering: 'страдание', kaif: 'кайф', neutral: 'нейтрально' };
 
@@ -115,5 +117,15 @@ export async function buildXlsx(b: ProjectBundle): Promise<Buffer> {
   for (const v of videoPrompts(b)) video.addRow({ ep: v.ep, scene: v.scene, t: `${v.t0}–${v.t1}`, prompt: v.prompt });
   video.getColumn('prompt').alignment = { wrapText: true, vertical: 'top' };
 
+  // Excel refuses a cell over 32 767 characters and XML control characters.
+  wb.eachSheet((ws) =>
+    ws.eachRow((row) =>
+      row.eachCell((c) => {
+        if (typeof c.value !== 'string') return;
+        const text = cleanText(c.value);
+        c.value = text.length > MAX_CELL ? `${text.slice(0, MAX_CELL - 20)}… (обрезано)` : text;
+      }),
+    ),
+  );
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

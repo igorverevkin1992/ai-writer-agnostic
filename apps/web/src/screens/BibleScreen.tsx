@@ -46,6 +46,7 @@ export function BibleScreen({ data }: { data: Overview }) {
           </tbody>
         </table>
       </article>
+      {villains.length > 0 && (
       <article className="panel">
         <h2>Лестница злодеев</h2>
         <table>
@@ -76,6 +77,7 @@ export function BibleScreen({ data }: { data: Overview }) {
           </tbody>
         </table>
       </article>
+      )}
       <article className="panel">
         <h2>Правила мира</h2>
         <ul>

@@ -62,7 +62,12 @@ Markdown, JSON.
 контролёрами, код — метриками) → доработка (продюсер выделяет фрагмент, писатель даёт
 5 вариантов, выбор продюсера пишется в журнал творческого вклада).
 
-API: `POST /api/projects`, `GET /api/projects/:id`, `POST /api/projects/:id/steps/:step/run|approve|skip`,
+Шаги агента идут в фоне: экран «Сейчас» сам обновляется, пока агент работает, и показывает ошибку,
+если запуск сорвался. Если приложение закрыли посреди шага, при следующем запуске шаг помечается
+как прерванный — его нужно запустить ещё раз.
+
+API: `POST /api/projects`, `GET /api/projects/:id`, `POST /api/projects/:id/steps/:step/run|approve|skip`
+(`run` отвечает сразу, ход работы — в `overview.job`; `{"wait": true}` — дождаться результата),
 `GET /api/projects/:id/findings?status=open&limit=3`, `POST /api/findings/:id/resolve|dismiss`,
 `GET /api/projects/:id/cards`, `GET /api/projects/:id/scripts/:ep`, `POST /api/projects/:id/polish`,
 `POST /api/projects/:id/polish/choose`, `GET /api/projects/:id/overview`, `GET /api/projects/:id/export?format=docx|xlsx|json|md|video`,

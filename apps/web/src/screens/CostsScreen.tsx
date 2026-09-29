@@ -1,9 +1,9 @@
 import { STEP_LABELS, type Doc, type Overview } from '../api.ts';
 
 const ROLE: Record<string, string> = {
-  architect: 'Архитектор (Claude)',
+  architect: 'Архитектор',
   architect_heavy: 'Архитектор, план сезона',
-  writer: 'Писатель (Gemini)',
+  writer: 'Писатель',
   critic_of_architect: 'Критик архитектора',
   critic_of_writer: 'Критик писателя',
   helper: 'Помощник',
@@ -55,7 +55,7 @@ export function CostsScreen({ data }: { data: Overview }) {
       </div>
       <div className="panel">
         <h3>По ролям</h3>
-        {b.byRole.length ? <Rows rows={b.byRole} label={(r) => ROLE[r.role] ?? r.role} /> : <p className="muted">Пока ничего.</p>}
+        {b.byRole.length ? <Rows rows={b.byRole} label={(r) => `${ROLE[r.role] ?? r.role}${data.models[r.role] ? ` · ${data.models[r.role]}` : ''}`} /> : <p className="muted">Пока ничего.</p>}
       </div>
     </section>
   );

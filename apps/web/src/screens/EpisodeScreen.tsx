@@ -29,18 +29,36 @@ export function EpisodeScreen({ data, refresh }: { data: Overview; refresh: () =
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api<Doc[]>(`/projects/${pid}/cards`).then(setCards).catch(() => setCards([]));
+    let alive = true;
+    api<Doc[]>(`/projects/${pid}/cards`)
+      .then((x) => alive && setCards(x))
+      .catch(() => alive && setCards([]));
+    return () => {
+      alive = false;
+    };
   }, [pid, data]);
   useEffect(() => {
-    api<ScriptView>(`/projects/${pid}/scripts/${ep}`).then(setScript).catch(() => setScript(null));
+    // Answers for an episode the producer already left must not show up on screen.
+    let alive = true;
+    api<ScriptView>(`/projects/${pid}/scripts/${ep}`)
+      .then((x) => alive && setScript(x))
+      .catch(() => alive && setScript(null));
     api<Finding[]>(`/projects/${pid}/findings?status=open`)
-      .then((all) => setFindings(all.filter((f) => f.episode === ep)))
-      .catch(() => setFindings([]));
+      .then((all) => alive && setFindings(all.filter((f) => f.episode === ep)))
+      .catch(() => alive && setFindings([]));
+    return () => {
+      alive = false;
+    };
   }, [pid, ep, data]);
 
   const card = cards.find((c) => c.ep === ep);
   const outline = data.plan?.episodes.find((e) => e.ep === ep);
-  const pick = (i: number) => setSel((s) => (!s ? [i, i] : s[0] === s[1] && i > s[0] ? [s[0], i] : [i, i]));
+  // A new selection makes old variants meaningless: they were written for another fragment.
+  const pick = (i: number) => {
+    if (busy) return;
+    setVariants(null);
+    setSel((s) => (!s ? [i, i] : s[0] === s[1] && i > s[0] ? [s[0], i] : [i, i]));
+  };
 
   const propose = async () => {
     if (!sel) return;
@@ -57,6 +75,7 @@ export function EpisodeScreen({ data, refresh }: { data: Overview; refresh: () =
   };
   const choose = async (i: number) => {
     setBusy(true);
+    setError('');
     try {
       await post(`/projects/${pid}/polish/choose`, { variant: i });
       setVariants(null);
@@ -73,7 +92,7 @@ export function EpisodeScreen({ data, refresh }: { data: Overview; refresh: () =
     <section className="episode">
       <div className="ep-picker">
         {eps.map((n) => (
-          <button key={n} className={`ep-btn ${n === ep ? 'ep-active' : ''} ${data.scripts.includes(n) ? 'ep-has-script' : ''}`} onClick={() => {
+          <button key={n} className={`ep-btn ${n === ep ? 'ep-active' : ''} ${data.scripts.includes(n) ? 'ep-has-script' : ''}`} disabled={busy} onClick={() => {
               setEp(n);
               setSel(null);
               setVariants(null);

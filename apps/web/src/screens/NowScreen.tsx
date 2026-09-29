@@ -33,42 +33,45 @@ export function NowScreen({ data, refresh }: { data: Overview; refresh: () => Pr
   const approve = (body: object = {}) => act(() => post(`/projects/${pid}/steps/${next.step}/approve`, body));
   const skip = () => act(() => post(`/projects/${pid}/steps/${next.step}/skip`));
   const top = topThree(findings);
+  const job = data.job;
+  const working = next.action === 'wait' || !!job?.running;
 
   return (
     <section className="now">
       <div className="task">
         <p className="task-step">Шаг: {next.stepLabel}</p>
-        <h2>{busy ? 'Агент работает… это может занять несколько минут' : next.task}</h2>
+        <h2>{working ? `Агент работает: «${next.stepLabel}». Это может занять несколько минут — экран обновится сам` : next.task}</h2>
         <p className="criterion">Готово, когда: {next.criterion}</p>
         {error && <p className="error">{error}</p>}
+        {!working && job?.error && <p className="error">Последний запуск не удался: {job.error}</p>}
         <div className="actions">
           {next.action === 'run' && (
-            <button className="primary" disabled={busy} onClick={() => run(next.episodes ? { episodes: next.episodes } : {})}>
+            <button className="primary" disabled={busy || working} onClick={() => run(next.episodes ? { episodes: next.episodes } : {})}>
               Запустить
             </button>
           )}
           {next.action === 'approve' && (
             <>
-              <button className="primary" disabled={busy} onClick={() => approve()}>
+              <button className="primary" disabled={busy || working} onClick={() => approve()}>
                 Утвердить
               </button>
-              <button disabled={busy} onClick={() => run()}>
+              <button disabled={busy || working} onClick={() => run()}>
                 Переделать
               </button>
             </>
           )}
           {next.action === 'approve_block' && (
             <>
-              <button className="primary" disabled={busy} onClick={() => approve({ block: next.block })}>
+              <button className="primary" disabled={busy || working} onClick={() => approve({ block: next.block })}>
                 Утвердить блок
               </button>
-              <button disabled={busy} onClick={() => run({ episodes: [next.block] })}>
+              <button disabled={busy || working} onClick={() => run({ episodes: [next.block] })}>
                 Переписать блок
               </button>
             </>
           )}
           {next.action === 'resolve' && (
-            <button disabled={busy} onClick={() => run(next.step === 'scripts' ? { episodes: [...new Set(findings.map((f) => f.episode).filter(Boolean))], fix: true } : {})}>
+            <button disabled={busy || working} onClick={() => run(next.step === 'scripts' ? { episodes: [...new Set(findings.map((f) => f.episode).filter(Boolean))], fix: true } : {})}>
               {next.step === 'scripts' ? 'Переписать серии с замечаниями' : 'Переделать шаг'}
             </button>
           )}
@@ -78,11 +81,11 @@ export function NowScreen({ data, refresh }: { data: Overview; refresh: () => Pr
                 Открыть серию
               </a>
               {(data.steps.find((s) => s.step === 'polish')?.version ?? 0) > 0 ? (
-                <button className="primary" disabled={busy} onClick={() => approve()}>
+                <button className="primary" disabled={busy || working} onClick={() => approve()}>
                   Утвердить доработку
                 </button>
               ) : (
-                <button className="primary" disabled={busy} onClick={skip}>
+                <button className="primary" disabled={busy || working} onClick={skip}>
                   Доработка не нужна
                 </button>
               )}
@@ -94,7 +97,7 @@ export function NowScreen({ data, refresh }: { data: Overview; refresh: () => Pr
             </a>
           )}
           {!['export', 'polish', 'wait'].includes(next.action) && (
-            <button className="ghost" disabled={busy} onClick={skip} title="Шаг будет пропущен по вашему решению">
+            <button className="ghost" disabled={busy || working} onClick={skip} title="Шаг будет пропущен по вашему решению">
               Пропустить шаг
             </button>
           )}
@@ -109,12 +112,12 @@ export function NowScreen({ data, refresh }: { data: Overview; refresh: () => Pr
               <p>{c.premise}</p>
               <p className="muted">Крючок: {c.hook}</p>
               <p className="muted">Формула: {c.genre_formula}</p>
-              <button className="primary" disabled={busy} onClick={() => approve({ choice: i })}>
+              <button className="primary" disabled={busy || working} onClick={() => approve({ choice: i })}>
                 Выбрать эту
               </button>
             </article>
           ))}
-          <button disabled={busy} onClick={() => run()}>
+          <button disabled={busy || working} onClick={() => run()}>
             Другие три концепции
           </button>
         </div>

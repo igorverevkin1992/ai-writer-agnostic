@@ -13,15 +13,24 @@ export interface VideoPrompt {
   prompt: string;
 }
 
-/** Name stem to find a character in Russian text regardless of case endings (Лиза / ЛИЗЫ). */
+/** Name without its ending, to find it in any case form (Лиза / ЛИЗЫ, Герман / ГЕРМАНОМ). */
 function stem(name: string): string {
   const first = name.split(/\s+/u)[0]!.toUpperCase();
-  return first.length > 4 ? first.slice(0, -1) : first;
+  return first.length > 2 ? first.replace(/[АЯОЕЁЫИЬЙ]$/u, '') : first;
+}
+
+/** Russian case endings of names. */
+const ENDING = '(?:ОЙ|ЕЙ|ОЮ|ЕЮ|ОМ|ЕМ|ЁМ|[АЯОЕЁЫИУЮЬЙ])?';
+
+/** The name as a whole word in some case form: «ВЕРА», «ВЕРЫ», but not «ВЕРАНДА», «ВЕРХ» or «ПРОВЕРКА». */
+function mentions(text: string, name: string): boolean {
+  const s = stem(name).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return new RegExp(`(?<!\\p{L})${s}${ENDING}(?!\\p{L})`, 'u').test(text);
 }
 
 function charactersIn(bible: Bible, blocks: ScriptBlock[]): { name: string; look: string }[] {
   const text = blocks.map((b) => `${b.speaker ?? ''} ${b.text}`).join(' ').toUpperCase();
-  return bible.characters.filter((c) => text.includes(stem(c.name))).map((c) => ({ name: c.name, look: c.look }));
+  return bible.characters.filter((c) => mentions(text, c.name)).map((c) => ({ name: c.name, look: c.look }));
 }
 
 /**

@@ -1,4 +1,4 @@
-import { LlmClient, llmCalls, loadGolden, loadModelsConfig, openDb, type Db } from '@aiw/core';
+import { LlmClient, llmCalls, projects, loadGolden, loadModelsConfig, openDb, type Db } from '@aiw/core';
 import { FakeProvider, testConfig } from '@aiw/core/testing';
 import { loadKb } from '@aiw/kb';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -59,7 +59,7 @@ beforeEach(() => {
   db = openDb(':memory:');
   const config = testConfig();
   const llm = new LlmClient({ config, db, env: {}, providers: { anthropic: new FakeProvider('anthropic', [reply]), google: new FakeProvider('google', [reply]) } });
-  app = buildApp({ kb, db, config: loadModelsConfig(), llm });
+  app = buildApp({ kb, db, config: loadModelsConfig(), llm, runsInBackground: false });
 });
 
 const post = (url: string, payload?: object) => app.inject({ method: 'POST', url, payload: payload ?? {} });
@@ -150,9 +150,43 @@ describe('server', () => {
   });
 
   it('reports project costs against the budget', async () => {
+    db.insert(projects).values({ id: 'p1', title: 'Т' }).run();
     db.insert(llmCalls)
       .values({ projectId: 'p1', step: 'bible', role: 'architect', provider: 'anthropic', model: 'm', costUsd: 1.5, durationMs: 1, status: 'ok' })
       .run();
     expect((await get('/api/projects/p1/costs')).json()).toMatchObject({ totalUsd: 1.5, limitUsd: 300, calls: 1 });
+  });
+
+  it('runs a step in the background and shows it in the overview', async () => {
+    const bg = buildApp({ kb, db, config: loadModelsConfig(), llm: new LlmClient({ config: testConfig(), db, env: {}, providers: { anthropic: new FakeProvider('anthropic', [reply]), google: new FakeProvider('google', [reply]) } }) });
+    const id = (await bg.inject({ method: 'POST', url: '/api/projects', payload: { title: 'Т', genreId: 'revenge_thriller', idea: 'И' } })).json().id as string;
+    const started = await bg.inject({ method: 'POST', url: `/api/projects/${id}/steps/concept/run`, payload: {} });
+    expect(started.statusCode).toBe(202);
+    // What cannot start is refused at once, not in the background.
+    const early = await bg.inject({ method: 'POST', url: `/api/projects/${id}/steps/logline/run`, payload: {} });
+    expect(early.json().error).toMatch(/Сначала утвердите/);
+    await new Promise((ok) => setTimeout(ok, 50));
+    const overview = (await bg.inject({ method: 'GET', url: `/api/projects/${id}/overview` })).json();
+    expect(overview.job).toMatchObject({ step: 'concept', running: false });
+    expect(overview.steps[0]).toMatchObject({ step: 'concept', status: 'draft', version: 1 });
+  });
+
+  it('rejects malformed input with a readable 400', async () => {
+    const id = (await post('/api/projects', { title: 'Т', genreId: 'revenge_thriller', idea: 'И' })).json().id as string;
+    const bad = await post(`/api/projects/${id}/steps/episode_cards/run`, { episodes: ['один'] });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().error).toMatch(/Неверные данные: episodes/);
+    expect((await post(`/api/projects/${id}/polish/choose`, { variant: 'x' })).statusCode).toBe(400);
+    expect((await post('/api/projects', { title: 'Т' })).statusCode).toBe(400);
+  });
+
+  it('answers only to this computer', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/health', headers: { host: 'evil.example' } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/api/health', headers: { origin: 'https://evil.example' } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/api/health', headers: { origin: 'http://localhost:5173' } })).statusCode).toBe(200);
+  });
+
+  it('costs of an unknown project are a 404', async () => {
+    expect((await get('/api/projects/nope/costs')).statusCode).toBe(404);
   });
 });

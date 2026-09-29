@@ -126,7 +126,8 @@ td { border-bottom: 1px solid #efede7; padding: 6px 8px; vertical-align: top; }
 .stats b { font-size: 22px; display: block; }
 .filters { display: flex; gap: 8px; margin-bottom: 12px; max-width: 480px; }
 .export-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
-.export-card { text-decoration: none; color: var(--ink); display: flex; flex-direction: column; gap: 4px; }
+.export-card { text-decoration: none; color: var(--ink); display: flex; flex-direction: column; gap: 4px; text-align: left; font: inherit; cursor: pointer; }
+.export-card:disabled { opacity: .6; cursor: wait; }
 .export-card .button { align-self: flex-start; margin-top: auto; }
 .costs td { border: none; padding: 4px 8px; }
 .num { text-align: right; white-space: nowrap; color: var(--ink-2); }

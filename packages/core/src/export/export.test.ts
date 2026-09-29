@@ -10,7 +10,7 @@ import { approveStep, skipStep } from '../pipeline/runners.ts';
 import { EpisodeCard } from '../schemas/episodeCard.ts';
 import { sampleCard } from '../schemas/samples.ts';
 import { Script } from '../schemas/script.ts';
-import { exportProject, loadBundle, videoPrompts } from './index.ts';
+import { buildXlsx, cleanText, exportProject, loadBundle, videoPrompts } from './index.ts';
 
 const kb = loadKb();
 const golden = loadGolden();
@@ -109,5 +109,29 @@ describe('next task (one task at a time)', () => {
     expect(nextTask(db, kb, pid)).toMatchObject({ step: 'polish', action: 'polish' });
     skipStep({ db, kb, projectId: pid }, 'polish');
     expect(nextTask(db, kb, pid)).toMatchObject({ step: 'export', action: 'export' });
+  });
+});
+
+describe('review fixes: export', () => {
+  it('finds characters by whole names in any case form, not inside other words', () => {
+    const b = loadBundle(db, kb, pid);
+    const scene = (text: string) =>
+      videoPrompts({ ...b, scripts: [Script.parse({ ep: 1, title: 'С', duration_s: 90, blocks: [{ t0: 0, t1: 90, kind: 'scene', text }] })] })[0]!
+        .characters.map((c) => c.name);
+    expect(scene('ИНТ. ВЕРАНДА — ДЕНЬ. Лиза одна, проверка почты.')).toEqual(['Лиза']);
+    expect(scene('ИНТ. ЗАЛ — ДЕНЬ. Лиза ждёт Веры.')).toEqual(expect.arrayContaining(['Лиза', 'Вера']));
+  });
+
+  it('Word and Excel files survive control characters and very long text', async () => {
+    expect(cleanText('Сцена\u0007 один\nдва\tтри')).toBe('Сцена один\nдва\tтри');
+    const b = loadBundle(db, kb, pid);
+    const long = 'А'.repeat(40_000);
+    const plan = { ...b.plan!, episodes: b.plan!.episodes.map((e, i) => (i === 0 ? { ...e, event: `${long}\u0001` } : e)) };
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load((await buildXlsx({ ...b, plan })) as unknown as ArrayBuffer);
+    const cell = String(wb.getWorksheet('Сезон')!.getRow(2).getCell('C').value);
+    expect(cell.length).toBeLessThanOrEqual(32_767);
+    expect(cell).not.toContain('\u0001');
+    await expect(exportProject(db, kb, pid, 'docx')).resolves.toBeTruthy();
   });
 });

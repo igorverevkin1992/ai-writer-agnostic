@@ -47,3 +47,12 @@ export function loadBundle(db: Db, kb: Kb, projectId: string): ProjectBundle {
 export function anchorLabel(kit: GenreKit, id: string): string {
   return kit.frame.anchor_labels[id] ?? id;
 }
+
+/** Characters XML (Word, Excel) cannot hold: control characters except tab and line breaks. */
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/gu;
+
+/** Text safe for Word and Excel files. */
+export function cleanText(text: string): string {
+  return text.replace(CONTROL, '');
+}

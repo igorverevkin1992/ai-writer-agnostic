@@ -12,6 +12,7 @@ import {
   Pipeline,
   PipelineError,
   ProjectError,
+  RUNNABLE_STEPS,
   ProjectMemory,
   STEP_IDS,
   approveStep,
@@ -31,7 +32,7 @@ import {
   type StepId,
 } from '@aiw/core';
 import { UnknownGenreError, genreKit, type Kb } from '@aiw/kb';
-import { ZodError } from 'zod';
+import { z, ZodError } from 'zod';
 
 export interface AppDeps {
   kb: Kb;
@@ -40,6 +41,49 @@ export interface AppDeps {
   llm: LlmClient;
   /** Demo mode: models answer from the golden project, no API keys needed. */
   demo?: boolean;
+  /**
+   * Step runs take minutes: by default POST .../run starts the run and answers at once,
+   * the screens follow it through the overview. false — the request waits (tests).
+   */
+  runsInBackground?: boolean;
+}
+
+/** The last run started for a project: the screens show its progress and error. */
+interface Job {
+  step: StepId;
+  running: boolean;
+  error?: string;
+  startedAt: string;
+}
+
+const Id = z.string().min(1);
+const EpisodeNo = z.int().min(1);
+const ProjectBody = z.object({
+  title: z.string(),
+  genreId: z.string(),
+  idea: z.string(),
+  budgetLimitUsd: z.number().positive().optional(),
+});
+const RunBody = z.object({ episodes: z.array(EpisodeNo).min(1).optional(), fix: z.boolean().optional(), wait: z.boolean().optional() });
+const ApproveBody = z.object({ choice: z.int().min(0).optional(), block: EpisodeNo.optional() });
+const ResolveBody = z.object({
+  projectId: Id,
+  factId: z.string().optional(),
+  fact: z.object({ id: z.string(), text: z.string(), since_ep: EpisodeNo.optional() }).optional(),
+  knowledge: z.array(z.object({ who: z.string(), fact: z.string(), since_ep: z.int().min(0), how: z.string().optional() })).optional(),
+});
+const DismissBody = z.object({ projectId: Id, factId: z.string() });
+const PolishBody = z.object({ ep: EpisodeNo, from: z.int().min(0), to: z.int().min(0), note: z.string().max(2000).optional() });
+const ChooseBody = z.object({ variant: z.int().min(0) });
+
+/** The server is local: it answers only to this computer, not to other sites or hosts. */
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/u;
+function isLocalOrigin(origin: string): boolean {
+  try {
+    return LOCAL_HOST.test(new URL(origin).host);
+  } catch {
+    return false;
+  }
 }
 
 const SEVERITY_ORDER: Record<string, number> = { blocker: 0, major: 1, minor: 2 };
@@ -49,8 +93,16 @@ function asStep(step: string): StepId {
   return step as StepId;
 }
 
-export function buildApp({ kb, db, config, llm, demo = false }: AppDeps): FastifyInstance {
+export function buildApp({ kb, db, config, llm, demo = false, runsInBackground = true }: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false });
+  const jobs = new Map<string, Job>();
+
+  app.addHook('onRequest', async (req, reply) => {
+    const origin = req.headers.origin;
+    if (!LOCAL_HOST.test(req.headers.host ?? '') || (origin && !isLocalOrigin(origin))) {
+      return reply.status(403).send({ error: 'Запрос не с этого компьютера' });
+    }
+  });
 
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof BudgetExceededError) return reply.status(409).send({ error: err.message });
@@ -58,7 +110,12 @@ export function buildApp({ kb, db, config, llm, demo = false }: AppDeps): Fastif
     if (err instanceof PipelineError || err instanceof ProjectError || err instanceof UnknownGenreError || err instanceof LlmError) {
       return reply.status(400).send({ error: err.message });
     }
-    if (err instanceof ZodError) return reply.status(400).send({ error: err.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') });
+    if (err instanceof ZodError) {
+      return reply.status(400).send({ error: `Неверные данные: ${err.issues.map((i) => `${i.path.join('.') || 'запрос'} — ${i.message}`).join('; ')}` });
+    }
+    // Fastify's own errors (bad JSON, too large body) carry their status.
+    const status = (err as { statusCode?: number }).statusCode;
+    if (status && status >= 400 && status < 500) return reply.status(status).send({ error: `Неверный запрос: ${(err as Error).message}` });
     return reply.status(500).send({ error: err instanceof Error ? err.message : String(err) });
   });
 
@@ -105,11 +162,13 @@ export function buildApp({ kb, db, config, llm, demo = false }: AppDeps): Fastif
       scripts: memory.scripts().map((s) => s.ep),
       polish: memory.latestArtifact('polish') ?? null,
       budget: costSummary(db, config, project.id),
+      job: jobs.get(project.id) ?? null,
+      models: Object.fromEntries(Object.entries(config.roles).map(([role, r]) => [role, r.model])),
     };
   });
 
-  app.post<{ Body: { title: string; genreId: string; idea: string; budgetLimitUsd?: number } }>('/api/projects', async (req, reply) => {
-    const id = createProject(db, kb, req.body ?? ({} as never));
+  app.post('/api/projects', async (req, reply) => {
+    const id = createProject(db, kb, ProjectBody.parse(req.body ?? {}));
     return reply.status(201).send({ id });
   });
 
@@ -118,21 +177,38 @@ export function buildApp({ kb, db, config, llm, demo = false }: AppDeps): Fastif
     return { project, steps: new Pipeline(db, project.id).states() };
   });
 
-  /** Body for cards and scripts: {episodes?: number[], fix?: boolean}. */
-  app.post<{ Params: { id: string; step: string }; Body: { episodes?: number[]; fix?: boolean } | undefined }>(
-    '/api/projects/:id/steps/:step/run',
-    async (req) => {
-      getProject(db, req.params.id);
-      return runStep({ db, llm, kb, projectId: req.params.id }, asStep(req.params.step), { episodes: req.body?.episodes, fix: req.body?.fix });
-    },
-  );
+  /**
+   * Body for cards and scripts: {episodes?: number[], fix?: boolean}. Answers 202 at once;
+   * the run goes on in the background (overview.job). {wait: true} — answer with the result.
+   */
+  app.post<{ Params: { id: string; step: string } }>('/api/projects/:id/steps/:step/run', async (req, reply) => {
+    const projectId = getProject(db, req.params.id).id;
+    const step = asStep(req.params.step);
+    const body = RunBody.parse(req.body ?? {});
+    const opts = { episodes: body.episodes, fix: body.fix };
+    const deps = { db, llm, kb, projectId };
+    if (!runsInBackground || body.wait) return runStep(deps, step, opts);
+    // Refuse at once what cannot start (order of steps, another run going on).
+    if (!RUNNABLE_STEPS.includes(step)) throw new PipelineError(`Шаг «${step}» агент не выполняет`);
+    new Pipeline(db, projectId).assertCanRun(step);
+    const job: Job = { step, running: true, startedAt: new Date().toISOString() };
+    jobs.set(projectId, job);
+    runStep(deps, step, opts)
+      .catch((err: unknown) => {
+        job.error = err instanceof Error ? err.message : String(err);
+      })
+      .finally(() => {
+        job.running = false;
+      });
+    return reply.status(202).send({ step, started: true });
+  });
 
   /** Body: {choice} for concepts, {block} (first episode) for episode cards. */
-  app.post<{ Params: { id: string; step: string }; Body: { choice?: number; block?: number } | undefined }>(
+  app.post<{ Params: { id: string; step: string } }>(
     '/api/projects/:id/steps/:step/approve',
     async (req) => {
       getProject(db, req.params.id);
-      approveStep({ db, kb, projectId: req.params.id }, asStep(req.params.step), { choice: req.body?.choice, block: req.body?.block });
+      approveStep({ db, kb, projectId: req.params.id }, asStep(req.params.step), ApproveBody.parse(req.body ?? {}));
       return new Pipeline(db, req.params.id).get(asStep(req.params.step));
     },
   );
@@ -156,19 +232,18 @@ export function buildApp({ kb, db, config, llm, demo = false }: AppDeps): Fastif
     },
   );
 
-  app.post<{ Params: { id: string }; Body: { projectId: string; factId?: string; fact?: never; knowledge?: never } }>(
-    '/api/findings/:id/resolve',
-    async (req) => {
-      getProject(db, req.body?.projectId ?? '');
-      resolveByProducer(db, req.body.projectId, req.params.id, req.body);
-      return new ProjectMemory(db, req.body.projectId).finding(req.params.id);
-    },
-  );
+  app.post<{ Params: { id: string } }>('/api/findings/:id/resolve', async (req) => {
+    const body = ResolveBody.parse(req.body ?? {});
+    getProject(db, body.projectId);
+    resolveByProducer(db, body.projectId, req.params.id, body);
+    return new ProjectMemory(db, body.projectId).finding(req.params.id);
+  });
 
-  app.post<{ Params: { id: string }; Body: { projectId: string; factId: string } }>('/api/findings/:id/dismiss', async (req) => {
-    getProject(db, req.body?.projectId ?? '');
-    dismissByProducer(db, req.body.projectId, req.params.id, req.body.factId ?? '');
-    return new ProjectMemory(db, req.body.projectId).finding(req.params.id);
+  app.post<{ Params: { id: string } }>('/api/findings/:id/dismiss', async (req) => {
+    const body = DismissBody.parse(req.body ?? {});
+    getProject(db, body.projectId);
+    dismissByProducer(db, body.projectId, req.params.id, body.factId);
+    return new ProjectMemory(db, body.projectId).finding(req.params.id);
   });
 
   app.get<{ Params: { id: string } }>('/api/projects/:id/cards', async (req) => {
@@ -183,18 +258,18 @@ export function buildApp({ kb, db, config, llm, demo = false }: AppDeps): Fastif
     return { script, text: renderScript(script) };
   });
 
-  app.post<{ Params: { id: string }; Body: { ep: number; from: number; to: number; note?: string } }>('/api/projects/:id/polish', async (req) => {
+  app.post<{ Params: { id: string } }>('/api/projects/:id/polish', async (req) => {
     getProject(db, req.params.id);
-    return proposePolish({ db, llm, kb, projectId: req.params.id }, req.body);
+    return proposePolish({ db, llm, kb, projectId: req.params.id }, PolishBody.parse(req.body ?? {}));
   });
 
-  app.post<{ Params: { id: string }; Body: { variant: number } }>('/api/projects/:id/polish/choose', async (req) => {
+  app.post<{ Params: { id: string } }>('/api/projects/:id/polish/choose', async (req) => {
     getProject(db, req.params.id);
-    const { script, findings } = choosePolish({ db, kb, projectId: req.params.id }, req.body?.variant ?? -1);
+    const { script, findings } = choosePolish({ db, kb, projectId: req.params.id }, ChooseBody.parse(req.body ?? {}).variant);
     return { script, text: renderScript(script), findings };
   });
 
-  app.get<{ Params: { id: string } }>('/api/projects/:id/costs', async (req) => costSummary(db, config, req.params.id));
+  app.get<{ Params: { id: string } }>('/api/projects/:id/costs', async (req) => costSummary(db, config, getProject(db, req.params.id).id));
 
   app.get<{ Params: { id: string }; Querystring: { format?: string } }>('/api/projects/:id/export', async (req, reply) => {
     getProject(db, req.params.id);

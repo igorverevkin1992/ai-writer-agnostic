@@ -19,8 +19,11 @@ export function FindingCard({ f, facts, projectId, onDone }: { f: Finding; facts
   const [newText, setNewText] = useState('');
   const [since, setSince] = useState('');
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
   const submit = async () => {
+    if (busy) return;
+    setBusy(true);
     setError('');
     try {
       if (mode === 'dismiss') {
@@ -38,6 +41,8 @@ export function FindingCard({ f, facts, projectId, onDone }: { f: Finding; facts
       onDone();
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -90,7 +95,7 @@ export function FindingCard({ f, facts, projectId, onDone }: { f: Finding; facts
             )}
             {error && <p className="error">{error}</p>}
             <div className="actions">
-              <button className="primary" disabled={!factId || (factId === '__new' && !newText.trim())} onClick={submit}>
+              <button className="primary" disabled={busy || !factId || (factId === '__new' && !newText.trim())} onClick={submit}>
                 Готово
               </button>
               <button className="ghost" onClick={() => setMode('')}>
