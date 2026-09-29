@@ -1,0 +1,25 @@
+# ЗАГЛУШКА. Полный список R01–R18 продюсер передаст из своих документов (папка docs/).
+# Сейчас здесь только правила, прямо записанные в SPEC.md. Номера, кроме R05, условные.
+module: revenge_thriller
+title: Женский психологический триллер мести с семейной тайной
+stub: true
+rules:
+  - id: R05
+    module: revenge_thriller
+    text: "Первый видимый удар героини — не позже 3-й серии"
+    check: {type: code, condition: "min(ep where strike_by_heroine) <= 3"}
+    severity: blocker
+    checklist: {item: "первый удар до 4-й серии", points: 2}
+    fix_hints: ["Малое разоблачение мелкого злодея в 2–3-й серии"]
+  - id: R01
+    module: revenge_thriller
+    text: "Героиня видит предательство сама, в первой серии, в первые 60–90 с"
+    check: {type: code, condition: "betrayal.ep1_second <= 90"}
+    severity: blocker
+    fix_hints: ["Перенести сцену предательства в начало 1-й серии и показать её глазами героини"]
+  - id: R02
+    module: revenge_thriller
+    text: "Страдание не дольше двух серий подряд, после него — кайф"
+    check: {type: code, condition: "max_run(mood == suffering) <= 2"}
+    severity: major
+    fix_hints: ["Дать героине маленькую победу в третьей серии подряд"]

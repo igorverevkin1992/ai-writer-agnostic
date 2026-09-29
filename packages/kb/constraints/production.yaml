@@ -1,0 +1,16 @@
+# Производственные ограничения. Источник: SPEC.md (производственный контролёр, checkLimits, checkScriptMetrics).
+limits:
+  main_locations: 1
+  max_locations: 10
+  max_regular_characters: 8
+  max_speakers_per_scene: 3
+  practical_effects_only: true
+  crowds_allowed: false
+script_metrics:
+  line_chars_per_minute: [200, 300]
+  max_line_words: 12
+  max_overlay_words: 7
+  duration_tolerance: 0.15
+metro:
+  reveal_readable_s: 2
+  frame: [face, action, object]

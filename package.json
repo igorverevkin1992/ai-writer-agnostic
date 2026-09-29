@@ -14,7 +14,8 @@
     "lint": "eslint . && tsc -p tsconfig.json && pnpm -r typecheck",
     "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
     "smoke": "tsx scripts/smoke.ts",
-    "eval": "tsx scripts/eval.ts"
+    "eval": "tsx scripts/eval.ts",
+    "kb:check": "pnpm --filter @aiw/kb check"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

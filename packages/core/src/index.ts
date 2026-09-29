@@ -13,3 +13,5 @@ export const STEP_IDS = [
 ] as const;
 
 export type StepId = (typeof STEP_IDS)[number];
+
+export * from './schemas/index.ts';

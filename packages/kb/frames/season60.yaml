@@ -1,0 +1,34 @@
+# Каркас сезона. Источник: SPEC.md, «Структура сезона» и «Антагонисты: лестница из пяти».
+season_frame:
+  episodes: 60
+  free: 8
+  duration_s: {min: 60, max: 120, target: 90}
+  anchors:
+    betrayal: 1
+    first_strike: "<=3"
+    paywall_hook: 8
+    pinch1: 22
+    midpoint: 30
+    pinch2: 37
+    fall: [45, 49]
+    reveal: [48, 51]
+    boss_takedown: [57, 59]
+    finale: [59, 60]
+  villains:
+    count: 5
+    boss_on_screen_by: 1
+    all_on_screen_by: 10
+    on_screen_by: {5: 1, 4: 6, 3: 10, 2: 8, 1: 1}
+    takedowns: {5: 3, 4: [18, 20], 3: [38, 40], 2: [48, 50], 1: [57, 59]}
+    counterstrike_within: 3
+    max_turned_allies: 1          # только ранги 3–5
+    turned_ally_ranks: [3, 4, 5]
+    public_and_legal: [2, 1]
+  rhythm:
+    response_within: 3            # удар злодея → ответ героини за 1–3 серии
+    max_suffering_run: 2          # страдание не дольше 2 серий подряд
+    max_same_hook_run: 2          # тип крючка не больше двух серий подряд
+    emotions_per_episode: [2, 3]
+    max_fall_length: 5
+  blocks: [[1, 8], [9, 20], [21, 30], [31, 40], [41, 50], [51, 60]]
+  tolerance: 1
