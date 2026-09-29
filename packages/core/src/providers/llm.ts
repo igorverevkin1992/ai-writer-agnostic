@@ -28,8 +28,11 @@ export interface CallOptions {
   request: LlmRequest;
   projectId?: string;
   step?: string;
-  /** Provider that wrote the text under review. Required for critic roles. */
-  authorProvider?: ProviderName;
+  /**
+   * Provider(s) that wrote the text under review. Required for critic roles.
+   * Several when parts were written by different providers (e.g. the reserve one).
+   */
+  authorProvider?: ProviderName | readonly ProviderName[];
   /**
    * Called when the input exceeds the role's max_input (writer: 200k tokens).
    * Must return a smaller request, e.g. with a compressed bible.
@@ -175,12 +178,12 @@ export class LlmClient {
   }
 
   private checkFamily(opts: CallOptions, criticProvider: ProviderName): void {
-    if (CRITIC_ROLES.has(opts.role) && !opts.authorProvider) {
+    if (CRITIC_ROLES.has(opts.role) && authorsOf(opts.authorProvider).length === 0) {
       throw new SameFamilyError(
         'Проверка отменена: не указано, какая модель написала текст. Без этого нельзя убедиться, что проверяющий из другого семейства.',
       );
     }
-    if (opts.authorProvider) assertCrossFamily(opts.authorProvider, criticProvider);
+    for (const author of authorsOf(opts.authorProvider)) assertCrossFamily(author, criticProvider);
   }
 
   private async fitInput(opts: CallOptions, resolved: Resolved): Promise<LlmRequest> {
@@ -259,6 +262,10 @@ export class LlmClient {
   private markInvalid(callId: number): void {
     this.db.update(llmCalls).set({ status: 'invalid_output' }).where(eq(llmCalls.id, callId)).run();
   }
+}
+
+function authorsOf(a: CallOptions['authorProvider']): readonly ProviderName[] {
+  return a === undefined ? [] : typeof a === 'string' ? [a] : a;
 }
 
 function validate<T extends z.ZodType>(

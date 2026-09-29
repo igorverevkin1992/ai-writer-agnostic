@@ -4,7 +4,7 @@ import type { Db } from '../db/client.ts';
 import { ProjectMemory } from '../memory/store.ts';
 import { Bible, Fact, KnowledgeEntry } from '../schemas/bible.ts';
 import { STEP_IDS, type StepId } from '../steps.ts';
-import { Pipeline, PipelineError } from './machine.ts';
+import { INCOMPLETE_CHECK, Pipeline, PipelineError } from './machine.ts';
 
 export interface ProducerResolution {
   /** An existing fact that closes the finding. */
@@ -23,6 +23,7 @@ export function resolveByProducer(db: Db, projectId: string, findingId: string, 
   const row = memory.finding(findingId);
   if (!row) throw new PipelineError(`Замечание ${findingId} не найдено`);
   if (row.status !== 'open') throw new PipelineError('Замечание уже закрыто');
+  if (row.check === INCOMPLETE_CHECK) throw new PipelineError('Это замечание закрывается повторным запуском шага');
   const bible = memory.currentBible();
   if (!bible) throw new PipelineError('Нет библии проекта');
 
@@ -49,6 +50,8 @@ export function dismissByProducer(db: Db, projectId: string, findingId: string, 
   const memory = new ProjectMemory(db, projectId);
   const row = memory.finding(findingId);
   if (!row) throw new PipelineError(`Замечание ${findingId} не найдено`);
+  if (row.status !== 'open') throw new PipelineError('Замечание уже закрыто');
+  if (row.check === INCOMPLETE_CHECK) throw new PipelineError('Это замечание закрывается повторным запуском шага');
   if (!memory.currentBible()?.facts.some((f) => f.id === factId)) {
     throw new PipelineError(`Чтобы отклонить замечание, укажите факт из базы${factId ? `: факта ${factId} нет` : ''}`);
   }

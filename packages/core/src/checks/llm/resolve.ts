@@ -1,5 +1,5 @@
 import type { GenreKit, Kb } from '@aiw/kb';
-import type { ProviderName, RoleName } from '../../providers/config.ts';
+import type { Authors, RoleName } from '../../providers/config.ts';
 import type { LlmClient } from '../../providers/llm.ts';
 import { renderPrompt, schemaText } from '../../prompts/render.ts';
 import { Bible } from '../../schemas/bible.ts';
@@ -17,7 +17,7 @@ export interface ResolveDeps {
   step?: string;
   /** Author of the text: answers findings. */
   authorRole: RoleName;
-  authorProvider: ProviderName;
+  authorProvider: Authors;
   /** Judge from another family than the author. */
   judgeRole: RoleName;
 }
@@ -44,7 +44,7 @@ export async function resolveFinding(deps: ResolveDeps, finding: Finding, bible:
   const factsList = bible.facts.map((f) => `${f.id}: ${f.text}${f.since_ep ? ` (с ${f.since_ep}-й серии)` : ''}`).join('\n') || 'Фактов нет.';
   const findingText = `${finding.quote}\n${finding.viewerQuestion}${finding.episode ? `\nСерия: ${finding.episode}` : ''}`;
 
-  const { data: reply } = await deps.llm.completeJson(AuthorReply, {
+  const { data: reply, provider: replyProvider } = await deps.llm.completeJson(AuthorReply, {
     role: deps.authorRole,
     projectId: deps.projectId,
     step: deps.step,
@@ -79,7 +79,8 @@ export async function resolveFinding(deps: ResolveDeps, finding: Finding, bible:
     role: deps.judgeRole,
     projectId: deps.projectId,
     step: deps.step,
-    authorProvider: deps.authorProvider,
+    // The judge checks the text and the author's answer: it must differ from both writers.
+    authorProvider: [...(typeof deps.authorProvider === 'string' ? [deps.authorProvider] : deps.authorProvider), replyProvider],
     request: {
       task: `judge:${finding.id}`,
       system: renderPrompt(deps.kb, `critic_of_architect/judge`, {

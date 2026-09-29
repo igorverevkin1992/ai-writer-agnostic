@@ -9,7 +9,9 @@ import { FakeProvider, testConfig } from '../providers/testing.ts';
 import type { LlmRequest } from '../providers/types.ts';
 import { parseModelsConfig } from '../providers/config.ts';
 import { sampleConcept, sampleLogline } from '../schemas/samples.ts';
-import { Pipeline } from './machine.ts';
+import { dismissByProducer } from './findings.ts';
+import { Pipeline, recoverStaleSteps } from './machine.ts';
+import { nextTask } from './next.ts';
 import { createProject } from './project.ts';
 import { approveStep, runStep, skipStep } from './runners.ts';
 
@@ -28,6 +30,13 @@ let db: Db;
 let calls: string[];
 let script: Script;
 
+/** The golden plan's episodes of one part, e.g. "1-8". */
+function planPart(range: string) {
+  const [from = 1, to = Infinity] = range.split('-').map(Number);
+  const inPart = (ep: number) => ep >= from && ep <= to;
+  return { episodes: golden.plan.episodes.filter((e) => inPart(e.ep)), deviations: golden.plan.deviations.filter((d) => inPart(d.ep)) };
+}
+
 function reply(req: LlmRequest): string {
   const task = req.task ?? '';
   calls.push(task);
@@ -40,7 +49,9 @@ function reply(req: LlmRequest): string {
     case 'bible':
       return JSON.stringify(golden.bible);
     case 'season_plan':
-      return JSON.stringify(golden.plan);
+      return JSON.stringify(planPart(a));
+    case 'checklist_judge':
+      return JSON.stringify({ items: [] });
     case 'devil_advocate':
       return JSON.stringify(b === 'библия' ? (script.auditBible?.(a) ?? []) : (script.auditPlan?.(a, b) ?? []));
     case 'persona':
@@ -203,5 +214,103 @@ describe('steps 1–4 end to end', () => {
     await runStep({ ...deps(), llm: client }, 'concept');
     expect(anthropic.calls[0]?.req.cacheablePrefix?.[0]).toMatch(/^# База знаний: Женский психологический триллер/);
     expect(anthropic.calls[0]?.req.cacheablePrefix?.[0]).toContain('R08');
+  });
+});
+
+describe('review fixes: pipeline', () => {
+  async function throughBible() {
+    await throughLogline();
+    await runStep(deps(), 'bible');
+    approveStep(deps(), 'bible');
+  }
+
+  it('writes the season plan in the frame blocks', async () => {
+    await throughBible();
+    calls = [];
+    await runStep(deps(), 'season_plan');
+    expect(calls.filter((c) => c.startsWith('season_plan:'))).toEqual([
+      'season_plan:1-8', 'season_plan:9-20', 'season_plan:21-30', 'season_plan:31-40', 'season_plan:41-50', 'season_plan:51-60',
+    ]);
+    expect(new ProjectMemory(db, projectId).currentPlan()?.episodes).toHaveLength(60);
+  });
+
+  it('a run that fails after saving a new result leaves a blocker and asks to run again', async () => {
+    await throughBible();
+    script.auditPlan = (t) => {
+      if (t === '4') throw new Error('сеть упала');
+      return [];
+    };
+    await expect(runStep(deps(), 'season_plan')).rejects.toThrow();
+    const pipeline = new Pipeline(db, projectId);
+    expect(pipeline.get('season_plan').status).toBe('needs_fix');
+    expect(() => approveStep(deps(), 'season_plan')).toThrow('открытых блокирующих замечаний — 1');
+    expect(nextTask(db, kb, projectId)).toMatchObject({ step: 'season_plan', action: 'run' });
+
+    script.auditPlan = () => [];
+    const again = await runStep(deps(), 'season_plan');
+    expect(again.status).toBe('draft');
+    expect(pipeline.hasIncomplete('season_plan')).toBe(false);
+  });
+
+  it('a run that fails before changing anything restores the previous status', async () => {
+    await throughLogline();
+    const broken = new LlmClient({ config: testConfig(), db, env: {}, providers: { anthropic: new FakeProvider('anthropic', ['не json']) } });
+    skipStep(deps(), 'bible');
+    await expect(runStep({ ...deps(), llm: broken }, 'logline')).rejects.toThrow(/дважды/);
+    const pipeline = new Pipeline(db, projectId);
+    expect(pipeline.get('logline').status).toBe('approved');
+    expect(pipeline.get('bible').status).toBe('skipped');
+  });
+
+  it('one step at a time: no run or skip while the agent is working', async () => {
+    await runStep(deps(), 'concept');
+    approveStep(deps(), 'concept', { choice: 0 });
+    const pipeline = new Pipeline(db, projectId);
+    pipeline.begin('logline');
+    await expect(runStep(deps(), 'logline')).rejects.toThrow('уже выполняется');
+    expect(() => skipStep(deps(), 'logline')).toThrow('ещё выполняется');
+    expect(() => pipeline.begin('concept')).toThrow('Агент ещё работает над шагом «Логлайн»');
+  });
+
+  it('steps left running by a restart are recovered', async () => {
+    await runStep(deps(), 'concept');
+    approveStep(deps(), 'concept', { choice: 0 });
+    const pipeline = new Pipeline(db, projectId);
+    pipeline.begin('logline');
+    expect(recoverStaleSteps(db)).toBe(1);
+    expect(pipeline.get('logline').status).toBe('draft');
+
+    await runStep(deps(), 'logline');
+    pipeline.begin('logline');
+    new ProjectMemory(db, projectId).saveArtifact('logline', sampleLogline);
+    recoverStaleSteps(db);
+    expect(pipeline.get('logline').status).toBe('needs_fix');
+    expect(pipeline.hasIncomplete('logline')).toBe(true);
+  });
+
+  it('a step is approved only after the previous one', async () => {
+    await throughLogline();
+    await runStep(deps(), 'concept');
+    expect(() => approveStep(deps(), 'logline')).toThrow('Сначала утвердите или пропустите шаг «Концепции»');
+  });
+
+  it('findings of the old version that the new run did not raise are closed', async () => {
+    await throughBible();
+    script.auditPlan = (t, label) => (t === '3' && label.includes('41–50') ? [dasha] : []);
+    script.judgeClosed = false;
+    expect((await runStep(deps(), 'season_plan')).status).toBe('needs_fix');
+    script.auditPlan = () => [];
+    expect((await runStep(deps(), 'season_plan')).status).toBe('draft');
+    const memory = new ProjectMemory(db, projectId);
+    expect(memory.findingsOf('season_plan', 'open')).toEqual([]);
+    expect(memory.findingsOf('season_plan', 'resolved')[0]?.verdict).toBe('Заменено новой версией');
+  });
+
+  it('a closed finding cannot be dismissed', async () => {
+    await throughBible();
+    script.auditPlan = (t, label) => (t === '3' && label.includes('41–50') ? [dasha] : []);
+    await runStep(deps(), 'season_plan');
+    const done = new ProjectMemory(db, projectId).findingsOf('season_plan', 'resolved')[0]!;
+    expect(() => dismissByProducer(db, projectId, done.id, 'f_dasha_target')).toThrow('Замечание уже закрыто');
   });
 });

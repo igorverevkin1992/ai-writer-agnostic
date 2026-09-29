@@ -39,7 +39,12 @@ function reply(req: { task?: string }): string {
   if (t === 'concept') return JSON.stringify(concepts);
   if (t === 'logline') return JSON.stringify(logline);
   if (t === 'bible') return JSON.stringify(golden.bible);
-  if (t === 'season_plan') return JSON.stringify(golden.plan);
+  if (t.startsWith('season_plan:')) {
+    const [from = 1, to = Infinity] = t.slice('season_plan:'.length).split('-').map(Number);
+    const inPart = (ep: number) => ep >= from && ep <= to;
+    return JSON.stringify({ episodes: golden.plan.episodes.filter((e) => inPart(e.ep)), deviations: golden.plan.deviations.filter((d) => inPart(d.ep)) });
+  }
+  if (t === 'checklist_judge') return JSON.stringify({ items: [] });
   if (t.startsWith('devil_advocate:3:план, серии 41–50')) return JSON.stringify([hole]);
   if (t.startsWith('devil_advocate:') || t.startsWith('persona:')) return '[]';
   if (t.startsWith('respond:')) return JSON.stringify({ action: 'cite', fact_id: 'f_dasha_target', explanation: 'Даша' });

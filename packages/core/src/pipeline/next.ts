@@ -44,8 +44,12 @@ export function nextTask(db: Db, kb: Kb, projectId: string): NextTask {
     const base = { step, stepLabel: STEP_LABELS[step], criterion: criteria[step] };
     if (step === 'export') return { ...base, action: 'export', task: 'Скачайте библию, таблицу сезона, сценарии и промпты для видео' };
     if (s.status === 'checking') return { ...base, action: 'wait', task: `Агент работает: «${STEP_LABELS[step]}»` };
-    if (s.status === 'needs_fix') {
-      const n = pipeline.openBlockers(step);
+    if (pipeline.hasIncomplete(step)) {
+      const eps = step === 'episode_cards' ? missingCards(memory) : step === 'scripts' ? missingScripts(memory) : [];
+      return { ...base, action: 'run', task: `Шаг «${STEP_LABELS[step]}» прервался — запустите его ещё раз`, ...(eps.length ? { episodes: eps } : {}) };
+    }
+    const n = pipeline.openBlockers(step);
+    if (s.status === 'needs_fix' && n > 0) {
       return { ...base, action: 'resolve', task: `Закройте блокирующие замечания — ${n}`, criterion: 'Ноль открытых блокирующих замечаний', openBlockers: n };
     }
     if (step === 'polish') return { ...base, action: 'polish', task: 'Доработайте фрагменты сценариев или утвердите шаг' };
@@ -53,19 +57,27 @@ export function nextTask(db: Db, kb: Kb, projectId: string): NextTask {
     if (step === 'concept') return { ...base, action: 'choose_concept', task: 'Выберите одну из трёх концепций' };
     if (step === 'episode_cards') {
       const eps = memory.currentPlan()?.episodes.map((e) => e.ep) ?? [];
-      const have = new Set(memory.cards().map((c) => c.ep));
-      const missing = eps.filter((ep) => !have.has(ep));
+      const missing = missingCards(memory);
       if (missing.length) return { ...base, action: 'run', task: `Допишите карточки: не хватает ${missing.length}`, episodes: missing };
       const approved = new Set((memory.latestArtifact('card_blocks') as { approved: number[] } | undefined)?.approved ?? []);
       const block = cardBlocks(eps).find((b) => !approved.has(b[0]!));
       if (block) return { ...base, action: 'approve_block', task: `Утвердите карточки серий ${block[0]}–${block.at(-1)}`, block: block[0] };
     }
     if (step === 'scripts') {
-      const have = new Set(memory.scripts().map((x) => x.ep));
-      const missing = memory.cards().map((c) => c.ep).filter((ep) => !have.has(ep));
+      const missing = missingScripts(memory);
       if (missing.length) return { ...base, action: 'run', task: `Напишите сценарии: осталось ${missing.length}`, episodes: missing };
     }
     return { ...base, action: 'approve', task: `Проверьте и утвердите: «${STEP_LABELS[step]}»` };
   }
   return { step: 'export', stepLabel: STEP_LABELS.export, action: 'export', task: 'Всё готово. Скачайте файлы', criterion: criteria.export };
+}
+
+function missingCards(memory: ProjectMemory): number[] {
+  const have = new Set(memory.cards().map((c) => c.ep));
+  return (memory.currentPlan()?.episodes.map((e) => e.ep) ?? []).filter((ep) => !have.has(ep));
+}
+
+function missingScripts(memory: ProjectMemory): number[] {
+  const have = new Set(memory.scripts().map((x) => x.ep));
+  return memory.cards().map((c) => c.ep).filter((ep) => !have.has(ep));
 }

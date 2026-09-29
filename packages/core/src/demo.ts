@@ -80,8 +80,11 @@ function answer(task: string, req: LlmRequest): unknown {
       };
     case 'bible':
       return G().bible;
-    case 'season_plan':
-      return G().plan;
+    case 'season_plan': {
+      const [from = 1, to = Infinity] = a.split('-').map(Number);
+      const inPart = (ep: number) => ep >= from && ep <= to;
+      return { episodes: G().plan.episodes.filter((e) => inPart(e.ep)), deviations: G().plan.deviations.filter((d) => inPart(d.ep)) };
+    }
     case 'extract_facts':
       return { facts: G().bible.facts, knowledge: [] };
     case 'devil_advocate':

@@ -1,7 +1,7 @@
 import type { GenreKit, Kb } from '@aiw/kb';
 import { z } from 'zod';
 import { renderPrompt, schemaText } from '../../prompts/render.ts';
-import type { ProviderName, RoleName } from '../../providers/config.ts';
+import type { Authors, RoleName } from '../../providers/config.ts';
 import type { LlmClient } from '../../providers/llm.ts';
 import type { EpisodeCard } from '../../schemas/episodeCard.ts';
 import type { Finding } from '../../schemas/finding.ts';
@@ -76,7 +76,7 @@ const norm = (s: string) => s.replace(/[«»"“”„]/gu, '"').replace(/\s+/gu
 /** Runs model controllers over one script. The critic is from another family than the writer. */
 export async function runScriptControllers(
   deps: ControllerDeps,
-  target: { script: Script; card: EpisodeCard; outline?: EpisodeOutline; authorProvider: ProviderName },
+  target: { script: Script; card: EpisodeCard; outline?: EpisodeOutline; authorProvider: Authors },
   controllers: readonly ScriptController[] = SCRIPT_CONTROLLERS,
 ): Promise<{ findings: Finding[]; dropped: number }> {
   const role = deps.criticRole ?? 'critic_of_writer';
@@ -128,7 +128,7 @@ export const Shootable = z.object({ verdict: z.enum(['yes', 'light_edit', 'no'])
 export type Shootable = z.infer<typeof Shootable>;
 
 /** Can this episode be shot as is, after a light edit, or not? Judged by another family than the writer. */
-export async function rateShootable(deps: ControllerDeps, script: Script, authorProvider: ProviderName): Promise<Shootable> {
+export async function rateShootable(deps: ControllerDeps, script: Script, authorProvider: Authors): Promise<Shootable> {
   const role = deps.criticRole ?? 'critic_of_writer';
   const { data } = await deps.llm.completeJson(Shootable, {
     role,

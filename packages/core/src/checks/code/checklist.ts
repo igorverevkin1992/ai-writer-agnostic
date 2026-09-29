@@ -38,18 +38,28 @@ export function scoreChecklist(checklist: Checklist, rules: RulesFile, result: C
   const unknownPoints = items.filter((i) => i.status === 'unknown').reduce((n, i) => n + i.points, 0);
   const passed = score >= checklist.pass ? true : score + unknownPoints < checklist.pass ? false : null;
 
-  const failed = items.filter((i) => i.status === 'fail');
-  const finding =
-    passed === false
-      ? makeFinding({
-          check: 'checklist.score',
-          controller: 'genre',
-          severity: 'blocker',
-          holeType: 10,
-          quote: `Чек-лист: ${score} из ${checklist.total}, порог ${checklist.pass}. Не выполнено: ${failed.map((i) => i.text).join('; ')}`,
-          question: 'почему это должно меня зацепить?',
-          fixes: [`Закрыть пункты чек-листа до ${checklist.pass} баллов`],
-        })
-      : undefined;
-  return { score, total: checklist.total, pass: checklist.pass, unknownPoints, passed, items, finding };
+  const base = { score, total: checklist.total, pass: checklist.pass, unknownPoints, passed, items };
+  return { ...base, finding: checklistFinding(base) };
+}
+
+/**
+ * Blocking finding when the checklist is below the pass mark. `undecided` — also when
+ * points nobody could confirm decide it (after the model-judge had its say).
+ */
+export function checklistFinding(score: Omit<ChecklistScore, 'finding'>, undecided = false): Finding | undefined {
+  if (score.passed === true || (score.passed === null && !undecided)) return undefined;
+  const failed = score.items.filter((i) => i.status === 'fail');
+  const unknown = score.items.filter((i) => i.status === 'unknown');
+  return makeFinding({
+    check: 'checklist.score',
+    controller: 'genre',
+    severity: 'blocker',
+    holeType: 10,
+    quote:
+      `Чек-лист: ${score.score} из ${score.total}, порог ${score.pass}.` +
+      (failed.length ? ` Не выполнено: ${failed.map((i) => i.text).join('; ')}.` : '') +
+      (unknown.length ? ` Не подтверждено: ${unknown.map((i) => i.text).join('; ')}.` : ''),
+    question: 'почему это должно меня зацепить?',
+    fixes: [`Закрыть пункты чек-листа до ${score.pass} баллов`],
+  });
 }

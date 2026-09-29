@@ -11,20 +11,21 @@ import { EpisodeCard } from '../schemas/episodeCard.ts';
 import { Script } from '../schemas/script.ts';
 import { renderScript } from '../text/script.ts';
 import { compressBible, MAX_COMPRESSION, type CompressionLevel } from './compress.ts';
-import { scoreChecklist, type ChecklistScore } from '../checks/code/checklist.ts';
+import { checklistFinding, scoreChecklist, type ChecklistScore } from '../checks/code/checklist.ts';
+import { judgeChecklist } from '../checks/llm/checklistJudge.ts';
 import { runDevilAdvocate } from '../checks/llm/devilAdvocate.ts';
 import { resolveFinding } from '../checks/llm/resolve.ts';
 import { ExtractedFacts } from '../checks/llm/schemas.ts';
 import type { Db } from '../db/client.ts';
 import { ProjectMemory } from '../memory/store.ts';
 import { knowledgeBlock, renderPrompt, schemaText } from '../prompts/render.ts';
-import type { RoleName } from '../providers/config.ts';
+import type { ProviderName } from '../providers/config.ts';
 import type { LlmClient } from '../providers/llm.ts';
 import { Bible } from '../schemas/bible.ts';
 import { Concept, ConceptSet } from '../schemas/concept.ts';
 import type { Finding } from '../schemas/finding.ts';
 import { Logline } from '../schemas/logline.ts';
-import { SeasonPlan } from '../schemas/season.ts';
+import { EpisodeOutline, FrameDeviation, SeasonPlan } from '../schemas/season.ts';
 import type { StepId } from '../steps.ts';
 import { Pipeline, PipelineError, type StepStatus } from './machine.ts';
 import { getProject } from './project.ts';
@@ -89,12 +90,13 @@ const json = (x: unknown) => JSON.stringify(x, null, 1);
 export async function runStep(deps: StepDeps, step: StepId, opts: RunOptions = {}): Promise<StepRun> {
   if (!RUNNABLE_STEPS.includes(step)) throw new PipelineError(`Шаг ${step} появится на следующих вехах`);
   const ctx = context(deps);
-  ctx.pipeline.begin(step);
+  const mark = ctx.pipeline.begin(step);
   try {
     const run = await RUNNERS[step]!(ctx, opts);
+    ctx.pipeline.clearIncomplete(step);
     return { ...run, step, status: ctx.pipeline.finish(step) };
   } catch (err) {
-    ctx.pipeline.abort(step);
+    ctx.pipeline.abort(step, mark, err instanceof Error ? err.message.slice(0, 200) : undefined);
     throw err;
   }
 }
@@ -108,19 +110,30 @@ export function approveStep(deps: Omit<StepDeps, 'llm'>, step: StepId, opts: { c
   const pipeline = new Pipeline(deps.db, deps.projectId);
   const memory = new ProjectMemory(deps.db, deps.projectId);
   if (step === 'episode_cards' && opts.block !== undefined) {
+    if (pipeline.get(step).status === 'checking') throw new PipelineError('Карточки ещё пишутся. Дождитесь окончания');
+    pipeline.assertPreviousDone(step);
     const plan = need(memory.currentPlan(), 'план сезона');
     const starts = cardBlocks(plan.episodes.map((e) => e.ep)).map((b) => b[0]!);
     if (!starts.includes(opts.block)) throw new PipelineError(`Нет блока карточек, начинающегося с ${opts.block}-й серии`);
     const eps = cardBlocks(plan.episodes.map((e) => e.ep)).find((b) => b[0] === opts.block)!;
     const cards = new Set(memory.cards().map((c) => c.ep));
     if (eps.some((ep) => !cards.has(ep))) throw new PipelineError(`В блоке ${eps[0]}–${eps.at(-1)} есть серии без карточек`);
-    const blockers = memory.findingsOf('episode_cards', 'open').filter((f) => f.severity === 'blocker' && f.episode !== null && eps.includes(f.episode));
+    // Blockers of the block's episodes and those about all cards at once (no episode).
+    const blockers = memory
+      .findingsOf('episode_cards', 'open')
+      .filter((f) => f.severity === 'blocker' && (f.episode === null || eps.includes(f.episode)));
     if (blockers.length) throw new PipelineError(`Нельзя утвердить серии ${eps[0]}–${eps.at(-1)}: открытых блокирующих замечаний — ${blockers.length}`);
     const approved = new Set(((memory.latestArtifact('card_blocks') as { approved: number[] } | undefined)?.approved ?? []));
     approved.add(opts.block);
     memory.saveArtifact('card_blocks', { approved: [...approved].sort((a, b) => a - b) });
     if (starts.every((b) => approved.has(b))) pipeline.approve(step);
     return;
+  }
+  if (step === 'episode_cards') {
+    const plan = need(memory.currentPlan(), 'план сезона');
+    const approved = new Set((memory.latestArtifact('card_blocks') as { approved: number[] } | undefined)?.approved ?? []);
+    const left = cardBlocks(plan.episodes.map((e) => e.ep)).filter((b) => !approved.has(b[0]!));
+    if (left.length) throw new PipelineError(`Сначала утвердите блоки карточек: ${left.map((b) => `${b[0]}–${b.at(-1)}`).join(', ')}`);
   }
   if (step === 'concept') {
     const concepts = ConceptSet.parse(need(memory.latestArtifact('concept'), 'концепции'));
@@ -196,7 +209,7 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
   async bible(ctx) {
     const concept = ctx.memory.latestArtifact('concept_choice');
     const logline = need(ctx.memory.latestArtifact('logline'), 'логлайн');
-    let { data: bible } = await ctx.llm.completeJson(Bible, {
+    const written = await ctx.llm.completeJson(Bible, {
       role: 'architect',
       projectId: ctx.projectId,
       step: 'bible',
@@ -207,6 +220,7 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
         messages: [{ role: 'user', content: 'Напиши библию. Только JSON.' }],
       },
     });
+    let bible = written.data;
     if (bible.facts.length === 0) {
       const { data: extracted } = await ctx.llm.completeJson(ExtractedFacts, {
         role: 'helper',
@@ -221,7 +235,7 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
       bible = Bible.parse({ ...bible, facts: extracted.facts, knowledge: [...bible.knowledge, ...extracted.knowledge] });
     }
     ctx.memory.importBible(bible);
-    return audit(ctx, 'bible', 'architect');
+    return audit(ctx, 'bible', [written.provider]);
   },
 
   async episode_cards(ctx, opts) {
@@ -261,11 +275,12 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
         ctx.memory.saveCard(card);
       }
       approved.delete(eps[0]!);
+      // Saved after every block: a run that fails later still leaves a consistent state.
+      ctx.memory.saveArtifact('card_blocks', { approved: [...approved].sort((a, b) => a - b) });
+      ctx.memory.saveArtifact('episode_cards', { episodes: ctx.memory.cards().map((c) => c.ep) });
     }
-    ctx.memory.saveArtifact('card_blocks', { approved: [...approved] });
 
     const cards = ctx.memory.cards();
-    ctx.memory.saveArtifact('episode_cards', { episodes: cards.map((c) => c.ep) });
     const findings = [
       ...checkLimits(bible, cards, p),
       ...checkKnowledge(cards, bible),
@@ -286,6 +301,8 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
         ),
     ];
     ctx.memory.saveFindings(findings, 'episode_cards');
+    // These checks cover all cards: what they no longer raise is fixed.
+    ctx.memory.closeSuperseded('episode_cards', findings.map((x) => x.id), 'Больше не подтверждается');
     return { findings };
   },
 
@@ -297,7 +314,6 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
     const eps = (opts.episodes ?? cards.map((c) => c.ep)).filter((ep) => cards.some((c) => c.ep === ep)).sort((a, b) => a - b);
     const p = ctx.kit.production;
     const f = ctx.kit.frame;
-    const writer = ctx.llm.resolve('writer').provider;
     const all: Finding[] = [];
 
     for (const ep of eps) {
@@ -336,15 +352,15 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
         }),
         messages: [{ role: 'user', content: 'Напиши сценарий. Только JSON.' }],
       });
-      const { data } = await ctx.llm.completeJson(Script, {
+      const { data, provider: writer } = await ctx.llm.completeJson(Script, {
         role: 'writer',
         projectId: ctx.projectId,
         step: 'scripts',
         request: build(),
-        shrink: () => {
-          if (level >= MAX_COMPRESSION) return build();
-          level = (level + 1) as CompressionLevel;
-          return build();
+        // Only the system part (with the bible) shrinks; the dialogue, e.g. a retry, stays.
+        shrink: (req) => {
+          if (level < MAX_COMPRESSION) level = (level + 1) as CompressionLevel;
+          return { ...build(), messages: req.messages };
         },
       });
       const script = { ...data, ep };
@@ -361,67 +377,126 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
       );
       found.push(...model.findings);
       ctx.memory.saveFindings(found, 'scripts');
+      ctx.memory.saveArtifact('scripts', { episodes: ctx.memory.scripts().map((s) => s.ep) });
       all.push(...found);
     }
-    ctx.memory.saveArtifact('scripts', { episodes: ctx.memory.scripts().map((s) => s.ep) });
     return { findings: all };
   },
 
   async season_plan(ctx) {
     const bible = need(ctx.memory.currentBible(), 'библия');
     const f = ctx.kit.frame;
-    const { data: plan } = await ctx.llm.completeJson(SeasonPlan, {
-      role: 'architect_heavy',
-      projectId: ctx.projectId,
-      step: 'season_plan',
-      request: {
-        task: 'season_plan',
-        cacheablePrefix: [ctx.kbText, `# Библия сериала\n${json(bible)}`],
-        system: renderPrompt(ctx.kb, 'architect_heavy/season_plan', {
-          episodes: f.episodes,
-          anchor_ids: Object.keys(f.anchors).join(', '),
-          tolerance: f.tolerance,
-          schema: schemaText(SeasonPlan),
-        }),
-        messages: [{ role: 'user', content: 'Составь план сезона. Только JSON.' }],
-      },
-    });
-    ctx.memory.importPlan(plan);
-    return audit(ctx, 'season_plan', 'architect_heavy');
+    const episodes: EpisodeOutline[] = [];
+    const deviations: FrameDeviation[] = [];
+    const authors = new Set<ProviderName>();
+    // The plan is written in the frame's blocks: one answer for the whole season is too long.
+    for (const [from, to] of planParts(f.episodes, f.blocks)) {
+      const part = planPart(from, to);
+      const { data, provider } = await ctx.llm.completeJson(part, {
+        role: 'architect_heavy',
+        projectId: ctx.projectId,
+        step: 'season_plan',
+        request: {
+          task: `season_plan:${from}-${to}`,
+          cacheablePrefix: [ctx.kbText, `# Библия сериала\n${json(bible)}`],
+          system: renderPrompt(ctx.kb, 'architect_heavy/season_plan', {
+            episodes: f.episodes,
+            from,
+            to,
+            written: episodes.length ? episodes.map(episodeLine).join('\n') : 'Это начало сезона.',
+            anchor_ids: Object.keys(f.anchors).join(', '),
+            tolerance: f.tolerance,
+            schema: schemaText(part),
+          }),
+          messages: [{ role: 'user', content: `Составь план серий ${from}–${to}. Только JSON.` }],
+        },
+      });
+      episodes.push(...data.episodes);
+      deviations.push(...data.deviations);
+      authors.add(provider);
+    }
+    ctx.memory.importPlan(SeasonPlan.parse({ episodes, deviations }));
+    return audit(ctx, 'season_plan', [...authors]);
   },
 };
+
+/** Parts of the season to write the plan in: the frame's blocks, or blocks of 10. */
+export function planParts(episodes: number, blocks: [number, number][]): [number, number][] {
+  const sorted = [...blocks].sort((a, b) => a[0] - b[0]);
+  const covers = sorted.length > 0 && sorted[0]![0] === 1 && sorted.at(-1)![1] === episodes &&
+    sorted.every(([a, b], i) => a <= b && (i === 0 || a === sorted[i - 1]![1] + 1));
+  if (covers) return sorted;
+  const out: [number, number][] = [];
+  for (let a = 1; a <= episodes; a += CARD_BLOCK) out.push([a, Math.min(a + CARD_BLOCK - 1, episodes)]);
+  return out;
+}
+
+function planPart(from: number, to: number) {
+  return z.object({
+    episodes: z
+      .array(EpisodeOutline)
+      .length(to - from + 1)
+      .superRefine((list, ctx) => {
+        list.forEach((e, i) => {
+          if (e.ep !== from + i) ctx.addIssue({ code: 'custom', path: [i, 'ep'], message: `Здесь должна быть ${from + i}-я серия` });
+        });
+      }),
+    deviations: z.array(FrameDeviation).default([]),
+  });
+}
+
+/** How many audit findings the author and the judge answer automatically in one run. */
+const MAX_AUTO_RESOLVE = 20;
 
 /**
  * Code checks first, then the devil's advocate from another family; blocker and major
  * findings go through author reply and judge. Everything lands in the findings table.
  */
-async function audit(ctx: Ctx, step: 'bible' | 'season_plan', authorRole: RoleName): Promise<Omit<StepRun, 'step' | 'status'>> {
+async function audit(ctx: Ctx, step: 'bible' | 'season_plan', authors: ProviderName[]): Promise<Omit<StepRun, 'step' | 'status'>> {
   let bible = need(ctx.memory.currentBible(), 'библия');
   const plan = step === 'season_plan' ? ctx.memory.currentPlan() : undefined;
-  const authorProvider = ctx.llm.resolve(authorRole).provider;
 
   const code = runCodeChecks({ kit: ctx.kit, bible, plan });
   const findings: Finding[] = [...code.findings];
   let checklist: ChecklistScore | undefined;
   if (plan) {
     checklist = scoreChecklist(ctx.kit.checklist, ctx.kit.rules, code);
+    if (checklist.passed === null) {
+      // Code could not decide: the judge of another family scores the rest, backed by quotes.
+      const judged = await judgeChecklist(
+        { llm: ctx.llm, kb: ctx.kb, kit: ctx.kit, projectId: ctx.projectId, step },
+        checklist,
+        { bible, plan, authorProvider: authors },
+      );
+      checklist = { ...judged, finding: checklistFinding(judged, true) };
+    }
     if (checklist.finding) findings.push(checklist.finding);
   }
 
   const auditRes = await runDevilAdvocate(
     { llm: ctx.llm, kb: ctx.kb, kit: ctx.kit, projectId: ctx.projectId, step },
-    { bible, plan, authorProvider },
+    { bible, plan, authorProvider: authors },
   );
-  ctx.memory.saveFindings([...findings, ...auditRes.findings], step);
+  const raised = [...findings, ...auditRes.findings];
+  ctx.memory.saveFindings(raised, step);
+  ctx.memory.closeSuperseded(step, raised.map((f) => f.id), 'Заменено новой версией');
 
   const outcome: Finding[] = [...findings];
+  let answered = 0;
   for (const f of auditRes.findings) {
-    if (ctx.autoResolve === false || f.severity === 'minor') {
+    const stored = ctx.memory.finding(f.id);
+    if (stored && stored.status !== 'open') {
+      // Already closed with a fact or dismissed by the producer: no second round.
+      outcome.push({ ...f, status: stored.status as Finding['status'], resolutionFactId: stored.resolutionFactId ?? undefined });
+      continue;
+    }
+    if (ctx.autoResolve === false || f.severity === 'minor' || answered >= MAX_AUTO_RESOLVE) {
       outcome.push(f);
       continue;
     }
+    answered++;
     const res = await resolveFinding(
-      { llm: ctx.llm, kb: ctx.kb, kit: ctx.kit, projectId: ctx.projectId, step, authorRole: 'architect', authorProvider, judgeRole: 'critic_of_architect' },
+      { llm: ctx.llm, kb: ctx.kb, kit: ctx.kit, projectId: ctx.projectId, step, authorRole: 'architect', authorProvider: authors, judgeRole: 'critic_of_architect' },
       f,
       bible,
       plan,

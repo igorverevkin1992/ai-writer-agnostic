@@ -222,6 +222,20 @@ export class ProjectMemory {
       .run();
   }
 
+  /**
+   * After a new version of a step: open findings the new checks did not raise again are
+   * about the old version. They are closed without a fact, so a later run may reopen them.
+   * `episodes`: only findings of these episodes (null — findings without an episode).
+   */
+  closeSuperseded(step: string, keepIds: Iterable<string>, verdict: string, episodes?: (number | null)[]): number {
+    const keep = new Set(keepIds);
+    const stale = this.findingsOf(step, 'open').filter(
+      (f) => !keep.has(f.id) && (episodes === undefined || episodes.includes(f.episode)),
+    );
+    for (const f of stale) this.setFindingOutcome(f.id, { status: 'resolved', verdict });
+    return stale.length;
+  }
+
   logEdit(entity: string, entityId: string, before: unknown, after: unknown, meta: EditMeta): number {
     return this.logRevision(entity, entityId, before, after, meta);
   }

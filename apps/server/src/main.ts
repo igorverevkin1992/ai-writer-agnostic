@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { ConfigError, LlmClient, REPO_ROOT, demoProviders, loadDotEnv, loadModelsConfig, openDb } from '@aiw/core';
+import { ConfigError, LlmClient, REPO_ROOT, demoProviders, loadDotEnv, loadModelsConfig, openDb, recoverStaleSteps } from '@aiw/core';
 import { KbLoadError, loadKb } from '@aiw/kb';
 import { buildApp } from './app.ts';
 
@@ -9,8 +9,11 @@ const port = Number(process.env.SERVER_PORT ?? 3001);
 let deps;
 try {
   const config = loadModelsConfig();
-  const demo = process.env.DEMO === '1';
+  const demo = process.env.DEMO === '1' || process.argv.includes('--demo');
   const db = openDb(resolve(REPO_ROOT, demo ? 'data/demo.db' : 'data/app.db'));
+  // Runs that were in progress when the app stopped will not finish: mark them.
+  const stale = recoverStaleSteps(db);
+  if (stale) console.log(`Прерванных шагов после перезапуска: ${stale}. Их можно запустить ещё раз.`);
   const llm = new LlmClient({ config, db, ...(demo ? { providers: demoProviders() } : {}) });
   deps = { kb: loadKb(), config, db, llm, demo };
   if (demo) console.log('Демо-режим: модели отвечают заготовками по эталону, ключи не нужны. База — data/demo.db.');

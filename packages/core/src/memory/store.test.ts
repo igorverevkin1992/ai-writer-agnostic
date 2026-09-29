@@ -1,3 +1,4 @@
+import type { Finding } from '../schemas/finding.ts';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDb } from '../db/client.ts';
 import { checkQueue } from '../db/schema.ts';
@@ -141,7 +142,7 @@ describe('review fixes', () => {
   });
 
   it('a system-closed finding reopens when the same problem comes back', () => {
-    const f = { id: 'x1', controller: 'metro', severity: 'major', quote: 'q', viewerQuestion: 'Зритель спросит: ?', fixes: ['a'], status: 'open' } as const;
+    const f: Finding = { id: 'x1', controller: 'metro', severity: 'major', quote: 'q', viewerQuestion: 'Зритель спросит: ?', fixes: ['a'], status: 'open' };
     mem.saveFindings([f], 'scripts');
     mem.setFindingOutcome('x1', { status: 'resolved', verdict: 'Сценарий переписан' });
     mem.saveFindings([f], 'scripts');

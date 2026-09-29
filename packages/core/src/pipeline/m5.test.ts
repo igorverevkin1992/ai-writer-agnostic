@@ -7,6 +7,7 @@ import { parseModelsConfig } from '../providers/config.ts';
 import { LlmClient } from '../providers/llm.ts';
 import { FakeProvider, testConfig } from '../providers/testing.ts';
 import type { LlmRequest } from '../providers/types.ts';
+import { Script } from '../schemas/script.ts';
 import { compressBible } from './compress.ts';
 import { Pipeline } from './machine.ts';
 import { choosePolish, proposePolish } from './polish.ts';
@@ -135,6 +136,7 @@ describe('episode cards', () => {
     approveStep({ db, kb, projectId }, 'episode_cards', { block: 1 });
     expect(() => approveStep({ db, kb, projectId }, 'episode_cards', { block: 11 })).toThrow('Нельзя утвердить серии 11–20');
     expect(() => approveStep({ db, kb, projectId }, 'episode_cards', { block: 5 })).toThrow('Нет блока');
+    expect(() => approveStep({ db, kb, projectId }, 'episode_cards')).toThrow('Сначала утвердите блоки карточек: 11–20');
     expect(new Pipeline(db, projectId).get('episode_cards').status).toBe('needs_fix');
 
     // Regenerating only the block with episode 14.
@@ -228,11 +230,55 @@ describe('polish', () => {
     skipStep({ db, kb, projectId }, 'scripts');
     const offer = await proposePolish(deps(), { ep: 7, from: 1, to: 1, note: 'Жёстче' });
     expect(offer.variants).toHaveLength(5);
+    expect(() => choosePolish({ db, kb, projectId }, 9)).toThrow('Выберите вариант от 1 до 5');
     const { script: s } = choosePolish({ db, kb, projectId }, 2);
     expect(s.blocks[1]).toMatchObject({ speaker: 'ВЕРА', text: 'Вариант 3: ты опять здесь?' });
     const log = new ProjectMemory(db, projectId).revisionsLog('producer');
     expect(log.at(-1)).toMatchObject({ entity: 'script', entityId: '7', note: 'Доработка 7-й серии: выбран вариант 3 из 5 («Жёстче»)' });
-    expect(() => choosePolish({ db, kb, projectId }, 9)).toThrow('Выберите вариант от 1 до 5');
+    expect(() => choosePolish({ db, kb, projectId }, 1)).toThrow('Вариант уже выбран');
+  });
+
+  it('refuses a variant when the script changed after the variants were written', async () => {
+    skipStep({ db, kb, projectId }, 'scripts');
+    await proposePolish(deps(), { ep: 7, from: 1, to: 1 });
+    const memory = new ProjectMemory(db, projectId);
+    const changed = Script.parse(script(7));
+    changed.blocks[1] = { ...changed.blocks[1]!, text: 'Совсем другая реплика' };
+    memory.saveScript(changed);
+    expect(() => choosePolish({ db, kb, projectId }, 0)).toThrow('Сценарий изменился');
+  });
+
+  it('refuses a variant that does not fit between its neighbours', async () => {
+    skipStep({ db, kb, projectId }, 'scripts');
+    await proposePolish(deps(), { ep: 7, from: 3, to: 3 });
+    // The fake variant starts at 5 s, before the previous block (15 s).
+    expect(() => choosePolish({ db, kb, projectId }, 0)).toThrow('не помещается');
+  });
+
+  it('closes only the findings about the replaced lines', async () => {
+    skipStep({ db, kb, projectId }, 'scripts');
+    const memory = new ProjectMemory(db, projectId);
+    const base = { controller: 'logic', severity: 'major', episode: 7, viewerQuestion: 'Зритель спросит: ?', fixes: ['a'], status: 'open' } as const;
+    memory.saveFindings(
+      [
+        { ...base, id: 'in', quote: 'Я ищу старые фото для выставки.', fixes: ['a'] },
+        { ...base, id: 'out', quote: 'Вера гасит свет.', fixes: ['a'] },
+      ],
+      'scripts',
+    );
+    await proposePolish(deps(), { ep: 7, from: 2, to: 2 });
+    // The fake variant (5–15 s) fits after block 1 (5 s) and before block 3 (25 s).
+    choosePolish({ db, kb, projectId }, 0);
+    expect(memory.finding('in')?.status).toBe('resolved');
+    expect(memory.finding('out')?.status).toBe('open');
+  });
+
+  it('is closed once the polish step is approved', async () => {
+    skipStep({ db, kb, projectId }, 'scripts');
+    await proposePolish(deps(), { ep: 7, from: 1, to: 1 });
+    choosePolish({ db, kb, projectId }, 0);
+    approveStep({ db, kb, projectId }, 'polish');
+    await expect(proposePolish(deps(), { ep: 7, from: 1, to: 1 })).rejects.toThrow('Доработка уже утверждена');
   });
 });
 

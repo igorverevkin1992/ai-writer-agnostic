@@ -102,3 +102,6 @@ export function loadModelsConfig(path = DEFAULT_MODELS_CONFIG): ModelsConfig {
 export function loadDotEnv(path = resolve(REPO_ROOT, '.env')): void {
   if (existsSync(path)) process.loadEnvFile(path);
 }
+
+/** Who wrote a text: one provider or several (parts written by the reserve one). */
+export type Authors = ProviderName | readonly ProviderName[];

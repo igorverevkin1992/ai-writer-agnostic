@@ -6,7 +6,7 @@
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "dev:demo": "DEMO=1 tsx watch src/main.ts"
+    "dev:demo": "tsx watch src/main.ts --demo"
   },
   "dependencies": {
     "@aiw/core": "workspace:*",

@@ -1,7 +1,7 @@
 import type { GenreKit, Kb } from '@aiw/kb';
 import { z } from 'zod';
 import { renderPrompt, schemaText } from '../../prompts/render.ts';
-import type { ProviderName, RoleName } from '../../providers/config.ts';
+import type { Authors, RoleName } from '../../providers/config.ts';
 import type { LlmClient } from '../../providers/llm.ts';
 import type { Bible } from '../../schemas/bible.ts';
 import type { SeasonPlan } from '../../schemas/season.ts';
@@ -21,7 +21,7 @@ const norm = (s: string) => s.replace(/[«»"“”„]/gu, '"').replace(/\s+/gu
 export async function judgeChecklist(
   deps: { llm: LlmClient; kb: Kb; kit: GenreKit; projectId?: string; step?: string; role?: RoleName },
   score: ChecklistScore,
-  input: { bible: Bible; plan: SeasonPlan; authorProvider: ProviderName },
+  input: { bible: Bible; plan: SeasonPlan; authorProvider: Authors },
 ): Promise<ChecklistScore> {
   const unknown = score.items.filter((i) => i.status === 'unknown');
   if (unknown.length === 0) return score;

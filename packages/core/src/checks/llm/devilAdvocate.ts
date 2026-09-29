@@ -1,5 +1,5 @@
 import type { GenreKit, Kb } from '@aiw/kb';
-import type { ProviderName, RoleName } from '../../providers/config.ts';
+import type { Authors, RoleName } from '../../providers/config.ts';
 import type { LlmClient } from '../../providers/llm.ts';
 import type { Bible } from '../../schemas/bible.ts';
 import type { Finding } from '../../schemas/finding.ts';
@@ -29,7 +29,7 @@ export interface AuditTarget {
   /** When present, the plan is audited in blocks; otherwise the bible is. */
   plan?: SeasonPlan;
   /** Provider that wrote the audited text. */
-  authorProvider: ProviderName;
+  authorProvider: Authors;
 }
 
 export interface AuditOptions {
@@ -59,7 +59,10 @@ function episodeOfQuote(block: AuditBlock, quote: string): number | undefined {
 
 function toFinding(d: FindingDraft, block: AuditBlock, check: string, holeType: number): Finding | undefined {
   if (!normalize(block.text).includes(normalize(d.quote))) return undefined;
-  const episode = block.episodes ? (episodeOfQuote(block, d.quote) ?? d.episode) : d.episode;
+  // The model's episode number counts only inside the audited block.
+  const inBlock = (ep: number | undefined) =>
+    ep !== undefined && (!block.episodes || (ep >= block.episodes[0] && ep <= block.episodes[1])) ? ep : undefined;
+  const episode = block.episodes ? (episodeOfQuote(block, d.quote) ?? inBlock(d.episode)) : d.episode;
   const question = d.viewerQuestion.replace(/^Зритель спросит:\s*/u, '');
   return makeFinding({
     check,
