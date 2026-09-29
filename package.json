@@ -26,10 +26,13 @@
     "tsx": "^4.23.15",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.0",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.2",
+    "@aiw/core": "workspace:*",
+    "zod": "^4.6.5"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "better-sqlite3",
       "esbuild"
     ]
   }

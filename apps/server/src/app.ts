@@ -1,12 +1,14 @@
 import Fastify, { type FastifyInstance } from 'fastify';
-import { APP_VERSION } from '@aiw/core';
+import { APP_VERSION, costSummary, type Db, type ModelsConfig } from '@aiw/core';
 import type { Kb } from '@aiw/kb';
 
 export interface AppDeps {
   kb: Kb;
+  db: Db;
+  config: ModelsConfig;
 }
 
-export function buildApp({ kb }: AppDeps): FastifyInstance {
+export function buildApp({ kb, db, config }: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false });
 
   app.get('/api/health', async () => ({
@@ -18,6 +20,8 @@ export function buildApp({ kb }: AppDeps): FastifyInstance {
       episodes: kb.frame.episodes,
     },
   }));
+
+  app.get<{ Params: { id: string } }>('/api/projects/:id/costs', async (req) => costSummary(db, config, req.params.id));
 
   return app;
 }

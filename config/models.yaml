@@ -1,0 +1,20 @@
+# Модели по ролям. Единственное место в проекте, где записаны идентификаторы моделей.
+# Перед стартом сверить идентификаторы в консолях Anthropic и Google.
+roles:
+  architect:           {provider: anthropic, model: claude-opus-5-5, max_output: 16000, refusal_fallback: default}
+  architect_heavy:     {provider: anthropic, model: claude-fable-5-1, max_output: 16000, refusal_fallback: default}  # план сезона, финальный аудит
+  writer:              {provider: google, model: gemini-3.1-pro-preview, max_output: 16000, max_input: 200000}
+  critic_of_architect: {provider: google, model: gemini-3.1-pro-preview}
+  critic_of_writer:    {provider: anthropic, model: claude-opus-5-5, refusal_fallback: default}
+  helper:              {provider: anthropic, model: claude-haiku-4-5-20251001}
+fallback:
+  any: {provider: openai_compatible, base_url_env: RESERVE_BASE_URL, model_env: RESERVE_MODEL}
+budget:
+  project_limit_usd: 300
+  warn_at: 0.8
+# refusal_fallback: если Claude откажется отвечать, запрос сам уйдёт другой модели Claude.
+prices_usd_per_mtok:   # сверять раз в месяц
+  claude-opus-5-5:           {in: 4,  out: 20, cache_read: 0.20}
+  claude-fable-5-1:          {in: 10, out: 50, cache_read: 0.25}
+  claude-haiku-4-5-20251001: {in: 1,  out: 5,  cache_read: 0.10}
+  gemini-3.1-pro-preview:    {in: 2,  out: 12, in_over_200k: 4, out_over_200k: 18}
