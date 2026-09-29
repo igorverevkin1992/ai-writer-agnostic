@@ -88,6 +88,13 @@ export class Pipeline {
     this.setStatus(step, 'approved');
   }
 
+  /** After findings are closed: needs_fix becomes draft once no blocker is open. */
+  refresh(step: StepId): StepStatus {
+    const s = this.get(step);
+    if (s.status === 'needs_fix' && this.openBlockers(step) === 0) this.setStatus(step, 'draft');
+    return this.get(step).status;
+  }
+
   skip(step: StepId): void {
     if (this.get(step).status === 'approved') throw new PipelineError(`Шаг «${LABELS[step]}» уже утверждён`);
     this.setStatus(step, 'skipped');

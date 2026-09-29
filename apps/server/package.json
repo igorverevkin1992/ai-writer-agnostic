@@ -10,6 +10,7 @@
   "dependencies": {
     "@aiw/core": "workspace:*",
     "fastify": "^5.12.5",
-    "@aiw/kb": "workspace:*"
+    "@aiw/kb": "workspace:*",
+    "zod": "^4.6.5"
   }
 }
