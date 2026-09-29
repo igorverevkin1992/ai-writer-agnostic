@@ -17,3 +17,7 @@ export function maxWords(limit: number) {
     message: `Не больше ${limit} слов`,
   });
 }
+
+/** A character acts on a fact in this episode: they must know it by then. */
+export const ActsOn = z.object({ who: NonEmpty, fact: NonEmpty });
+export type ActsOn = z.infer<typeof ActsOn>;

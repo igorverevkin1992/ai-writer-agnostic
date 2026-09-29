@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { EpisodeNumber, NonEmpty } from './common.ts';
+import { ActsOn, EpisodeNumber, NonEmpty } from './common.ts';
 
 /** Episode card ("episode" template in SPEC.md). */
 export const EpisodeCard = z.object({
@@ -18,5 +18,6 @@ export const EpisodeCard = z.object({
   sound: NonEmpty,
   metro_frame: z.object({ face: NonEmpty, action: NonEmpty, object: NonEmpty }),
   knowledge: z.object({ viewer: NonEmpty, heroine: NonEmpty, villain: NonEmpty }),
+  acts_on: z.array(ActsOn).default([]),
 });
 export type EpisodeCard = z.infer<typeof EpisodeCard>;

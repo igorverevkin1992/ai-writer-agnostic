@@ -24,13 +24,27 @@ export function episodeRange(spec: EpisodeSpec): { min: number; max: number } {
 
 export const Severity = z.enum(['blocker', 'major', 'minor']);
 
+/** One code check a rule runs: function id, optional filter by finding code, optional params. */
+export const CheckRun = z.strictObject({
+  fn: z.string().regex(/^[a-z_]+$/, 'Имя проверки — латиница и _'),
+  /** Keep only findings whose code starts with one of these, e.g. "anchor.mask". */
+  only: z.array(Text).optional(),
+  params: z.record(z.string(), z.unknown()).default({}),
+});
+export type CheckRun = z.infer<typeof CheckRun>;
+
 export const Rule = z.strictObject({
   id: z.string().regex(/^R\d{2}$/, 'Номер правила — вида R05'),
   module: Text,
   text: Text,
   /** code: what code checks (checks/code); llm: what a cross-family judge decides, with a quote. */
   check: z
-    .strictObject({ code: Text.optional(), llm: Text.optional() })
+    .strictObject({
+      code: Text.optional(),
+      llm: Text.optional(),
+      /** Code checks (packages/core/checks/code) that enforce the code part of this rule. */
+      run: z.array(CheckRun).default([]),
+    })
     .refine((c) => c.code || c.llm, 'Нужна хотя бы одна проверка: code или llm'),
   severity: Severity,
   checklist: z.strictObject({ item: Text, points: z.int().min(1) }).optional(),

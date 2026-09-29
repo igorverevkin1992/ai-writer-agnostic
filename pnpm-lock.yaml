@@ -81,6 +81,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@aiw/kb':
+        specifier: workspace:*
+        version: link:../kb
       '@anthropic-ai/sdk':
         specifier: ^0.129.0
         version: 0.129.0(zod@4.6.5)

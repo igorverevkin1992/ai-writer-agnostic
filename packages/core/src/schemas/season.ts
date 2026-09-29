@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { EpisodeNumber, NonEmpty } from './common.ts';
+import { ActsOn, EpisodeNumber, NonEmpty } from './common.ts';
 
 export const Mood = z.enum(['suffering', 'kaif', 'neutral']);
 
@@ -28,6 +28,7 @@ export const EpisodeOutline = z.object({
   villains_introduced: z.array(z.int().min(1)).default([]),
   hook_type: NonEmpty,
   cliffhanger: NonEmpty,
+  acts_on: z.array(ActsOn).default([]),
 });
 export type EpisodeOutline = z.infer<typeof EpisodeOutline>;
 

@@ -1,5 +1,12 @@
 /** Valid sample artifacts for tests. Fictional content, not genre rules. */
-import type { Bible, Concept, EpisodeCard, EpisodeOutline, Finding, Logline, Script, Villain } from './index.ts';
+import type { z } from 'zod';
+import type { Bible as BibleSchema, EpisodeCard as CardSchema, EpisodeOutline as OutlineSchema, Villain as VillainSchema } from './index.ts';
+import type { Concept, Finding, Logline, Script } from './index.ts';
+
+type Bible = z.input<typeof BibleSchema>;
+type EpisodeCard = z.input<typeof CardSchema>;
+type EpisodeOutline = z.input<typeof OutlineSchema>;
+type Villain = z.input<typeof VillainSchema>;
 
 export const sampleConcept: Concept = {
   id: 'c1',

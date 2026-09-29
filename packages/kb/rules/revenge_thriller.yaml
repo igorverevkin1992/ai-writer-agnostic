@@ -10,6 +10,8 @@ rules:
     check:
       code: "серия и секунда события betrayal: ep 1, ep1_second <= 90"
       llm: "Предательство показано с точки зрения героини: она сама видит или слышит его?"
+      run:
+        - {fn: betrayal_timing, params: {max_second: 90}}
     severity: blocker
   - id: R02
     module: revenge_thriller
@@ -17,6 +19,8 @@ rules:
     check:
       code: "ранг предателя (betrayal.who среди villains) — 1 или 2"
       llm: "Мотив предателя корыстный? Он самый близкий героине человек?"
+      run:
+        - {fn: betrayer_rank, params: {ranks: [1, 2]}}
     severity: blocker
   - id: R03
     module: revenge_thriller
@@ -24,24 +28,33 @@ rules:
     check:
       code: "у героини заполнено поле mask; опорная точка mask в сериях 1–3"
       llm: "В сценах героиня ведёт себя так, будто знает меньше, чем знает?"
+      run:
+        - {fn: season_frame, only: [anchor.mask]}
     severity: major
   - id: R04
     module: revenge_thriller
     text: "Героиня не жертва. Действует в каждой серии. Страдание — не дольше 2 серий подряд, после него кайф"
     check:
       code: "heroine_action заполнено в каждой карточке; подряд не больше 2 серий с mood suffering"
+      run:
+        - {fn: rhythm, only: [suffering]}
     severity: blocker
   - id: R05
     module: revenge_thriller
     text: "Первая победа — в 3-й серии. Снят злодей 5, пешка"
     check:
       code: "checkVillainLadder: снятие ранга 5 в серии 3"
+      run:
+        - {fn: villain_ladder, only: [takedown], params: {ranks: [5]}}
     severity: blocker
   - id: R06
     module: revenge_thriller
     text: "Удар → ответ за 1–3 серии в обе стороны. После каждой победы героини злодеи бьют в ответ за 1–3 серии"
     check:
       code: "checkRhythm"
+      run:
+        - {fn: rhythm, only: [response]}
+        - {fn: villain_ladder, only: [counterstrike]}
     severity: major
   - id: R07
     module: revenge_thriller
@@ -49,12 +62,16 @@ rules:
     check:
       code: "поля карточки заполнены; hook_type не повторяется больше 2 серий подряд"
       llm: "В серии одно событие?"
+      run:
+        - {fn: rhythm, only: [hook_repeat, emotions]}
     severity: major
   - id: R08
     module: revenge_thriller
     text: "Всегда 60 серий, точки на своих номерах ±1. Paywall после 8-й, пинч 1 — 22, мидпоинт — 30, пинч 2 — 37, падение — 45–49 (не дольше 5 серий), главное раскрытие — 48–51, финал — 59–60"
     check:
       code: "checkSeasonFrame"
+      run:
+        - {fn: season_frame}
     severity: blocker
   - id: R09
     module: revenge_thriller
@@ -62,6 +79,8 @@ rules:
     check:
       code: "в серии paywall_hook есть reveals_secret и threat_to_heroine"
       llm: "Крючок 8-й серии — самый сильный в сезоне?"
+      run:
+        - {fn: paywall_hook, params: {anchor: paywall_hook}}
     severity: blocker
   - id: R10
     module: revenge_thriller
@@ -69,12 +88,16 @@ rules:
     check:
       code: "не меньше двух смен цели в secret.goal_from/goal_to: около secret_turn и на midpoint"
       llm: "Цель мести реально меняется, а не просто добавляется информация?"
+      run:
+        - {fn: secret_turns, params: {min: 2, near: [secret_turn, midpoint]}}
     severity: major
   - id: R11
     module: revenge_thriller
     text: "Ровно пять злодеев, снизу вверх: пешка — 3, исполнитель — 18–20, страж — 38–40, правая рука — 48–50, финальный босс — 57–59. Все в кадре к 10-й серии, босс — в 1-й, под маской"
     check:
       code: "checkVillainLadder"
+      run:
+        - {fn: villain_ladder, only: [count, rank, role, on_screen, takedown, order]}
     severity: blocker
   - id: R12
     module: revenge_thriller
@@ -82,6 +105,8 @@ rules:
     check:
       code: "у каждого злодея заполнено key_to_next, у босса — link_to_ghost"
       llm: "Связь победы со следующим злодеем и связь босса с раной героини — настоящие?"
+      run:
+        - {fn: villain_ladder, only: [key_to_next]}
     severity: major
   - id: R13
     module: revenge_thriller
@@ -89,6 +114,8 @@ rules:
     check:
       code: "у каждого злодея own_plan и weakness; хотя бы у одного via_infighting: true"
       llm: "Нет ли победы за счёт глупости злодея?"
+      run:
+        - {fn: villain_ladder, only: [infighting], params: {min_infighting: 1}}
     severity: major
   - id: R14
     module: revenge_thriller
@@ -96,6 +123,8 @@ rules:
     check:
       code: "punishment.public у рангов 2 и 1"
       llm: "Сцена разоблачения — публичная и самая сильная в сезоне?"
+      run:
+        - {fn: villain_ladder, only: [public_legal]}
     severity: blocker
   - id: R15
     module: revenge_thriller
@@ -103,6 +132,8 @@ rules:
     check:
       code: "checkLegalMarkers"
       llm: "Юридический контролёр: финал законный, силовики — союзники, насилия в кадре нет?"
+      run:
+        - {fn: legal_markers}
     severity: blocker
   - id: R16
     module: revenge_thriller
@@ -116,6 +147,9 @@ rules:
     check:
       code: "checkTimeline, checkKnowledge"
       llm: "«Адвокат дьявола» по 11 типам дыр"
+      run:
+        - {fn: timeline}
+        - {fn: knowledge}
     severity: blocker
   - id: R18
     module: revenge_thriller
@@ -123,4 +157,7 @@ rules:
     check:
       code: "checkLimits, checkScriptMetrics"
       llm: "«Проверка метро» и производственный контролёр"
+      run:
+        - {fn: limits}
+        - {fn: script_metrics}
     severity: major

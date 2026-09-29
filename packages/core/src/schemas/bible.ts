@@ -19,6 +19,8 @@ export const Character = z.object({
   knows_at_start: z.array(NonEmpty).default([]),
   speech: NonEmpty,
   limits: z.array(NonEmpty).default([]),
+  /** Regular (постоянный) or episodic character. Production limits count regular ones. */
+  regular: z.boolean().default(true),
 });
 export type Character = z.infer<typeof Character>;
 
@@ -106,12 +108,41 @@ export const TimelineEvent = z.object({
   id: NonEmpty,
   year: Year,
   text: NonEmpty,
+  /** birth/death: the first participant is the one born or who died. */
+  kind: z.enum(['birth', 'death', 'other']).default('other'),
   participants: z.array(NonEmpty).default([]),
+  /** Ages stated by the story at this event, e.g. {"Лиза": 2}. Checked against birth years. */
+  ages: z.record(z.string(), z.int().min(0)).default({}),
+  /** Ids of events that must happen no later than this one. */
+  after: z.array(NonEmpty).default([]),
 });
 export type TimelineEvent = z.infer<typeof TimelineEvent>;
 
-export const Timeline = z.object({ events: z.array(TimelineEvent) });
+export const Timeline = z.object({
+  /** Year in which the season takes place. */
+  present_year: Year.optional(),
+  events: z.array(TimelineEvent),
+});
 export type Timeline = z.infer<typeof Timeline>;
+
+/** A fact of the series that scenes rely on. */
+export const Fact = z.object({
+  id: NonEmpty,
+  text: NonEmpty,
+  /** First episode where the fact is true; empty means it is true before the season starts. */
+  since_ep: EpisodeNumber.optional(),
+});
+export type Fact = z.infer<typeof Fact>;
+
+/** Who knows which fact and from which episode (0 = before the season). */
+export const KnowledgeEntry = z.object({
+  who: NonEmpty,
+  fact: NonEmpty,
+  since_ep: z.int().min(0),
+  /** How they learned it. */
+  how: z.string().optional(),
+});
+export type KnowledgeEntry = z.infer<typeof KnowledgeEntry>;
 
 export const Bible = z.object({
   world_rules: z.array(WorldRule),
@@ -122,5 +153,9 @@ export const Bible = z.object({
   secrets: z.array(Secret).min(1),
   guns: z.array(Gun),
   timeline: Timeline,
+  /** Locations the season may use. Cards must pick from this list. */
+  locations: z.array(NonEmpty).default([]),
+  facts: z.array(Fact).default([]),
+  knowledge: z.array(KnowledgeEntry).default([]),
 });
 export type Bible = z.infer<typeof Bible>;

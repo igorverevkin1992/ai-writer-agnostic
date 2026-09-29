@@ -1,0 +1,101 @@
+# Эталонная библия по концепту продюсера «Муж женился на мне ради крови».
+# Корректная: проходит все кодовые проверки. Основа для посева дыр.
+# Отличие от концепта: у события 1996 года не указан возраст Лизы (в концепте он
+# противоречит её возрасту в 2026-м — см. README.md).
+world_rules:
+  - rule: Молодость — свойство рода Лизы
+    why: Женщины этой семьи от природы стареют очень медленно
+    cost: Род становится добычей для сестёр Орловых
+    cannot: Другая кровь не работает
+    who_knows: [Вера, Анна, Герман, Олег, Зоя]
+    practical_effect: Бабушке 82, выглядит на 60; Лизе 28, дают 20
+  - rule: Сёстры не бессмертные
+    why: Они стареют как все, а кровь лишь откатывает их к 25 годам
+    cost: Раз в 30 лет им нужна новая жертва
+    cannot: Остановить старение навсегда
+    who_knows: [Вера, Анна, Зоя]
+    practical_effect: Раз в 30 лет нужна подмена «матери» и «дочери»
+  - rule: Нужна только молодая кровь
+    why: Кровь старой женщины рода не работает
+    cost: Жертва всегда — молодая женщина
+    cannot: Использовать бабушку
+    who_knows: [Вера, Анна, Герман]
+    practical_effect: Бабушка им не нужна, а Лиза и Даша нужны
+  - rule: Кровь забирают под видом лечения
+    why: Смерть от «болезни крови» выглядит естественно и не вызывает следствия
+    cost: Нужен свой врач, который ставит диагнозы
+    cannot: Забрать кровь без ведома врача
+    who_knows: [Вера, Анна, Герман, Олег]
+    practical_effect: Жертва не спит и всё видит, но уверена, что её лечат
+  - rule: Никаких клыков
+    why: Кровь хранят в медицинских пакетах
+    cost: Остаются пакеты и следы от игл
+    cannot: Пить кровь напрямую
+    who_knows: [Вера, Анна]
+    practical_effect: Сёстры пьют кровь из фарфоровых чашек
+characters:
+  - {name: Лиза, birth_year: 1998, look: "Хрупкая, тёмные волосы, выглядит на 20", ghost: "Выросла в семье, где о прошлом молчали", lie: "Прошлое лучше не знать", truth: "Пока не знаешь своё прошлое, ты беззащитна", want: "Сначала сохранить брак, потом уничтожить семью мужа", need: "Узнать правду о своём роде", arc_type: позитивная, mask: "Доверчивая больная жена", hidden_power: "Глаз реставратора и работа с архивом", knows_at_start: [], speech: "Тихо и точно", limits: ["Не причиняет вреда невиновным"]}
+  - {name: Герман, birth_year: 1994, look: "Высокий, обаятельный ведущий актёр", ghost: "Рос сыном примы в тени её тайны", lie: "Молодость можно купить", truth: "За молодость платят чужой жизнью", want: "Молодость навсегда и квартира Лизы", need: "Выбрать любовь, а не мать", arc_type: падение, mask: "Идеальный муж", hidden_power: "Актёрская убедительность", knows_at_start: [f_blood_theft, f_twins, f_dasha_target, f_herman_initiator], speech: "Мягко, с паузами", limits: ["Не поднимает руку на жену"]}
+  - {name: Вера, birth_year: 1910, look: "Прима, выглядит на 55", ghost: "Чуть не потеряла сестру в 1930-х", lie: "Семья важнее чужих жизней", truth: "Семья держится на чужой крови", want: "Кровь Лизы к юбилею театра", need: "—", arc_type: злодей, mask: "Любящая свекровь", hidden_power: "Власть над труппой", knows_at_start: [f_blood_theft, f_twins, f_dasha_target, f_herman_initiator], speech: "Властно, коротко", limits: ["Не выносит скандалов на людях"]}
+  - {name: Анна, birth_year: 1910, look: "Под гримом — копия Веры; для всех — 90-летняя легенда", ghost: "Умирала от болезни в 1930-х", lie: "Смерть можно обмануть", truth: "Обман требует всё новых жертв", want: "Молодость", need: "—", arc_type: злодей, mask: "Девяностолетняя легенда театра", hidden_power: "Никто не видит её настоящего лица", knows_at_start: [f_blood_theft, f_twins], speech: "Старчески медленно на людях", limits: ["Не выходит без грима"]}
+  - {name: Олег, birth_year: 1976, look: "Аккуратный врач в очках", ghost: "Сын прежнего врача театра", lie: "Врач не отвечает за чужие решения", truth: "Он соучастник", want: "Деньги и обещанная молодость", need: "—", arc_type: злодей, mask: "Заботливый семейный врач", hidden_power: "Доступ к анализам", knows_at_start: [f_blood_theft], speech: "Спокойно, медицинскими терминами", limits: ["Боится сестёр больше закона"]}
+  - {name: Зоя, birth_year: 1948, look: "Сухонькая старушка-гримёр", ghost: "Её учителя «сбросили с колосников» в 1967-м", lie: "Молчание спасает", truth: "Молчание убивает", want: "Искупить вину", need: "Заговорить", arc_type: позитивная, mask: "Безумная старуха", hidden_power: "Её руки делают Анне лицо", knows_at_start: [f_twins, f_blood_theft, f_herman_initiator], speech: "Шёпотом, обрывками", limits: ["Боится высоты"]}
+  - {name: Нина Сергеевна, birth_year: 1944, look: "Выглядит на 60", ghost: "Сбежала в 1966-м, вместо неё погибла сестра", lie: "Молчание защищает семью", truth: "Молчание сделало внучку беззащитной", want: "Спасти внучек", need: "Рассказать правду", arc_type: позитивная, mask: "Строгая бабушка", hidden_power: "Помнит 1966 год", knows_at_start: [f_twins], speech: "Скупо", limits: ["До 50-й серии — только по видеосвязи"], regular: false}
+  - {name: Даша, birth_year: 2007, look: "Юная, похожа на сестру", ghost: "—", lie: "—", truth: "—", want: "Стать актрисой", need: "—", arc_type: статичная, mask: "—", hidden_power: "—", knows_at_start: [], speech: "Быстро", limits: ["Почти за кадром"], regular: false}
+villains:
+  - {name: Кира, rank: 5, role: pawn, threat: "Унижение и слежка", motive: "Карьера протеже примы", own_plan: "Шпионит за Лизой для Веры", resources: "Доступ к труппе", weakness: "Тщеславие и болтливость", on_screen_ep: 1, mask: "Язвительная коллега", first_strike_ep: 1, takedown_ep: 3, punishment: {type: shame, public: true}, key_to_next: "Прощальная фраза про прошлую невесту → Соня → врач", ties: [{villain: Вера, relation: протеже}], knows: []}
+  - {name: Олег, rank: 4, role: executor, threat: "Здоровье и деньги", motive: "Деньги и обещанная молодость", own_plan: "Ставит поддельные диагнозы и забирает кровь", resources: "Кабинет врача и картотека", weakness: "Боится сестёр больше закона", on_screen_ep: 1, mask: "Заботливый семейный врач", first_strike_ep: 2, takedown_ep: 20, punishment: {type: law, public: false}, via_infighting: true, key_to_next: "Медкарта «90-летней» Анны: по анализам ей около 55", ties: [{villain: Вера, relation: работает на неё}], knows: [{fact: f_blood_theft, since_ep: 1}]}
+  - {name: Анна, rank: 3, role: guardian, threat: "Близкие и свобода", motive: "Молодость", own_plan: "Хранит тайну под старческим гримом", resources: "Статус легенды театра и семейный сейф", weakness: "Зависит от рук Зои", on_screen_ep: 1, mask: "Девяностолетняя легенда театра", first_strike_ep: 9, takedown_ep: 39, punishment: {type: flight, public: true}, key_to_next: "Без Анны открыт семейный сейф", ties: [{villain: Вера, relation: сестра-близнец}], knows: [{fact: f_twins, since_ep: 1}, {fact: f_blood_theft, since_ep: 1}, {fact: f_lisa_saw, since_ep: 8}]}
+  - {name: Вера, rank: 2, role: right_hand, threat: "Жизнь и будущее", motive: "Кровь Лизы к юбилею театра", own_plan: "Угасание невестки к ночи столетия", resources: "Власть примы над труппой", weakness: "Не доверяет даже сыну", on_screen_ep: 1, mask: "Любящая свекровь", first_strike_ep: 5, takedown_ep: 50, punishment: {type: law, public: true}, key_to_next: "Показания против сына", ties: [{villain: Герман, relation: мать}, {villain: Анна, relation: сестра-близнец}], knows: [{fact: f_lisa_saw, since_ep: 9}]}
+  - {name: Герман, rank: 1, role: boss, threat: "Личность, семья, жизнь", link_to_ghost: "Нашёл Лизу потому, что о её роде все молчали", motive: "Молодость навсегда и квартира Лизы", own_plan: "Довести цикл до ночи столетия", resources: "Доверие жены и роль мужа", weakness: "Влюбляется в Лизу", on_screen_ep: 1, mask: "Идеальный муж", first_strike_ep: 1, takedown_ep: 58, punishment: {type: law, public: true}, key_to_next: "—", ties: [{villain: Вера, relation: сын}], knows: [{fact: f_betrayal, since_ep: 1}]}
+betrayal:
+  who: Герман
+  what: Женился на Лизе ради крови её рода
+  why: Мать обещала, что кровь Лизы вернёт молодость и ему; квартира Лизы
+  year: 2026
+  accomplices: [Вера, Анна, Олег]
+  who_else_knew: [{name: Зоя, why_silent: "Боится повторить судьбу своего учителя"}]
+  ep1_second: 80
+secrets:
+  - {layer: 1, truth: "«90-летняя» Анна — сестра-близнец Веры в гриме", revealed_ep: 8, goal_from: "наказать мужа", goal_to: "наказать мужа", clues: ["фото 1966 года", "фарфоровая чашка"]}
+  - {layer: 2, truth: "Семья Орловых 90 лет крадёт молодость женщин рода Лизы; следующая — Даша", revealed_ep: 10, goal_from: "наказать мужа", goal_to: "спасти Дашу и остановить семью", clues: ["четыре фото бабушки"]}
+  - {layer: 3, truth: "Цикл начал сам Герман, а не мать; «угасание» назначено на ночь столетия", revealed_ep: 30, goal_from: "спасти Дашу и остановить семью", goal_to: "сорвать ночь столетия и наказать Германа", clues: ["слова Зои"]}
+  - {layer: 4, truth: "90 лет подлога: одно лицо на фото 1936, 1966 и 1996 годов", revealed_ep: 49, goal_from: "сорвать ночь столетия и наказать Германа", goal_to: "сорвать ночь столетия и наказать Германа", clues: ["реставрации Лизы"]}
+guns:
+  - {id: g_photo, object: "Фото 1966 года", planted_ep: 2, fired_ep: 49, metro_visible: true}
+  - {id: g_cup, object: "Фарфоровая чашка", planted_ep: 7, fired_ep: 50, metro_visible: true}
+  - {id: g_attorney, object: "Доверенность на квартиру", planted_ep: 5, fired_ep: 35, metro_visible: true}
+  - {id: g_keys, object: "Ключи от квартиры", planted_ep: 28, fired_ep: 59, metro_visible: true}
+timeline:
+  present_year: 2026
+  events:
+    - {id: e_anna_ill, year: 1935, text: "Анна умирает от болезни, Вера делает ей переливание", participants: [Анна, Вера], ages: {Анна: 25, Вера: 25}}
+    - {id: e_first_victim, year: 1936, text: "Первая жертва — донор из рода Лизы", participants: [Анна, Вера], after: [e_anna_ill]}
+    - {id: e_nina_born, year: 1944, kind: birth, text: "Рождение Нины Сергеевны", participants: [Нина Сергеевна]}
+    - {id: e_zoya_born, year: 1948, kind: birth, text: "Рождение Зои", participants: [Зоя]}
+    - {id: e_theatre, year: 1966, text: "Сёстры приходят в театр; их цель — юная актриса Нина", participants: [Анна, Вера, Нина Сергеевна, Зоя], ages: {Нина Сергеевна: 22, Зоя: 18}}
+    - {id: e_escape, year: 1966, text: "Нина сбегает накануне премьеры, вместо неё гибнет её младшая сестра", participants: [Нина Сергеевна], after: [e_theatre]}
+    - {id: e_grimer, year: 1967, text: "Старый гримёр «срывается с колосников», его место занимает Зоя", participants: [Зоя], ages: {Зоя: 19}, after: [e_escape]}
+    - {id: e_oleg_born, year: 1976, kind: birth, text: "Рождение Олега", participants: [Олег]}
+    - {id: e_herman_born, year: 1994, kind: birth, text: "У Веры рождается сын Герман", participants: [Герман, Вера]}
+    - {id: e_aunt, year: 1996, text: "Смерть двоюродной тёти Лизы от «болезни крови»; подмена сестёр", participants: [Анна, Вера, Герман], ages: {Герман: 2}, after: [e_herman_born]}
+    - {id: e_lisa_born, year: 1998, kind: birth, text: "Рождение Лизы", participants: [Лиза]}
+    - {id: e_dasha_born, year: 2007, kind: birth, text: "Рождение Даши", participants: [Даша]}
+    - {id: e_sonya, year: 2024, text: "Помолвка Германа с Соней; врач Олег начинает «лечение»", participants: [Герман, Олег], ages: {Герман: 30}}
+    - {id: e_wedding, year: 2026, text: "Свадьба Лизы и Германа", participants: [Лиза, Герман, Вера, Анна, Олег, Зоя], ages: {Лиза: 28, Герман: 32, Зоя: 78, Олег: 50}, after: [e_sonya]}
+locations: [фойе, зрительный зал, сцена, трюм под сценой, гримёрка Зои, архив, кабинет врача, служебная квартира семьи, буфет]
+facts:
+  - {id: f_betrayal, text: "Герман женился на Лизе по плану семьи", since_ep: 1}
+  - {id: f_lisa_saw, text: "Лиза видела Анну без грима", since_ep: 8}
+  - {id: f_twins, text: "Анна — сестра-близнец Веры в старческом гриме"}
+  - {id: f_blood_theft, text: "Кровь забирают под видом лечения"}
+  - {id: f_dasha_target, text: "Даша — следующая в роду"}
+  - {id: f_herman_initiator, text: "Цикл начал сам Герман"}
+  - {id: f_vera_testimony, text: "Вера дала показания против сына", since_ep: 50}
+knowledge:
+  - {who: Лиза, fact: f_betrayal, since_ep: 1, how: "Слышит разговор на свадьбе"}
+  - {who: Лиза, fact: f_twins, since_ep: 8, how: "Видит Анну без грима"}
+  - {who: Лиза, fact: f_dasha_target, since_ep: 10, how: "Рассказ бабушки"}
+  - {who: Лиза, fact: f_blood_theft, since_ep: 13, how: "Рассказ Сони"}
+  - {who: Лиза, fact: f_herman_initiator, since_ep: 30, how: "Признание Зои"}
+  - {who: Герман, fact: f_vera_testimony, since_ep: 51, how: "Звонок адвоката"}

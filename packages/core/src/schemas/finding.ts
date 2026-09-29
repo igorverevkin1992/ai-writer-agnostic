@@ -18,6 +18,10 @@ export const Finding = z
     fixes: z.array(NonEmpty).min(1).max(2),
     status: FindingStatus,
     resolutionFactId: NonEmpty.optional(),
+    /** Genre rule this finding breaks, e.g. "R08". */
+    rule: NonEmpty.optional(),
+    /** Code check that produced it, e.g. "season_frame.anchor". */
+    check: NonEmpty.optional(),
   })
   .superRefine((f, ctx) => {
     if (f.status === 'dismissed' && !f.resolutionFactId) {

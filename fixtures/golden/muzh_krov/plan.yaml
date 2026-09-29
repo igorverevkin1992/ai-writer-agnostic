@@ -1,0 +1,1136 @@
+# Эталонный план сезона по концепту продюсера. Корректный: проходит все кодовые проверки.
+# Основа для посева дыр (scripts/seed-holes.ts). Детали серий — по «Карте сезона» концепта.
+episodes:
+- ep: 1
+  title: Свадьба
+  event: 'На свадьбе в фойе театра Лиза слышит, как Герман говорит матери: «Она ничего не подозревает»'
+  question: Зачем он на ней женился?
+  emotions:
+  - радость
+  - шок
+  heroine_action: Делает вид, что ничего не слышала
+  mood: suffering
+  anchors:
+  - betrayal
+  - mask
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced:
+  - 5
+  - 4
+  - 3
+  - 2
+  - 1
+  hook_type: предательство
+  cliffhanger: Лиза улыбается мужу, сжимая бокал
+  acts_on: []
+- ep: 2
+  title: Фото 1966 года
+  event: 'В архиве Лиза видит фото 1966 года: юная Анна с лицом свекрови. Врач берёт кровь «для страховки»'
+  question: Как свекровь может быть на фото 1966 года?
+  emotions:
+  - тревога
+  - любопытство
+  heroine_action: Прячет копию фото
+  mood: suffering
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: тайна
+  cliffhanger: Игла входит в вену, Лиза смотрит на фото
+  acts_on: []
+- ep: 3
+  title: Ловушка для Киры
+  event: Кира крадёт телефон Лизы. Лиза подбрасывает ложное сообщение и ловит её при всей труппе. Прима выгоняет Киру
+  question: Кто стоит за Кирой?
+  emotions:
+  - азарт
+  - торжество
+  heroine_action: Подбрасывает ложное сообщение
+  mood: kaif
+  anchors:
+  - first_strike
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  takedown_rank: 5
+  villains_introduced: []
+  hook_type: победа
+  cliffhanger: Вера холодно смотрит на невестку
+  acts_on:
+  - who: Лиза
+    fact: f_betrayal
+- ep: 4
+  title: Прошлая невеста
+  event: 'Уходя, Кира говорит: «Спроси про его прошлую невесту». Бабушка молча бросает трубку, увидев фото'
+  question: Что знает бабушка?
+  emotions:
+  - любопытство
+  - тревога
+  heroine_action: Отправляет фото бабушке
+  mood: neutral
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: вопрос
+  cliffhanger: Гудки в трубке
+  acts_on: []
+- ep: 5
+  title: Доверенность
+  event: Герман просит подписать доверенность на квартиру Лизы «для ремонта»
+  question: Зачем ему её квартира?
+  emotions:
+  - страх
+  - унижение
+  heroine_action: Подписывает, чтобы не выдать себя
+  mood: suffering
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: Подпись на доверенности
+  acts_on: []
+- ep: 6
+  title: Диагноз
+  event: Врач ставит Лизе «болезнь крови» и назначает лечение
+  question: Больна ли она на самом деле?
+  emotions:
+  - страх
+  - решимость
+  heroine_action: Тайком фотографирует бланк анализа
+  mood: suffering
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: 'Врач: «Начнём завтра»'
+  acts_on: []
+- ep: 7
+  title: Фарфоровая чашка
+  event: Первая «капельница». Ночью Лиза видит, как свекровь пьёт тёмное из фарфоровой чашки
+  question: Что пьёт свекровь?
+  emotions:
+  - ужас
+  - любопытство
+  heroine_action: Сохраняет пустой пакет от капельницы
+  mood: neutral
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: тайна
+  cliffhanger: Тёмный след на краю чашки
+  acts_on: []
+- ep: 8
+  title: Зеркало
+  event: Ночью в гримёрке «90-летняя» Анна снимает старческое лицо — под ним копия свекрови. Их взгляды встречаются в зеркале
+  question: Что сделают с Лизой теперь?
+  emotions:
+  - ужас
+  - шок
+  - страх
+  heroine_action: Пробирается ночью в гримёрку
+  mood: neutral
+  anchors:
+  - paywall_hook
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: Взгляды в зеркале встречаются
+  acts_on: []
+- ep: 9
+  title: Маска держится
+  event: 'Анна говорит сестре: «Она видела». Герман защищает жену: «Она ничего не понимает»'
+  question: Поверят ли они?
+  emotions:
+  - страх
+  - напряжение
+  heroine_action: Играет полусонную от лекарств
+  mood: suffering
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: Анна наклоняется к лицу Лизы
+  acts_on:
+  - who: Анна
+    fact: f_lisa_saw
+- ep: 10
+  title: Четыре фото
+  event: 'Бабушка по видеосвязи показывает четыре снимка: театр 1966 года, подруга Зоя, сестра, могила сестры'
+  question: Кто следующая после Лизы?
+  emotions:
+  - горе
+  - решимость
+  heroine_action: Записывает рассказ бабушки
+  mood: neutral
+  anchors:
+  - secret_turn
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: тайна
+  cliffhanger: На последнем фото — могила
+  acts_on: []
+- ep: 11
+  title: Поиск Сони
+  event: Лиза находит прошлую невесту Германа через труппу
+  question: Жива ли Соня?
+  emotions:
+  - надежда
+  - азарт
+  heroine_action: Выпрашивает адрес у костюмерши
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: вопрос
+  cliffhanger: Дверь открывает здоровая женщина
+  acts_on: []
+- ep: 12
+  title: Соня
+  event: 'Соня рассказывает: «Как только я ушла отсюда, через два месяца всё прошло»'
+  question: Что с ней делали?
+  emotions:
+  - облегчение
+  - гнев
+  heroine_action: Уговаривает Соню встретиться ещё раз
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: раскрытие
+  cliffhanger: 'Соня закатывает рукав: следы от игл'
+  acts_on: []
+- ep: 13
+  title: Доверенность Сони
+  event: 'Соня вспоминает: её тоже просили подписать доверенность'
+  question: Сколько их было до неё?
+  emotions:
+  - гнев
+  - решимость
+  heroine_action: Сверяет даты болезни Сони и доверенности
+  mood: neutral
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: вопрос
+  cliffhanger: Две доверенности рядом
+  acts_on: []
+- ep: 14
+  title: Контрход
+  event: Лиза тайно перестаёт «лечиться» и изображает болезнь
+  question: Заметит ли врач?
+  emotions:
+  - азарт
+  - страх
+  heroine_action: Подменяет таблетки витаминами
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ловушка
+  cliffhanger: Врач хмурится над анализом
+  acts_on:
+  - who: Лиза
+    fact: f_blood_theft
+- ep: 15
+  title: Архив доверенностей
+  event: В архиве Лиза находит доверенности всех прошлых жертв на имя Орловых
+  question: Кто эти женщины?
+  emotions:
+  - шок
+  - гнев
+  heroine_action: Фотографирует документы
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: раскрытие
+  cliffhanger: Фамилии жертв складываются в родословную
+  acts_on: []
+- ep: 16
+  title: Звонок Сони
+  event: 'Лиза подставляет Германа: Вера видит, что сын скрыл от неё звонок Сони'
+  question: Что Вера сделает с сыном?
+  emotions:
+  - азарт
+  - злорадство
+  heroine_action: Оставляет телефон мужа на виду у свекрови
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ловушка
+  cliffhanger: Вера читает сообщения сына
+  acts_on: []
+- ep: 17
+  title: Недоверие
+  event: Вера перестаёт доверять сыну и назначает Лизе новую процедуру
+  question: Выдержит ли Лиза новую процедуру?
+  emotions:
+  - страх
+  - удовлетворение
+  heroine_action: Тянет время, жалуясь на слабость
+  mood: suffering
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: Капельница у кровати
+  acts_on: []
+- ep: 18
+  title: Подмена пакета
+  event: Лиза подменяет пакет со своей кровью
+  question: Что будет с сёстрами?
+  emotions:
+  - страх
+  - азарт
+  heroine_action: Меняет этикетки на пакетах
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ловушка
+  cliffhanger: Пакет уносят наверх
+  acts_on:
+  - who: Лиза
+    fact: f_blood_theft
+- ep: 19
+  title: Сёстрам плохо
+  event: Сёстрам становится плохо, они обвиняют врача
+  question: Кто ответит за ошибку?
+  emotions:
+  - злорадство
+  - тревога
+  heroine_action: Подсказывает Вере, что врач ошибся
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: раскрытие
+  cliffhanger: Вера хлопает ладонью по столу врача
+  acts_on: []
+- ep: 20
+  title: Арест врача
+  event: Поддельные диагнозы — у следователя Пановой. Врача арестовывают
+  question: Кто ещё знал?
+  emotions:
+  - торжество
+  - облегчение
+  heroine_action: Передаёт следователю бланки анализов
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  takedown_rank: 4
+  villains_introduced: []
+  hook_type: победа
+  cliffhanger: Врача уводят мимо Веры
+  acts_on: []
+- ep: 21
+  title: Открытая война
+  event: 'Семья понимает: невестка опасна'
+  question: Что они сделают дальше?
+  emotions:
+  - страх
+  - решимость
+  heroine_action: Прячет доказательства в архиве
+  mood: suffering
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: Герман запирает дверь спальни
+  acts_on: []
+- ep: 22
+  title: Даша в театре
+  event: Вера зовёт Дашу, сестру Лизы, стажёркой в театр
+  question: Успеет ли Лиза спасти сестру?
+  emotions:
+  - ужас
+  - гнев
+  heroine_action: Пытается отговорить сестру
+  mood: suffering
+  anchors:
+  - pinch1
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: опасность близкому
+  cliffhanger: Даша подписывает договор
+  acts_on: []
+- ep: 23
+  title: Запись
+  event: Лиза записывает, как Герман врёт матери про её «лечение»
+  question: Что Вера сделает с записью?
+  emotions:
+  - азарт
+  - решимость
+  heroine_action: Прячет телефон с диктофоном
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ловушка
+  cliffhanger: Вера слушает запись
+  acts_on: []
+- ep: 24
+  title: Главная роль
+  event: 'Вера наказывает сына: снимает его с главной роли в юбилейном спектакле'
+  question: Кому Герман отомстит?
+  emotions:
+  - злорадство
+  - тревога
+  heroine_action: Утешает мужа, пряча улыбку
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: победа
+  cliffhanger: Имя Германа вычёркнуто из афиши
+  acts_on: []
+- ep: 25
+  title: Сейф
+  event: Через Германа Лиза попадает в семейный сейф
+  question: Что внутри?
+  emotions:
+  - азарт
+  - страх
+  heroine_action: Запоминает код, пока муж открывает сейф
+  mood: neutral
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: тайна
+  cliffhanger: Дверца сейфа открыта
+  acts_on: []
+- ep: 26
+  title: Доверенность 1936 года
+  event: В сейфе Лиза находит первую доверенность, 1936 года
+  question: Сколько лет длится схема?
+  emotions:
+  - шок
+  - торжество
+  heroine_action: Фотографирует доверенность
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: раскрытие
+  cliffhanger: Подпись 1936 года
+  acts_on: []
+- ep: 27
+  title: Спасение Даши
+  event: Вера ведёт Дашу к новому врачу. Лиза с бабушкой увозят Дашу за минуту до процедуры
+  question: Простит ли Вера?
+  emotions:
+  - страх
+  - облегчение
+  heroine_action: Увозит сестру из клиники
+  mood: kaif
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: опасность близкому
+  cliffhanger: Пустое кресло процедурной
+  acts_on:
+  - who: Лиза
+    fact: f_dasha_target
+- ep: 28
+  title: Ключи
+  event: Герман влюбляется и мечется. Лиза уговаривает его вернуть ключи от квартиры
+  question: Любит ли он её?
+  emotions:
+  - нежность
+  - сомнение
+  heroine_action: Уговаривает мужа вернуть ключи
+  mood: neutral
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: вопрос
+  cliffhanger: Ключи в её ладони
+  acts_on: []
+- ep: 29
+  title: Давление
+  event: 'Вера давит на сына: цикл нельзя остановить'
+  question: Кого выберет Герман?
+  emotions:
+  - смятение
+  - тревога
+  heroine_action: Подслушивает разговор матери и сына
+  mood: suffering
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: 'Вера: «Ночь столетия»'
+  acts_on: []
+- ep: 30
+  title: Правда Зои
+  event: 'Лиза показывает Зое фото бабушки. Зоя раскрывает: цикл начал сам Герман, «угасание» назначено на ночь столетия'
+  question: Кто её настоящий враг?
+  emotions:
+  - шок
+  - ярость
+  - решимость
+  heroine_action: Показывает Зое фото бабушки
+  mood: neutral
+  anchors:
+  - midpoint
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: раскрытие
+  cliffhanger: 'Зоя: «Это он тебя нашёл»'
+  acts_on:
+  - who: Зоя
+    fact: f_herman_initiator
+- ep: 31
+  title: Копия архива
+  event: Зоя и Лиза копируют архив. Вера почти ловит их
+  question: Заметила ли Вера?
+  emotions:
+  - страх
+  - азарт
+  heroine_action: Переводит подозрение на Анну
+  mood: neutral
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ловушка
+  cliffhanger: Шаги Веры в коридоре архива
+  acts_on:
+  - who: Лиза
+    fact: f_herman_initiator
+- ep: 32
+  title: Ссора сестёр
+  event: Сёстры ссорятся из-за пропавших бумаг
+  question: Кто из сестёр сорвётся?
+  emotions:
+  - злорадство
+  - напряжение
+  heroine_action: Подкладывает бумаги в комнату Анны
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: победа
+  cliffhanger: Вера захлопывает дверь перед Анной
+  acts_on: []
+- ep: 33
+  title: Признание
+  event: Герман признаётся Лизе в любви
+  question: Правда ли он любит?
+  emotions:
+  - нежность
+  - смятение
+  heroine_action: Слушает, не выдавая себя
+  mood: neutral
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: вопрос
+  cliffhanger: Герман целует ей руку
+  acts_on: []
+- ep: 34
+  title: Почти верит
+  event: Лиза почти верит мужу
+  question: Не ловушка ли это?
+  emotions:
+  - надежда
+  - сомнение
+  heroine_action: Проверяет его обещания
+  mood: neutral
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: вопрос
+  cliffhanger: Герман отвечает на звонок матери
+  acts_on: []
+- ep: 35
+  title: Нотариус
+  event: Через нотариуса Лиза отзывает доверенность. Квартира снова её
+  question: Как ответит семья?
+  emotions:
+  - торжество
+  - облегчение
+  heroine_action: Отзывает доверенность у нотариуса
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: победа
+  cliffhanger: Печать нотариуса
+  acts_on: []
+- ep: 36
+  title: Ярость семьи
+  event: Семья в ярости из-за квартиры. Вера угрожает Лизе
+  question: Что Вера сделает?
+  emotions:
+  - гнев
+  - страх
+  heroine_action: Держит лицо перед свекровью
+  mood: neutral
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: 'Вера: «Ты пожалеешь»'
+  acts_on: []
+- ep: 37
+  title: Выбор Германа
+  event: Герман выбирает мать и сдаёт ей папку с доказательствами
+  question: Как Лиза переживёт это?
+  emotions:
+  - боль
+  - ярость
+  heroine_action: Понимает, что папка пропала
+  mood: suffering
+  anchors:
+  - pinch2
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: предательство
+  cliffhanger: Вера листает папку
+  acts_on: []
+- ep: 38
+  title: Отказ Зои
+  event: Зоя отказывается делать Анне старческое лицо
+  question: Выйдет ли Анна к прессе?
+  emotions:
+  - решимость
+  - страх
+  heroine_action: Уговаривает Зою не бояться
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ловушка
+  cliffhanger: Пустое кресло гримёрки
+  acts_on:
+  - who: Зоя
+    fact: f_twins
+- ep: 39
+  title: Бегство Анны
+  event: Анна не выходит к прессе, следователь находит её поддельные документы, Анна бежит
+  question: Куда бежит Анна?
+  emotions:
+  - торжество
+  - тревога
+  heroine_action: Наводит следователя на документы Анны
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  takedown_rank: 3
+  villains_introduced: []
+  hook_type: победа
+  cliffhanger: Машина Анны уезжает ночью
+  acts_on: []
+- ep: 40
+  title: Открытый сейф
+  event: 'Без Анны открыт семейный сейф: 90 лет доверенностей и наследств'
+  question: Кто ответит за 90 лет?
+  emotions:
+  - шок
+  - решимость
+  heroine_action: Копирует документы из сейфа
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: раскрытие
+  cliffhanger: Стопка доверенностей
+  acts_on: []
+- ep: 41
+  title: Даша заболевает
+  event: Даша «заболевает»
+  question: Успеет ли Лиза?
+  emotions:
+  - ужас
+  - вина
+  heroine_action: Везёт сестру к независимому врачу
+  mood: suffering
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: опасность близкому
+  cliffhanger: Даша бледнеет на репетиции
+  acts_on: []
+- ep: 42
+  title: Возвращение
+  event: Лиза сама возвращается в семью, чтобы спасти сестру
+  question: Что с ней сделают?
+  emotions:
+  - решимость
+  - страх
+  heroine_action: 'Ставит условие: Дашу больше не трогают'
+  mood: suffering
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: опасность близкому
+  cliffhanger: Дверь квартиры закрывается за Лизой
+  acts_on: []
+- ep: 43
+  title: Условие
+  event: Вера прекращает «лечение» Даши
+  question: Сдержит ли Вера слово?
+  emotions:
+  - облегчение
+  - тревога
+  heroine_action: Добивается письменного обещания Веры
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: победа
+  cliffhanger: Даша уезжает домой
+  acts_on: []
+- ep: 44
+  title: Цена
+  event: Вера требует кровь Лизы взамен
+  question: Сколько времени у Лизы?
+  emotions:
+  - страх
+  - решимость
+  heroine_action: Соглашается, чтобы выиграть время
+  mood: neutral
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: 'Вера: «Каждую неделю»'
+  acts_on: []
+- ep: 45
+  title: Взаперти
+  event: Вера и Герман запирают Лизу в квартире при театре, труппе говорят, что она больна
+  question: Кто её найдёт?
+  emotions:
+  - ужас
+  - отчаяние
+  heroine_action: Прячет записку в гримёрном наборе
+  mood: suffering
+  anchors:
+  - fall
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: Щелчок замка
+  acts_on: []
+- ep: 46
+  title: Угасание
+  event: Лизу «лечат» каждый день
+  question: Дождётся ли она помощи?
+  emotions:
+  - отчаяние
+  - решимость
+  heroine_action: Считает смены и запоминает время уколов
+  mood: suffering
+  anchors:
+  - fall
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: тайна
+  cliffhanger: Зоя замечает записку
+  acts_on: []
+- ep: 47
+  title: Передача
+  event: Через Зою Лиза передаёт следователю копии архива
+  question: Поверит ли следователь?
+  emotions:
+  - надежда
+  - страх
+  heroine_action: Передаёт копии архива через Зою
+  mood: kaif
+  anchors:
+  - fall
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ловушка
+  cliffhanger: Следователь открывает конверт
+  acts_on: []
+- ep: 48
+  title: Выставка
+  event: Подготовка юбилейной выставки. Зоя выводит Лизу к труппе
+  question: Что она покажет?
+  emotions:
+  - страх
+  - решимость
+  heroine_action: Выходит к труппе с реставрациями
+  mood: kaif
+  anchors:
+  - reveal
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: раскрытие
+  cliffhanger: Лиза снимает ткань со стенда
+  acts_on: []
+- ep: 49
+  title: Одно лицо
+  event: 'Лиза открывает свои реставрации: одно лицо на фото 1936, 1966 и 1996 годов'
+  question: Как Вера это объяснит?
+  emotions:
+  - шок
+  - торжество
+  heroine_action: Показывает три фото рядом
+  mood: kaif
+  anchors:
+  - reveal
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: раскрытие
+  cliffhanger: Труппа смотрит на Веру
+  acts_on:
+  - who: Лиза
+    fact: f_twins
+- ep: 50
+  title: Арест Веры
+  event: Следователь приходит с документами о 90 годах подлога. Веру арестовывают, и она даёт показания против сына
+  question: Что будет с Германом?
+  emotions:
+  - торжество
+  - шок
+  heroine_action: Передаёт следователю оригиналы
+  mood: kaif
+  anchors:
+  - reveal
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  takedown_rank: 2
+  villains_introduced: []
+  hook_type: предательство
+  cliffhanger: 'Вера: «Это всё он»'
+  acts_on: []
+- ep: 51
+  title: Герман один
+  event: Герман остаётся один и сам берётся довести «угасание» до конца
+  question: Сколько ей осталось?
+  emotions:
+  - страх
+  - гнев
+  heroine_action: Замечает, что муж узнал о показаниях
+  mood: suffering
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: Герман готовит капельницу
+  acts_on:
+  - who: Герман
+    fact: f_vera_testimony
+- ep: 52
+  title: Сломлена
+  event: Лиза делает вид, что сломлена
+  question: Поверит ли Герман?
+  emotions:
+  - боль
+  - решимость
+  heroine_action: Изображает покорность
+  mood: suffering
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ловушка
+  cliffhanger: Герман гладит её по голове
+  acts_on: []
+- ep: 53
+  title: План
+  event: Лиза договаривается со следователем о ночи столетия
+  question: Успеют ли они?
+  emotions:
+  - азарт
+  - тревога
+  heroine_action: Тайно звонит следователю
+  mood: kaif
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: вопрос
+  cliffhanger: 'Следователь: «Мы будем в зале»'
+  acts_on: []
+- ep: 54
+  title: Бабушка
+  event: Бабушка приезжает в театр. Герман назначает процедуру на ночь столетия
+  question: Узнает ли Герман бабушку?
+  emotions:
+  - нежность
+  - страх
+  heroine_action: Прячет бабушку в зале
+  mood: neutral
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: Герман смотрит в зал
+  acts_on: []
+- ep: 55
+  title: Подготовка
+  event: Лиза и Зоя готовят доказательства к показу на юбилее
+  question: Сработает ли план?
+  emotions:
+  - решимость
+  - волнение
+  heroine_action: Собирает доказательства на флешку
+  mood: neutral
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: тайна
+  cliffhanger: Флешка в кармане платья
+  acts_on: []
+- ep: 56
+  title: Канун
+  event: Герман запирает гримёрку, Лиза выбирается через трюм
+  question: Успеет ли она на сцену?
+  emotions:
+  - страх
+  - азарт
+  heroine_action: Выбирается через трюм под сценой
+  mood: neutral
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: Лиза поднимается по лестнице трюма
+  acts_on: []
+- ep: 57
+  title: Юбилей
+  event: На юбилее Герман объявляет, что жена тяжело больна. Лиза выходит на сцену сама
+  question: Кому поверит зал?
+  emotions:
+  - напряжение
+  - торжество
+  heroine_action: Выходит на сцену
+  mood: kaif
+  anchors:
+  - boss_takedown
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ловушка
+  cliffhanger: Лиза у микрофона
+  acts_on:
+  - who: Лиза
+    fact: f_herman_initiator
+- ep: 58
+  title: Битва историй
+  event: '«Битва историй»: версия Германа против доказательств Лизы и показаний матери. Герман на коленях: «Я любил тебя по-настоящему»'
+  question: Что будет с Германом?
+  emotions:
+  - торжество
+  - горечь
+  heroine_action: Показывает доказательства залу
+  mood: kaif
+  anchors:
+  - boss_takedown
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  takedown_rank: 1
+  villains_introduced: []
+  hook_type: победа
+  cliffhanger: «Знаю. Но ты всё равно привёл меня сюда»
+  acts_on: []
+- ep: 59
+  title: Приговор
+  event: Германа арестовывают при полном зале
+  question: Как Лиза будет жить дальше?
+  emotions:
+  - облегчение
+  - горечь
+  heroine_action: Отдаёт следователю ключи от квартиры семьи
+  mood: kaif
+  anchors:
+  - finale
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: вопрос
+  cliffhanger: Двери зала закрываются
+  acts_on: []
+- ep: 60
+  title: Новая жизнь
+  event: Лиза, Даша и бабушка уходят из театра. Анна в чужом городе смотрит на афишу с фамилией бабушки
+  question: Кого выберет Анна?
+  emotions:
+  - свобода
+  - тревога
+  heroine_action: Уходит из театра свободной
+  mood: kaif
+  anchors:
+  - finale
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: тайна
+  cliffhanger: Анна смотрит на афишу
+  acts_on: []
+deviations: []
