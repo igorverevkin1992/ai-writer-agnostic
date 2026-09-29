@@ -19,3 +19,5 @@ export * from './providers/index.ts';
 export * from './db/index.ts';
 export * from './checks/code/index.ts';
 export * from './fixtures.ts';
+export * from './memory/index.ts';
+export * from './eval/index.ts';

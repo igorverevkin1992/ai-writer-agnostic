@@ -1,0 +1,412 @@
+# Посеянные дыры для проекта muzh_krov (seed 1). Каждая дыра — правка эталона fixtures/golden/muzh_krov.
+# Создано командой pnpm seed-holes. Не править вручную.
+project: muzh_krov
+seed: 1
+genre: revenge_thriller
+holes:
+  - id: h01
+    holeType: 7
+    description: Анна родился в 1941, но участвует в «Анна умирает от болезни, Вера делает ей переливание» (1935)
+    patch:
+      - op: replace
+        path: /bible/characters/3/birth_year
+        value: 1941
+  - id: h02
+    holeType: 7
+    description: Зоя родился в 1975, но участвует в «Старый гримёр «срывается с колосников», его место занимает Зоя» (1967)
+    patch:
+      - op: replace
+        path: /bible/characters/5/birth_year
+        value: 1975
+  - id: h03
+    holeType: 7
+    description: Герман родился в 2000, но участвует в «Смерть двоюродной тёти Лизы от «болезни крови»; подмена сестёр» (1996)
+    patch:
+      - op: replace
+        path: /bible/characters/1/birth_year
+        value: 2000
+  - id: h04
+    holeType: 7
+    description: В «Анна умирает от болезни, Вера делает ей переливание» (1935) Анна 30 лет вместо 25
+    patch:
+      - op: replace
+        path: /bible/timeline/events/0/ages/Анна
+        value: 30
+  - id: h05
+    holeType: 7
+    description: В «Свадьба Лизы и Германа» (2026) Лиза 23 лет вместо 28
+    patch:
+      - op: replace
+        path: /bible/timeline/events/13/ages/Лиза
+        value: 23
+  - id: h06
+    holeType: 7
+    description: В «Свадьба Лизы и Германа» (2026) Зоя 85 лет вместо 78
+    patch:
+      - op: replace
+        path: /bible/timeline/events/13/ages/Зоя
+        value: 85
+  - id: h07
+    holeType: 7
+    description: «Смерть двоюродной тёти Лизы от «болезни крови»; подмена сестёр» перенесено в 1987, раньше «У Веры рождается сын Герман» (1994)
+    patch:
+      - op: replace
+        path: /bible/timeline/events/9/year
+        value: 1987
+  - id: h08
+    holeType: 7
+    description: «Свадьба Лизы и Германа» перенесено в 2019, раньше «Помолвка Германа с Соней; врач Олег начинает «лечение»» (2024)
+    patch:
+      - op: replace
+        path: /bible/timeline/events/13/year
+        value: 2019
+  - id: h09
+    holeType: 7
+    description: «Старый гримёр «срывается с колосников», его место занимает Зоя» перенесено в 1955, раньше «Нина сбегает накануне премьеры, вместо неё гибнет её младшая сестра» (1966)
+    patch:
+      - op: replace
+        path: /bible/timeline/events/6/year
+        value: 1955
+  - id: h10
+    holeType: 7
+    description: Нина Сергеевна умирает в 1957, но участвует в «Сёстры приходят в театр; их цель — юная актриса Нина» (1966)
+    patch:
+      - op: add
+        path: /bible/timeline/events/-
+        value:
+          id: e_seed_death_Нина Сергеевна
+          year: 1957
+          kind: death
+          text: "Смерть: Нина Сергеевна"
+          participants:
+            - Нина Сергеевна
+          ages: {}
+          after: []
+  - id: h11
+    holeType: 7
+    description: Олег умирает в 2014, но участвует в «Помолвка Германа с Соней; врач Олег начинает «лечение»» (2024)
+    patch:
+      - op: add
+        path: /bible/timeline/events/-
+        value:
+          id: e_seed_death_Олег
+          year: 2014
+          kind: death
+          text: "Смерть: Олег"
+          participants:
+            - Олег
+          ages: {}
+          after: []
+  - id: h12
+    holeType: 7
+    description: Анна умирает в 1986, но участвует в «Смерть двоюродной тёти Лизы от «болезни крови»; подмена сестёр» (1996)
+    patch:
+      - op: add
+        path: /bible/timeline/events/-
+        value:
+          id: e_seed_death_Анна
+          year: 1986
+          kind: death
+          text: "Смерть: Анна"
+          participants:
+            - Анна
+          ages: {}
+          after: []
+  - id: h13
+    holeType: 11
+    episode: 18
+    description: Лиза узнаёт «f_blood_theft» только в 23-й серии, а действует по нему в 18-й
+    patch:
+      - op: replace
+        path: /bible/knowledge/3/since_ep
+        value: 23
+  - id: h14
+    holeType: 11
+    episode: 14
+    description: Лиза узнаёт «f_blood_theft» только в 15-й серии, а действует по нему в 14-й
+    patch:
+      - op: replace
+        path: /bible/knowledge/3/since_ep
+        value: 15
+  - id: h15
+    holeType: 11
+    episode: 49
+    description: Лиза узнаёт «f_twins» только в 50-й серии, а действует по нему в 49-й
+    patch:
+      - op: replace
+        path: /bible/knowledge/1/since_ep
+        value: 50
+  - id: h16
+    holeType: 11
+    episode: 3
+    description: Лиза действует по «f_dasha_target» в 3-й серии, а узнаёт его в 10-й
+    patch:
+      - op: add
+        path: /plan/episodes/2/acts_on/-
+        value:
+          who: Лиза
+          fact: f_dasha_target
+  - id: h17
+    holeType: 11
+    episode: 5
+    description: Лиза действует по «f_herman_initiator» в 5-й серии, а узнаёт его в 30-й
+    patch:
+      - op: add
+        path: /plan/episodes/4/acts_on/-
+        value:
+          who: Лиза
+          fact: f_herman_initiator
+  - id: h18
+    holeType: 11
+    episode: 2
+    description: Лиза действует по «f_blood_theft» в 2-й серии, а узнаёт его в 13-й
+    patch:
+      - op: add
+        path: /plan/episodes/1/acts_on/-
+        value:
+          who: Лиза
+          fact: f_blood_theft
+  - id: h19
+    holeType: 11
+    description: Герман знает «f_vera_testimony» с 5-й серии, а это случается в 50-й
+    patch:
+      - op: replace
+        path: /bible/knowledge/5/since_ep
+        value: 5
+  - id: h20
+    holeType: 11
+    description: Вера знает «f_lisa_saw» с 4-й серии, а это случается в 8-й
+    patch:
+      - op: replace
+        path: /bible/villains/3/knows/0/since_ep
+        value: 4
+  - id: h21
+    holeType: 11
+    description: Анна знает «f_lisa_saw» с 4-й серии, а это случается в 8-й
+    patch:
+      - op: replace
+        path: /bible/villains/2/knows/2/since_ep
+        value: 4
+  - id: h22
+    holeType: 11
+    episode: 53
+    description: Зоя действует по «f_vera_testimony» в 53-й серии, но нигде об этом не узнаёт
+    patch:
+      - op: add
+        path: /plan/episodes/52/acts_on/-
+        value:
+          who: Зоя
+          fact: f_vera_testimony
+  - id: h23
+    holeType: 11
+    episode: 52
+    description: Нина Сергеевна действует по «f_vera_testimony» в 52-й серии, но нигде об этом не узнаёт
+    patch:
+      - op: add
+        path: /plan/episodes/51/acts_on/-
+        value:
+          who: Нина Сергеевна
+          fact: f_vera_testimony
+  - id: h24
+    holeType: 11
+    episode: 11
+    description: Нина Сергеевна действует по «f_betrayal» в 11-й серии, но нигде об этом не узнаёт
+    patch:
+      - op: add
+        path: /plan/episodes/10/acts_on/-
+        value:
+          who: Нина Сергеевна
+          fact: f_betrayal
+  - id: h25
+    holeType: 1
+    description: У правила мира «Сёстры не бессмертные» нет причины
+    patch:
+      - op: replace
+        path: /bible/world_rules/1/why
+        value: Так работает
+  - id: h26
+    holeType: 1
+    description: У правила мира «Молодость — свойство рода Лизы» нет причины
+    patch:
+      - op: replace
+        path: /bible/world_rules/0/why
+        value: Так работает
+  - id: h27
+    holeType: 1
+    description: У правила мира «Нужна только молодая кровь» нет причины
+    patch:
+      - op: replace
+        path: /bible/world_rules/2/why
+        value: Так работает
+  - id: h28
+    holeType: 1
+    description: У правила мира «Никаких клыков» нет причины
+    patch:
+      - op: replace
+        path: /bible/world_rules/4/why
+        value: Так работает
+  - id: h29
+    holeType: 10
+    episode: 13
+    description: «secret_turn» сдвинута с 10-й на 13-ю серию
+    patch:
+      - op: replace
+        path: /plan/episodes/9/anchors
+        value: []
+      - op: add
+        path: /plan/episodes/12/anchors/-
+        value: secret_turn
+  - id: h30
+    holeType: 10
+    episode: 11
+    description: «paywall_hook» сдвинута с 8-й на 11-ю серию
+    patch:
+      - op: replace
+        path: /plan/episodes/7/anchors
+        value: []
+      - op: add
+        path: /plan/episodes/10/anchors/-
+        value: paywall_hook
+  - id: h31
+    holeType: 10
+    episode: 4
+    description: «betrayal» сдвинута с 1-й на 4-ю серию
+    patch:
+      - op: replace
+        path: /plan/episodes/0/anchors
+        value:
+          - mask
+      - op: add
+        path: /plan/episodes/3/anchors/-
+        value: betrayal
+  - id: h32
+    holeType: 10
+    episode: 40
+    description: «pinch2» сдвинута с 37-й на 40-ю серию
+    patch:
+      - op: replace
+        path: /plan/episodes/36/anchors
+        value: []
+      - op: add
+        path: /plan/episodes/39/anchors/-
+        value: pinch2
+  - id: h33
+    holeType: 10
+    episode: 25
+    description: «pinch1» сдвинута с 22-й на 25-ю серию
+    patch:
+      - op: replace
+        path: /plan/episodes/21/anchors
+        value: []
+      - op: add
+        path: /plan/episodes/24/anchors/-
+        value: pinch1
+  - id: h34
+    holeType: 3
+    episode: 51
+    description: После удара злодеев в 51-й серии героиня не отвечает
+    patch:
+      - op: replace
+        path: /plan/episodes/51/strike_by_heroine
+        value: false
+      - op: replace
+        path: /plan/episodes/52/strike_by_heroine
+        value: false
+  - id: h35
+    holeType: 3
+    episode: 29
+    description: После удара злодеев в 29-й серии героиня не отвечает
+    patch:
+      - op: replace
+        path: /plan/episodes/29/strike_by_heroine
+        value: false
+      - op: replace
+        path: /plan/episodes/30/strike_by_heroine
+        value: false
+      - op: replace
+        path: /plan/episodes/31/strike_by_heroine
+        value: false
+  - id: h36
+    holeType: 3
+    episode: 22
+    description: После удара злодеев в 22-й серии героиня не отвечает
+    patch:
+      - op: replace
+        path: /plan/episodes/22/strike_by_heroine
+        value: false
+      - op: replace
+        path: /plan/episodes/23/strike_by_heroine
+        value: false
+      - op: replace
+        path: /plan/episodes/24/strike_by_heroine
+        value: false
+  - id: h37
+    holeType: 3
+    episode: 41
+    description: После удара злодеев в 41-й серии героиня не отвечает
+    patch:
+      - op: replace
+        path: /plan/episodes/41/strike_by_heroine
+        value: false
+      - op: replace
+        path: /plan/episodes/42/strike_by_heroine
+        value: false
+  - id: h38
+    holeType: 8
+    description: Добавлены три постоянных героя сверх лимита
+    patch:
+      - op: add
+        path: /bible/characters/-
+        value:
+          name: Лишний герой 1
+          birth_year: 1998
+          look: Хрупкая, тёмные волосы, выглядит на 20
+          ghost: Выросла в семье, где о прошлом молчали
+          lie: Прошлое лучше не знать
+          truth: Пока не знаешь своё прошлое, ты беззащитна
+          want: Сначала сохранить брак, потом уничтожить семью мужа
+          need: Узнать правду о своём роде
+          arc_type: позитивная
+          mask: Доверчивая больная жена
+          hidden_power: Глаз реставратора и работа с архивом
+          knows_at_start: &a1 []
+          speech: Тихо и точно
+          limits: &a2
+            - Не причиняет вреда невиновным
+          regular: true
+      - op: add
+        path: /bible/characters/-
+        value:
+          name: Лишний герой 2
+          birth_year: 1998
+          look: Хрупкая, тёмные волосы, выглядит на 20
+          ghost: Выросла в семье, где о прошлом молчали
+          lie: Прошлое лучше не знать
+          truth: Пока не знаешь своё прошлое, ты беззащитна
+          want: Сначала сохранить брак, потом уничтожить семью мужа
+          need: Узнать правду о своём роде
+          arc_type: позитивная
+          mask: Доверчивая больная жена
+          hidden_power: Глаз реставратора и работа с архивом
+          knows_at_start: *a1
+          speech: Тихо и точно
+          limits: *a2
+          regular: true
+      - op: add
+        path: /bible/characters/-
+        value:
+          name: Лишний герой 3
+          birth_year: 1998
+          look: Хрупкая, тёмные волосы, выглядит на 20
+          ghost: Выросла в семье, где о прошлом молчали
+          lie: Прошлое лучше не знать
+          truth: Пока не знаешь своё прошлое, ты беззащитна
+          want: Сначала сохранить брак, потом уничтожить семью мужа
+          need: Узнать правду о своём роде
+          arc_type: позитивная
+          mask: Доверчивая больная жена
+          hidden_power: Глаз реставратора и работа с архивом
+          knows_at_start: *a1
+          speech: Тихо и точно
+          limits: *a2
+          regular: true

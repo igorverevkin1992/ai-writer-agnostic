@@ -15,7 +15,8 @@
     "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
     "smoke": "tsx scripts/smoke.ts",
     "eval": "tsx scripts/eval.ts",
-    "kb:check": "pnpm --filter @aiw/kb check"
+    "kb:check": "pnpm --filter @aiw/kb check",
+    "seed-holes": "tsx scripts/seed-holes.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -28,7 +29,9 @@
     "typescript-eslint": "^8.71.0",
     "vitest": "^5.0.2",
     "@aiw/core": "workspace:*",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "yaml": "^2.9.1",
+    "@aiw/kb": "workspace:*"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
