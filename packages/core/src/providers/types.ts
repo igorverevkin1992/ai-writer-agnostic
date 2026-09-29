@@ -15,6 +15,8 @@ export interface LlmRequest {
   /** Instructions that change per step, after the cacheable prefix. */
   system?: string;
   messages: ChatMessage[];
+  /** What is being asked, e.g. "devil_advocate:7:1-10". For logs and tests; not sent to the model. */
+  task?: string;
 }
 
 export interface Usage {

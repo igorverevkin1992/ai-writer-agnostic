@@ -293,6 +293,44 @@ export class ProjectMemory {
     }
   }
 
+  /** Records the outcome of a finding: status, judge verdict, the fact that closes it. */
+  setFindingOutcome(id: string, outcome: { status: Finding['status']; verdict?: string; resolutionFactId?: string }): void {
+    this.db
+      .update(findingsTable)
+      .set({ status: outcome.status, verdict: outcome.verdict ?? null, resolutionFactId: outcome.resolutionFactId ?? null })
+      .where(and(eq(findingsTable.projectId, this.projectId), eq(findingsTable.id, id)))
+      .run();
+  }
+
+  finding(id: string): (typeof findingsTable.$inferSelect) | undefined {
+    return this.db
+      .select()
+      .from(findingsTable)
+      .where(and(eq(findingsTable.projectId, this.projectId), eq(findingsTable.id, id)))
+      .get();
+  }
+
+  findingsOf(step?: string, status?: Finding['status']): (typeof findingsTable.$inferSelect)[] {
+    const conds = [eq(findingsTable.projectId, this.projectId)];
+    if (step) conds.push(eq(findingsTable.step, step));
+    if (status) conds.push(eq(findingsTable.status, status));
+    return this.db.select().from(findingsTable).where(and(...conds)).all();
+  }
+
+  /** Adds a new fact (and who knows it) to the fact base. */
+  addFact(fact: Fact, known: KnowledgeEntry[], meta: EditMeta): number {
+    const p = this.projectId;
+    this.db
+      .insert(facts)
+      .values({ projectId: p, id: fact.id, text: fact.text, sinceEp: fact.since_ep ?? null, source: meta.author })
+      .onConflictDoUpdate({ target: [facts.projectId, facts.id], set: { text: fact.text, sinceEp: fact.since_ep ?? null, source: meta.author } })
+      .run();
+    for (const k of known) {
+      this.db.insert(knowledge).values({ projectId: p, who: k.who, factId: k.fact, sinceEp: k.since_ep, how: k.how ?? null }).run();
+    }
+    return this.logRevision('fact', fact.id, null, { fact, knowledge: known }, meta);
+  }
+
   openFindings(): (typeof findingsTable.$inferSelect)[] {
     return this.db
       .select()
