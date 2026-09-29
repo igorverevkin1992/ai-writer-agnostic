@@ -6,10 +6,10 @@ import { ProjectMemory } from '../memory/store.ts';
 import { SameFamilyError } from '../providers/errors.ts';
 import { LlmClient } from '../providers/llm.ts';
 import { FakeProvider, testConfig } from '../providers/testing.ts';
-import type { CallTarget, LlmRequest } from '../providers/types.ts';
+import type { LlmRequest } from '../providers/types.ts';
 import { parseModelsConfig } from '../providers/config.ts';
 import { sampleConcept, sampleLogline } from '../schemas/samples.ts';
-import { PipelineError, Pipeline } from './machine.ts';
+import { Pipeline } from './machine.ts';
 import { createProject } from './project.ts';
 import { approveStep, runStep, skipStep } from './runners.ts';
 
@@ -28,7 +28,7 @@ let db: Db;
 let calls: string[];
 let script: Script;
 
-function reply(req: LlmRequest, _t: CallTarget): string {
+function reply(req: LlmRequest): string {
   const task = req.task ?? '';
   calls.push(task);
   const [kind, a = '', b = ''] = task.split(':');
