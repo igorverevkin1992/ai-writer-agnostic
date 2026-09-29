@@ -1,25 +1,99 @@
-# ЗАГЛУШКА. Полный список R01–R18 продюсер передаст из своих документов (папка docs/).
-# Сейчас здесь только правила, прямо записанные в SPEC.md. Номера, кроме R05, условные.
+# 18 правил жанра. Тексты — от продюсера (сообщение от 29.09.2026), дословно.
+# check.type: code — правило считает код (вехa M3), llm — судит модель с обязательной цитатой.
+# severity и условия проверки расставлены Claude Code предварительно — ждут подтверждения продюсера.
+# fix_hints пусты: подсказки по исправлению — творческие, их даёт продюсер.
 module: revenge_thriller
 title: Женский психологический триллер мести с семейной тайной
-stub: true
+stub: false
 rules:
+  - id: R01
+    module: revenge_thriller
+    text: "Предательство — в первые 60–90 с 1-й серии, глазами героини."
+    check: {type: code, condition: "betrayal.ep1_second <= 90"}
+    severity: blocker
+  - id: R02
+    module: revenge_thriller
+    text: "Предатель — самый близкий человек, корыстный мотив (сильнее всего: муж + деньги + ребёнок/близкий)."
+    check: {type: llm, question: "Предатель — самый близкий героине человек? Его мотив корыстный?"}
+    severity: major
+  - id: R03
+    module: revenge_thriller
+    text: "Героиня не сдаётся в кадре дольше 1 серии."
+    check: {type: llm, question: "Есть ли подряд больше одной серии, где героиня сдалась и не действует?"}
+    severity: major
+  - id: R04
+    module: revenge_thriller
+    text: "Героиня знает больше, чем показывает (маска)."
+    check: {type: llm, question: "Где героиня скрывает своё знание от злодеев? Видит ли зритель её маску?"}
+    severity: major
   - id: R05
     module: revenge_thriller
-    text: "Первый видимый удар героини — не позже 3-й серии"
+    text: "Первый видимый ответный удар — не позже 3-й серии."
     check: {type: code, condition: "min(ep where strike_by_heroine) <= 3"}
     severity: blocker
     checklist: {item: "первый удар до 4-й серии", points: 2}
-    fix_hints: ["Малое разоблачение мелкого злодея в 2–3-й серии"]
-  - id: R01
+  - id: R06
     module: revenge_thriller
-    text: "Героиня видит предательство сама, в первой серии, в первые 60–90 с"
-    check: {type: code, condition: "betrayal.ep1_second <= 90"}
-    severity: blocker
-    fix_hints: ["Перенести сцену предательства в начало 1-й серии и показать её глазами героини"]
-  - id: R02
-    module: revenge_thriller
-    text: "Страдание не дольше двух серий подряд, после него — кайф"
-    check: {type: code, condition: "max_run(mood == suffering) <= 2"}
+    text: "Ритм «удар злодея → ответ» — 1–3 серии."
+    check: {type: code, condition: "for ep where strike_by_villain: exists strike_by_heroine in (ep, ep + 3]"}
     severity: major
-    fix_hints: ["Дать героине маленькую победу в третьей серии подряд"]
+  - id: R07
+    module: revenge_thriller
+    text: "Серия = одно событие + один новый вопрос + 2–3 эмоциональные точки."
+    check: {type: code, condition: "for each ep: event and question are set, count(emotions) in [2, 3]"}
+    severity: major
+  - id: R08
+    module: revenge_thriller
+    text: "Тайна меняет цель мести, а не просто добавляет информацию."
+    check: {type: llm, question: "Какой слой тайны меняет цель мести героини? Что было целью до и что стало после?"}
+    severity: major
+  - id: R09
+    module: revenge_thriller
+    text: "Paywall на 13–15%; перед ним частичное раскрытие тайны + угроза."
+    check: {type: code, condition: "frame.free / frame.episodes in [0.13, 0.15] and 'paywall_hook' in plan[frame.free].anchors"}
+    severity: blocker
+  - id: R10
+    module: revenge_thriller
+    text: "Злодеев 3–5, наказание снизу вверх по рангу."
+    check: {type: code, condition: "count(villains) in [3, 5] and takedown_ep increases as rank decreases"}
+    severity: blocker
+  - id: R11
+    module: revenge_thriller
+    text: "У злодея свой план; он проигрывает из-за ума героини, а не своей глупости."
+    check: {type: llm, question: "Какой план у каждого злодея? Почему он проиграл: героиня переиграла его или он сам ошибся?"}
+    severity: major
+  - id: R12
+    module: revenge_thriller
+    text: "Сильнейший «кайф» (爽点) — публичное разоблачение."
+    check: {type: llm, question: "Где публичное разоблачение? Это самый сильный кайф сезона?"}
+    severity: major
+  - id: R13
+    module: revenge_thriller
+    text: "Женский союз сильнее «спасающего мужчины»."
+    check: {type: llm, question: "Кто помогает героине в решающие моменты: союзницы или спасающий мужчина?"}
+    severity: major
+  - id: R14
+    module: revenge_thriller
+    text: "Любовь — фон; решения всегда за героиней."
+    check: {type: llm, question: "Есть ли ключевое решение, которое за героиню принял мужчина?"}
+    severity: major
+  - id: R15
+    module: revenge_thriller
+    text: "Законный финал (суд, следствие, документы), без самосуда."
+    check: {type: llm, question: "Чем наказаны злодеи: законом с документами и судом или самосудом?"}
+    severity: blocker
+  - id: R16
+    module: revenge_thriller
+    text: "Финал закрывает каждого злодея, тайну и новую жизнь героини; одна нить — на второй сезон."
+    check: {type: llm, question: "Закрыты ли в финале все пять злодеев, тайна и новая жизнь героини? Какая одна нить оставлена на второй сезон?"}
+    severity: major
+  - id: R17
+    module: revenge_thriller
+    text: "До 8 постоянных персонажей, до 10 локаций."
+    check: {type: code, condition: "count(bible.characters) <= 8 and count(distinct cards.location) <= 10"}
+    severity: major
+  - id: R18
+    module: revenge_thriller
+    text: "Реплика-удар до 12 слов, понятна без контекста."
+    check: {type: code, condition: "words(card.punchline) <= 12"}
+    severity: major

@@ -43,7 +43,9 @@ describe('loadKb on the real knowledge base', () => {
 
   it('loads every section', () => {
     expect(kb.rules[0]?.module).toBe('revenge_thriller');
-    expect(kb.rules[0]?.rules.map((r) => r.id)).toContain('R05');
+    const ids = kb.rules[0]?.rules.map((r) => r.id);
+    expect(ids).toHaveLength(18);
+    expect(ids).toEqual(Array.from({ length: 18 }, (_, i) => `R${String(i + 1).padStart(2, '0')}`));
     expect(kb.holes.holes).toHaveLength(11);
     expect(kb.personas.personas).toHaveLength(5);
     expect(Object.keys(kb.methods).sort()).toEqual(['harmon', 'mowery', 'truby', 'weiland']);
@@ -87,8 +89,9 @@ describe('loadKb errors are clear', () => {
     const err = loadError(dir);
     const issue = err.issues.find((i) => i.field === 'rules[0].severity');
     expect(issue?.file).toBe('rules/revenge_thriller.yaml');
-    expect(issue?.line).toBe(11);
-    expect(err.message).toContain('rules/revenge_thriller.yaml, строка 11');
+    const line = readFileSync(join(dir, 'rules/revenge_thriller.yaml'), 'utf8').split('\n').findIndex((l) => l.includes('blokker')) + 1;
+    expect(issue?.line).toBe(line);
+    expect(err.message).toContain(`rules/revenge_thriller.yaml, строка ${line}`);
     expect(err.message).toContain('blocker');
   });
 
