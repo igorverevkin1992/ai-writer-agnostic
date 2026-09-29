@@ -9,11 +9,20 @@ function setup() {
 }
 
 describe('server', () => {
-  it('answers health check with knowledge base summary', async () => {
+  it('answers health check with available genres', async () => {
     const { app } = setup();
     const res = await app.inject({ method: 'GET', url: '/api/health' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ ok: true, kb: { holeTypes: 11, episodes: 60 } });
+    expect(res.json()).toMatchObject({ ok: true, genres: ['revenge_thriller'] });
+    await app.close();
+  });
+
+  it('lists genre packs for new projects', async () => {
+    const { app } = setup();
+    const res = await app.inject({ method: 'GET', url: '/api/genres' });
+    expect(res.json()).toEqual([
+      expect.objectContaining({ id: 'revenge_thriller', episodes: 60, free: 8, villains: 5, rules: 18 }),
+    ]);
     await app.close();
   });
 

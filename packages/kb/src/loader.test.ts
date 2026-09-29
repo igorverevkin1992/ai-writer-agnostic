@@ -3,10 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { KbLoadError } from './errors.ts';
-import { DEFAULT_KB_ROOT, loadKb } from './loader.ts';
+import { DEFAULT_KB_ROOT, UnknownGenreError, genreKit, loadKb } from './loader.ts';
 import { episodeRange } from './schemas.ts';
 
-const KB_ENTRIES = ['rules', 'frames', 'checklist', 'methods', 'glossary.yaml', 'constraints', 'holes', 'personas', 'cases', 'prompts'];
+const KB_ENTRIES = ['genres', 'rules', 'frames', 'checklist', 'methods', 'glossary.yaml', 'constraints', 'holes', 'personas', 'cases', 'prompts'];
 
 let dirs: string[] = [];
 
@@ -40,34 +40,106 @@ afterEach(() => {
 
 describe('loadKb on the real knowledge base', () => {
   const kb = loadKb();
+  const kit = genreKit(kb, 'revenge_thriller');
 
-  it('loads every section', () => {
-    expect(kb.rules[0]?.module).toBe('revenge_thriller');
-    const ids = kb.rules[0]?.rules.map((r) => r.id);
-    expect(ids).toHaveLength(18);
-    expect(ids).toEqual(Array.from({ length: 18 }, (_, i) => `R${String(i + 1).padStart(2, '0')}`));
+  it('loads the revenge thriller genre pack', () => {
+    expect(kit.genre.title).toMatch(/триллер мести/);
+    expect(kit.rules.rules.map((r) => r.id)).toEqual(
+      Array.from({ length: 18 }, (_, i) => `R${String(i + 1).padStart(2, '0')}`),
+    );
+    expect(kit.personas.personas).toHaveLength(5);
+    expect(kit.checklist.items.reduce((n, i) => n + i.points, 0)).toBe(20);
+  });
+
+  it('loads shared sections', () => {
     expect(kb.holes.holes).toHaveLength(11);
-    expect(kb.personas.personas).toHaveLength(5);
     expect(Object.keys(kb.methods).sort()).toEqual(['harmon', 'mowery', 'truby', 'weiland']);
     expect(kb.prompts['architect/concept']).toContain('JSON');
   });
 
   it('holds the 60-episode frame from the spec', () => {
-    const f = kb.frame;
+    const f = kit.frame;
     expect(f.episodes).toBe(60);
     expect(f.free).toBe(8);
     expect(f.anchors.paywall_hook).toBe(8);
     expect(f.anchors.midpoint).toBe(30);
-    expect(f.villains.count).toBe(5);
-    expect(f.villains.takedowns['4']).toEqual([18, 20]);
+    expect(f.anchors.mask).toEqual([1, 3]);
+    expect(f.villains?.count).toBe(5);
+    expect(f.villains?.roles['1']).toBe('boss');
+    expect(f.villains?.takedowns['4']).toEqual([18, 20]);
     expect(f.blocks).toHaveLength(6);
     expect(f.tolerance).toBe(1);
   });
 
   it('holds production limits from the spec', () => {
-    expect(kb.production.limits.max_speakers_per_scene).toBe(3);
-    expect(kb.production.script_metrics.max_line_words).toBe(12);
-    expect(kb.production.script_metrics.max_overlay_words).toBe(7);
+    expect(kit.production.limits.max_speakers_per_scene).toBe(3);
+    expect(kit.production.script_metrics.max_line_words).toBe(12);
+    expect(kit.production.script_metrics.max_overlay_words).toBe(7);
+  });
+
+  it('rejects an unknown genre with a clear message', () => {
+    expect(() => genreKit(kb, 'sitcom')).toThrow(UnknownGenreError);
+    expect(() => genreKit(kb, 'sitcom')).toThrow(/Жанр «sitcom» не найден. Есть: revenge_thriller/);
+  });
+});
+
+describe('other series, other genres', () => {
+  /** Adds a made-up 30-episode romance pack without villains: data only, no code. */
+  function addRomance(dir: string): void {
+    writeFileSync(join(dir, 'genres/romance30.yaml'), [
+      'id: romance30', 'title: Романтическая комедия', 'rules: romance', 'frame: season30',
+      'checklist: romance10', 'personas: viewers', 'constraints: {legal: ru_legal, production: production}', '',
+    ].join('\n'));
+    writeFileSync(join(dir, 'rules/romance.yaml'), [
+      'module: romance', 'title: Ромком', 'rules:',
+      '  - {id: R01, module: romance, text: "Встреча героев в 1-й серии", check: {code: "anchor meet == 1"}, severity: blocker}', '',
+    ].join('\n'));
+    writeFileSync(join(dir, 'frames/season30.yaml'), [
+      'season_frame:', '  episodes: 30', '  free: 5', '  duration_s: {min: 60, max: 120, target: 90}',
+      '  anchors: {meet: 1, kiss: 15, finale: 30}',
+      '  rhythm: {response_within: 2, max_suffering_run: 1, max_same_hook_run: 2, emotions_per_episode: [1, 3], max_fall_length: 3}',
+      '  blocks: [[1, 10], [11, 20], [21, 30]]', '  tolerance: 1', '',
+    ].join('\n'));
+    writeFileSync(join(dir, 'checklist/romance10.yaml'), [
+      'total: 10', 'pass: 7', 'items:', '  - {id: C01, text: "Встреча в 1-й", points: 10, rule: R01}', '',
+    ].join('\n'));
+  }
+
+  it('a second genre with its own frame loads next to the first one', () => {
+    const dir = kbCopy();
+    addRomance(dir);
+    const kb = loadKb(dir);
+    expect(Object.keys(kb.genres).sort()).toEqual(['revenge_thriller', 'romance30']);
+    const romance = genreKit(kb, 'romance30');
+    expect(romance.frame.episodes).toBe(30);
+    expect(romance.frame.villains).toBeUndefined();
+    expect(romance.rules.rules).toHaveLength(1);
+    expect(genreKit(kb, 'revenge_thriller').frame.episodes).toBe(60);
+  });
+
+  it('checks references inside a genre pack', () => {
+    const dir = kbCopy();
+    addRomance(dir);
+    edit(dir, 'genres/romance30.yaml', (t) => t.replace('frame: season30', 'frame: season31'));
+    expect(loadError(dir).issues).toContainEqual({ file: 'genres/romance30.yaml', field: 'frame', message: 'Нет файла frames/season31.yaml' });
+  });
+
+  it('checks checklist rules against the genre that uses them', () => {
+    const dir = kbCopy();
+    addRomance(dir);
+    edit(dir, 'checklist/romance10.yaml', (t) => t.replace('rule: R01', 'rule: R05'));
+    expect(loadError(dir).message).toContain('Нет правила R05 в rules/romance.yaml (жанр romance30)');
+  });
+
+  it('a ladder of three villains needs exactly ranks 1–3', () => {
+    const dir = kbCopy();
+    edit(dir, 'frames/season60.yaml', (t) => t.replace('count: 5', 'count: 3'));
+    const fields = loadError(dir).issues.map((i) => i.field);
+    expect(fields).toEqual(expect.arrayContaining([
+      'season_frame.villains.roles',
+      'season_frame.villains.on_screen_by',
+      'season_frame.villains.takedowns',
+    ]));
   });
 });
 
@@ -119,7 +191,21 @@ describe('loadKb errors are clear', () => {
     edit(dir, 'frames/season60.yaml', (t) => t.replace('takedowns: {5: 3, ', 'takedowns: {'));
     const issue = loadError(dir).issues[0];
     expect(issue?.field).toBe('season_frame.villains.takedowns');
-    expect(issue?.message).toContain('пять рангов');
+    expect(issue?.message).toContain('Нужны все ранги от 1 до 5');
+  });
+
+  it('reports a constraints file that no genre uses', () => {
+    const dir = kbCopy();
+    writeFileSync(join(dir, 'constraints/kz_legal.yaml'), 'age_rating: "16+"\n');
+    expect(loadError(dir).issues).toContainEqual(
+      expect.objectContaining({ file: 'constraints/kz_legal.yaml', message: expect.stringContaining('ни в одном жанре') }),
+    );
+  });
+
+  it('reports a genre whose id does not match the file name', () => {
+    const dir = kbCopy();
+    edit(dir, 'genres/revenge_thriller.yaml', (t) => t.replace('id: revenge_thriller', 'id: revenge'));
+    expect(loadError(dir).issues[0]).toMatchObject({ file: 'genres/revenge_thriller.yaml', field: 'id' });
   });
 
   it('reports an anchor outside the season', () => {
@@ -137,13 +223,13 @@ describe('loadKb errors are clear', () => {
   it('reports a checklist item pointing to an unknown rule', () => {
     const dir = kbCopy();
     edit(dir, 'checklist/season20.yaml', (t) => t.replace('rule: R05', 'rule: R99'));
-    expect(loadError(dir).message).toContain('Нет правила R99');
+    expect(loadError(dir).message).toContain('Нет правила R99 в rules/revenge_thriller.yaml');
   });
 
   it('requires a full checklist once it is no longer a stub', () => {
     const dir = kbCopy();
-    edit(dir, 'checklist/season20.yaml', (t) => t.replace('stub: true', 'stub: false'));
-    expect(loadError(dir).message).toContain('не равна итогу 20');
+    edit(dir, 'checklist/season20.yaml', (t) => t.replace('points: 3, rule: R15', 'points: 2, rule: R15'));
+    expect(loadError(dir).message).toContain('Сумма баллов 19 не равна итогу 20');
   });
 
   it('requires exactly 11 hole types', () => {
@@ -161,7 +247,7 @@ describe('loadKb errors are clear', () => {
   it('collects errors from several files at once', () => {
     const dir = kbCopy();
     rmSync(join(dir, 'glossary.yaml'));
-    edit(dir, 'personas/viewers.yaml', (t) => t.replace(/ {2}- \{id: teen_mom.*\n/, ''));
+    edit(dir, 'personas/viewers.yaml', (t) => t.replace('focus: "Медицинская достоверность"', 'focus: ""'));
     const files = loadError(dir).issues.map((i) => i.file);
     expect(files).toEqual(expect.arrayContaining(['glossary.yaml', 'personas/viewers.yaml']));
   });

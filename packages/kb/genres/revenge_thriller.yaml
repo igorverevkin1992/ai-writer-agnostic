@@ -1,0 +1,12 @@
+# Жанровый пакет: какие файлы базы знаний действуют для проектов этого жанра.
+# Новый жанр или формат — новый файл здесь и свои rules/frame/checklist. Код не меняется.
+id: revenge_thriller
+title: Женский психологический триллер мести с семейной тайной
+platform: Иви
+rules: revenge_thriller       # rules/revenge_thriller.yaml
+frame: season60               # frames/season60.yaml
+checklist: season20           # checklist/season20.yaml
+personas: viewers             # personas/viewers.yaml
+constraints:
+  legal: ru_legal             # constraints/ru_legal.yaml
+  production: production      # constraints/production.yaml

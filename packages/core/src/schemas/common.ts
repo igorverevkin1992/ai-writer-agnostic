@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 z.config(z.locales.ru());
 
-/** Episode number inside a season. The 60-episode frame is checked by code, not here. */
+/** Episode number inside a season. The season length comes from the genre frame and is checked by code. */
 export const EpisodeNumber = z.int().min(1).max(999);
 
 export const NonEmpty = z.string().trim().min(1);

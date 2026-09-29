@@ -9,6 +9,8 @@ export const EpisodeCard = z.object({
   event: NonEmpty,
   twist: NonEmpty,
   emotions: z.array(NonEmpty).min(1),
+  /** What the heroine does in this episode. Required by the genre rules, checked in every card. */
+  heroine_action: NonEmpty,
   punchline: NonEmpty,
   cliffhanger: NonEmpty,
   cast: z.array(NonEmpty).min(1),

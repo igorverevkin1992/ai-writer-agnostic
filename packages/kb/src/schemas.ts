@@ -28,10 +28,10 @@ export const Rule = z.strictObject({
   id: z.string().regex(/^R\d{2}$/, 'Номер правила — вида R05'),
   module: Text,
   text: Text,
-  check: z.discriminatedUnion('type', [
-    z.strictObject({ type: z.literal('code'), condition: Text }),
-    z.strictObject({ type: z.literal('llm'), question: Text }),
-  ]),
+  /** code: what code checks (checks/code); llm: what a cross-family judge decides, with a quote. */
+  check: z
+    .strictObject({ code: Text.optional(), llm: Text.optional() })
+    .refine((c) => c.code || c.llm, 'Нужна хотя бы одна проверка: code или llm'),
   severity: Severity,
   checklist: z.strictObject({ item: Text, points: z.int().min(1) }).optional(),
   fix_hints: z.array(Text).default([]),
@@ -46,13 +46,9 @@ export const RulesFile = z.strictObject({
 });
 export type RulesFile = z.infer<typeof RulesFile>;
 
-const RANKS = ['1', '2', '3', '4', '5'];
+/** A map keyed by villain rank ("1".."count"). Completeness is checked against count in the loader. */
 const byRank = <T extends z.ZodType>(value: T) =>
-  z
-    .record(z.string().regex(/^[1-5]$/, 'Ранг злодея — число от 1 до 5'), value)
-    .refine((r) => RANKS.every((k) => k in r), {
-      message: `Нужны все пять рангов: ${RANKS.join(', ')}`,
-    });
+  z.record(z.string().regex(/^[1-9]\d*$/, 'Ранг злодея — целое число от 1'), value);
 
 export const SeasonFrame = z.strictObject({
   season_frame: z.strictObject({
@@ -60,17 +56,21 @@ export const SeasonFrame = z.strictObject({
     free: z.int().min(0),
     duration_s: z.strictObject({ min: z.int().min(1), max: z.int().min(1), target: z.int().min(1) }),
     anchors: z.record(Text, EpisodeSpec),
-    villains: z.strictObject({
+    /** Optional: genres without a villain ladder omit it. */
+    villains: z
+      .strictObject({
       count: z.int().min(1),
+      roles: byRank(Text),
       boss_on_screen_by: z.int().min(1),
       all_on_screen_by: z.int().min(1),
       on_screen_by: byRank(z.int().min(1)),
       takedowns: byRank(EpisodeSpec),
       counterstrike_within: z.int().min(1),
       max_turned_allies: z.int().min(0),
-      turned_ally_ranks: z.array(z.int().min(1).max(5)),
-      public_and_legal: z.array(z.int().min(1).max(5)),
-    }),
+      turned_ally_ranks: z.array(z.int().min(1)),
+      public_and_legal: z.array(z.int().min(1)),
+      })
+      .optional(),
     rhythm: z.strictObject({
       response_within: z.int().min(1),
       max_suffering_run: z.int().min(1),
@@ -166,7 +166,7 @@ export const Personas = z.strictObject({
         focus: Text,
       }),
     )
-    .length(5, 'Персон зрителей должно быть ровно пять'),
+    .min(1),
 });
 export type Personas = z.infer<typeof Personas>;
 
@@ -180,3 +180,16 @@ export const Case = z.strictObject({
   lessons: z.array(Text).default([]),
 });
 export type Case = z.infer<typeof Case>;
+
+/** Genre pack: which knowledge base files apply to projects of this genre and format. */
+export const Genre = z.strictObject({
+  id: z.string().regex(/^[a-z0-9_]+$/, 'id — латиница, цифры и _'),
+  title: Text,
+  platform: Text.optional(),
+  rules: Text,
+  frame: Text,
+  checklist: Text,
+  personas: Text,
+  constraints: z.strictObject({ legal: Text, production: Text }),
+});
+export type Genre = z.infer<typeof Genre>;

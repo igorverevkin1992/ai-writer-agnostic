@@ -9,6 +9,8 @@ const createdAt = () =>
 export const projects = sqliteTable('projects', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
+  /** Genre pack id from packages/kb/genres. Required when a project is created through the API. */
+  genreId: text('genre_id'),
   /** Overrides budget.project_limit_usd from config/models.yaml when the producer raises it. */
   budgetLimitUsd: real('budget_limit_usd'),
   createdAt: createdAt(),

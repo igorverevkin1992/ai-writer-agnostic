@@ -22,15 +22,15 @@ export const Character = z.object({
 });
 export type Character = z.infer<typeof Character>;
 
-export const VillainRole = z.enum(['pawn', 'executor', 'guardian', 'right_hand', 'boss']);
 export const PunishmentType = z.enum(['shame', 'law', 'status', 'flight', 'allies', 'turned_ally']);
 
 export const Villain = z
   .object({
     name: NonEmpty,
-    /** 5 is the pawn, 1 is the final boss. */
-    rank: z.int().min(1).max(5),
-    role: VillainRole,
+    /** 1 is the final boss; the highest rank is the weakest. Ladder size and roles come from the genre frame. */
+    rank: z.int().min(1),
+    /** Role id from the genre frame, e.g. "pawn" or "boss". */
+    role: NonEmpty,
     threat: NonEmpty,
     /** Link to the heroine's main wound; required for rank 1. */
     link_to_ghost: z.string().trim().optional(),
@@ -43,6 +43,8 @@ export const Villain = z
     first_strike_ep: EpisodeNumber,
     takedown_ep: EpisodeNumber,
     punishment: z.object({ type: PunishmentType, public: z.boolean() }),
+    /** Taken down by setting villains against each other. */
+    via_infighting: z.boolean().default(false),
     key_to_next: NonEmpty,
     ties: z.array(z.object({ villain: NonEmpty, relation: NonEmpty })).default([]),
     knows: z.array(z.object({ fact: NonEmpty, since_ep: EpisodeNumber })).default([]),
@@ -114,7 +116,8 @@ export type Timeline = z.infer<typeof Timeline>;
 export const Bible = z.object({
   world_rules: z.array(WorldRule),
   characters: z.array(Character).min(1),
-  villains: z.array(Villain).length(5),
+  /** How many villains a season needs is a genre rule (frame), checked by code, not here. */
+  villains: z.array(Villain),
   betrayal: Betrayal,
   secrets: z.array(Secret).min(1),
   guns: z.array(Gun),

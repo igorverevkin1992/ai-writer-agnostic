@@ -12,15 +12,20 @@ export const EpisodeOutline = z.object({
   /** The new question the episode leaves the viewer with. */
   question: NonEmpty,
   emotions: z.array(NonEmpty).min(1),
+  /** What the heroine does in this episode: she acts in every one. */
+  heroine_action: NonEmpty,
   mood: Mood,
-  /** Anchor ids from packages/kb/frames/season60.yaml, e.g. "paywall_hook". */
+  /** Anchor ids from the genre frame (packages/kb/frames/*.yaml), e.g. "paywall_hook". */
   anchors: z.array(NonEmpty).default([]),
   strike_by_villain: z.boolean().default(false),
   strike_by_heroine: z.boolean().default(false),
+  /** A layer of the secret is revealed (fully or partly). */
+  reveals_secret: z.boolean().default(false),
+  threat_to_heroine: z.boolean().default(false),
   /** Rank of the villain taken down in this episode, if any. */
-  takedown_rank: z.int().min(1).max(5).optional(),
+  takedown_rank: z.int().min(1).optional(),
   /** Ranks of villains who appear on screen for the first time. */
-  villains_introduced: z.array(z.int().min(1).max(5)).default([]),
+  villains_introduced: z.array(z.int().min(1)).default([]),
   hook_type: NonEmpty,
   cliffhanger: NonEmpty,
 });

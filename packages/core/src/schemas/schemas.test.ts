@@ -68,9 +68,13 @@ describe('Bible', () => {
   it('accepts a valid bible', () => {
     expect(Bible.safeParse(sampleBible).success).toBe(true);
   });
-  it('requires exactly five villains', () => {
-    const res = Bible.safeParse({ ...sampleBible, villains: sampleVillains.slice(0, 4) });
-    expect(issuePaths(res)).toEqual(['villains']);
+  it('does not fix the number of villains: that is a genre rule', () => {
+    expect(Bible.safeParse({ ...sampleBible, villains: sampleVillains.slice(0, 3) }).success).toBe(true);
+    expect(Bible.safeParse({ ...sampleBible, villains: [] }).success).toBe(true);
+  });
+  it('marks a takedown through villain infighting', () => {
+    const v = Villain.parse({ ...sampleVillains[0], via_infighting: undefined });
+    expect(v.via_infighting).toBe(false);
   });
   it('requires link_to_ghost for the final boss only', () => {
     const boss = sampleVillains.find((v) => v.rank === 1)!;
@@ -78,12 +82,13 @@ describe('Bible', () => {
     const pawn = sampleVillains.find((v) => v.rank === 5)!;
     expect(Villain.safeParse({ ...pawn, link_to_ghost: undefined }).success).toBe(true);
   });
-  it('rejects unknown villain role and punishment type', () => {
-    const res = Villain.safeParse({ ...sampleVillains[0], role: 'minion', punishment: { type: 'death', public: true } });
+  it('rejects an empty role and an unknown punishment type', () => {
+    const res = Villain.safeParse({ ...sampleVillains[0], role: '', punishment: { type: 'death', public: true } });
     expect(issuePaths(res)).toEqual(['role', 'punishment.type']);
   });
-  it('rejects a rank outside 1–5', () => {
-    expect(Villain.safeParse({ ...sampleVillains[0], rank: 6 }).success).toBe(false);
+  it('accepts any positive rank: ladder size comes from the genre', () => {
+    expect(Villain.safeParse({ ...sampleVillains[0], rank: 7 }).success).toBe(true);
+    expect(Villain.safeParse({ ...sampleVillains[0], rank: 0 }).success).toBe(false);
   });
   it('allows a gun without a firing episode in a draft', () => {
     const guns = [{ ...sampleBible.guns[0]!, fired_ep: null }];
@@ -122,6 +127,10 @@ describe('EpisodeCard', () => {
   it('requires the full metro frame: face, action, object', () => {
     const res = EpisodeCard.safeParse({ ...sampleCard, metro_frame: { face: 'Лиза', action: 'сжимает' } });
     expect(issuePaths(res)).toEqual(['metro_frame.object']);
+  });
+  it('requires the heroine action', () => {
+    expect(issuePaths(EpisodeCard.safeParse({ ...sampleCard, heroine_action: '' }))).toEqual(['heroine_action']);
+    expect(issuePaths(EpisodeOutline.safeParse({ ...sampleOutline, heroine_action: undefined }))).toEqual(['heroine_action']);
   });
   it('requires at least one person in the cast', () => {
     expect(issuePaths(EpisodeCard.safeParse({ ...sampleCard, cast: [] }))).toEqual(['cast']);
