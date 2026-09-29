@@ -214,7 +214,7 @@ export function renderEvalReport(r: EvalReport, meta: { date: string; project: s
     `| Доля реальных замечаний | ${r.matches.length ? `${r.realFindings} из ${r.matches.length} (${fmt(precision)})` : '—'} | ≥50% ${mark(precision, 50)} | ≥65% ${mark(precision, 65)} |`,
     `| Найдено посеянных дыр | ${seededFound} из ${r.seeded.length} (${fmt(seededPct)}) | ≥80% ${mark(seededPct, 80)} | ≥90% ${mark(seededPct, 90)} |`,
     `| Расхождение с продюсером по чек-листу | ${divergence === null ? 'нет оценки продюсера' : `${divergence} балл.`} | ≤3 ${divergence === null ? '—' : divergence <= 3 ? '✓' : '✗'} | ≤2 ${divergence === null ? '—' : divergence <= 2 ? '✓' : '✗'} |`,
-    '| Сцены «можно снимать после лёгкой правки» | появится на вехе M5 | ≥40% | ≥60% |',
+    '| Сцены «можно снимать после лёгкой правки» | считает `pnpm pilot` | ≥40% | ≥60% |',
     `| Опорные точки на своих номерах | ${r.anchors.onPlace} из ${r.anchors.total} (${fmt(anchorsPct)}) | 100% ${mark(anchorsPct, 100)} | 100% |`,
     '',
     `Чек-лист по коду: ${r.checklist.code} баллов, ещё ${r.checklist.unknown} оценивает только модель-судья.`,

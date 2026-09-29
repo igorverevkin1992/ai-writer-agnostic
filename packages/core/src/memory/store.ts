@@ -19,10 +19,11 @@ import {
   worldRules,
 } from '../db/schema.ts';
 import { Bible, type Fact, type KnowledgeEntry, type TimelineEvent } from '../schemas/bible.ts';
-import type { EpisodeCard } from '../schemas/episodeCard.ts';
+import { EpisodeCard as EpisodeCardSchema, type EpisodeCard } from '../schemas/episodeCard.ts';
 import type { Finding } from '../schemas/finding.ts';
 import { SeasonPlan } from '../schemas/season.ts';
-import type { Script } from '../schemas/script.ts';
+import { STEP_IDS } from '../steps.ts';
+import { Script as ScriptSchema, type Script } from '../schemas/script.ts';
 
 export type Author = 'producer' | 'agent';
 
@@ -66,11 +67,14 @@ export class ProjectMemory {
       .get();
     const version = (last?.v ?? 0) + 1;
     this.db.insert(artifacts).values({ projectId: p, step, version, data }).run();
-    this.db
-      .insert(steps)
-      .values({ projectId: p, step, version })
-      .onConflictDoUpdate({ target: [steps.projectId, steps.step], set: { version, updatedAt: new Date() } })
-      .run();
+    // Only pipeline steps have a status row; other artifacts (idea, choices, approvals) do not.
+    if ((STEP_IDS as readonly string[]).includes(step)) {
+      this.db
+        .insert(steps)
+        .values({ projectId: p, step, version })
+        .onConflictDoUpdate({ target: [steps.projectId, steps.step], set: { version, updatedAt: new Date() } })
+        .run();
+    }
     return version;
   }
 
@@ -153,6 +157,48 @@ export class ProjectMemory {
   /** Links an episode document to facts or timeline events explicitly (e.g. a flashback to an event). */
   link(target: 'outline' | 'card' | 'script', ep: number, factIds: string[]): void {
     for (const factId of factIds) this.db.insert(sceneFactLinks).values({ projectId: this.projectId, ep, target, factId }).run();
+  }
+
+  cards(): EpisodeCard[] {
+    return this.db
+      .select({ data: episodeCards.data })
+      .from(episodeCards)
+      .where(eq(episodeCards.projectId, this.projectId))
+      .orderBy(episodeCards.ep)
+      .all()
+      .map((r) => EpisodeCardSchema.parse(r.data));
+  }
+
+  script(ep: number): Script | undefined {
+    const row = this.db
+      .select({ data: scripts.data })
+      .from(scripts)
+      .where(and(eq(scripts.projectId, this.projectId), eq(scripts.ep, ep)))
+      .get();
+    return row ? ScriptSchema.parse(row.data) : undefined;
+  }
+
+  scripts(): Script[] {
+    return this.db
+      .select({ data: scripts.data })
+      .from(scripts)
+      .where(eq(scripts.projectId, this.projectId))
+      .orderBy(scripts.ep)
+      .all()
+      .map((r) => ScriptSchema.parse(r.data));
+  }
+
+  /** Open findings of a step and episode become obsolete when the document is rewritten. */
+  closeObsolete(step: string, ep: number, verdict: string): void {
+    this.db
+      .update(findingsTable)
+      .set({ status: 'resolved', verdict })
+      .where(and(eq(findingsTable.projectId, this.projectId), eq(findingsTable.step, step), eq(findingsTable.episode, ep), eq(findingsTable.status, 'open')))
+      .run();
+  }
+
+  logEdit(entity: string, entityId: string, before: unknown, after: unknown, meta: EditMeta): number {
+    return this.logRevision(entity, entityId, before, after, meta);
   }
 
   staleEpisodes(): { cards: number[]; scripts: number[] } {

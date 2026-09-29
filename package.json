@@ -16,7 +16,8 @@
     "smoke": "tsx scripts/smoke.ts",
     "eval": "tsx scripts/eval.ts",
     "kb:check": "pnpm --filter @aiw/kb check",
-    "seed-holes": "tsx scripts/seed-holes.ts"
+    "seed-holes": "tsx scripts/seed-holes.ts",
+    "pilot": "tsx scripts/pilot.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

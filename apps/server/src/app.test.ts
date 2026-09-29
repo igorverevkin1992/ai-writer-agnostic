@@ -107,6 +107,14 @@ describe('server', () => {
     expect((await post(`/api/projects/${id}/steps/season_plan/approve`)).json()).toMatchObject({ status: 'approved' });
   });
 
+  it('serves cards and readable scripts, and polishes a fragment', async () => {
+    const id = (await post('/api/projects', { title: 'Кровь', genreId: 'revenge_thriller', idea: 'идея' })).json().id as string;
+    expect((await post(`/api/projects/${id}/steps/episode_cards/run`, { episodes: [1] })).json().error).toMatch(/Сначала утвердите/);
+    expect((await get(`/api/projects/${id}/scripts/1`)).statusCode).toBe(404);
+    expect((await post(`/api/projects/${id}/polish`, { ep: 1, from: 0, to: 0 })).json().error).toMatch(/Сначала утвердите/);
+    expect((await get(`/api/projects/${id}/cards`)).json()).toEqual([]);
+  });
+
   it('reports errors clearly', async () => {
     expect((await post('/api/projects', { title: 'X', genreId: 'sitcom', idea: 'Y' })).json().error).toMatch(/Жанр «sitcom» не найден/);
     expect((await get('/api/projects/nope')).statusCode).toBe(404);

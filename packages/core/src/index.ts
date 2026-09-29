@@ -12,3 +12,4 @@ export * from './eval/index.ts';
 export * from './prompts/index.ts';
 export * from './checks/llm/index.ts';
 export * from './pipeline/index.ts';
+export * from './text/index.ts';

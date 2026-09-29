@@ -9,7 +9,10 @@ import {
   ProjectMemory,
   STEP_IDS,
   approveStep,
+  choosePolish,
   costSummary,
+  proposePolish,
+  renderScript,
   createProject,
   dismissByProducer,
   getProject,
@@ -79,16 +82,21 @@ export function buildApp({ kb, db, config, llm }: AppDeps): FastifyInstance {
     return { project, steps: new Pipeline(db, project.id).states() };
   });
 
-  app.post<{ Params: { id: string; step: string } }>('/api/projects/:id/steps/:step/run', async (req) => {
-    getProject(db, req.params.id);
-    return runStep({ db, llm, kb, projectId: req.params.id }, asStep(req.params.step));
-  });
+  /** Body for cards and scripts: {episodes?: number[], fix?: boolean}. */
+  app.post<{ Params: { id: string; step: string }; Body: { episodes?: number[]; fix?: boolean } | undefined }>(
+    '/api/projects/:id/steps/:step/run',
+    async (req) => {
+      getProject(db, req.params.id);
+      return runStep({ db, llm, kb, projectId: req.params.id }, asStep(req.params.step), { episodes: req.body?.episodes, fix: req.body?.fix });
+    },
+  );
 
-  app.post<{ Params: { id: string; step: string }; Body: { choice?: number } | undefined }>(
+  /** Body: {choice} for concepts, {block} (first episode) for episode cards. */
+  app.post<{ Params: { id: string; step: string }; Body: { choice?: number; block?: number } | undefined }>(
     '/api/projects/:id/steps/:step/approve',
     async (req) => {
       getProject(db, req.params.id);
-      approveStep({ db, kb, projectId: req.params.id }, asStep(req.params.step), { choice: req.body?.choice });
+      approveStep({ db, kb, projectId: req.params.id }, asStep(req.params.step), { choice: req.body?.choice, block: req.body?.block });
       return new Pipeline(db, req.params.id).get(asStep(req.params.step));
     },
   );
@@ -125,6 +133,29 @@ export function buildApp({ kb, db, config, llm }: AppDeps): FastifyInstance {
     getProject(db, req.body?.projectId ?? '');
     dismissByProducer(db, req.body.projectId, req.params.id, req.body.factId ?? '');
     return new ProjectMemory(db, req.body.projectId).finding(req.params.id);
+  });
+
+  app.get<{ Params: { id: string } }>('/api/projects/:id/cards', async (req) => {
+    getProject(db, req.params.id);
+    return new ProjectMemory(db, req.params.id).cards();
+  });
+
+  app.get<{ Params: { id: string; ep: string } }>('/api/projects/:id/scripts/:ep', async (req, reply) => {
+    getProject(db, req.params.id);
+    const script = new ProjectMemory(db, req.params.id).script(Number(req.params.ep));
+    if (!script) return reply.status(404).send({ error: `Нет сценария ${req.params.ep}-й серии` });
+    return { script, text: renderScript(script) };
+  });
+
+  app.post<{ Params: { id: string }; Body: { ep: number; from: number; to: number; note?: string } }>('/api/projects/:id/polish', async (req) => {
+    getProject(db, req.params.id);
+    return proposePolish({ db, llm, kb, projectId: req.params.id }, req.body);
+  });
+
+  app.post<{ Params: { id: string }; Body: { variant: number } }>('/api/projects/:id/polish/choose', async (req) => {
+    getProject(db, req.params.id);
+    const { script, findings } = choosePolish({ db, kb, projectId: req.params.id }, req.body?.variant ?? -1);
+    return { script, text: renderScript(script), findings };
   });
 
   app.get<{ Params: { id: string } }>('/api/projects/:id/costs', async (req) => costSummary(db, config, req.params.id));
