@@ -9,7 +9,6 @@ import { computeCost } from './cost.ts';
 import {
   InputTooLargeError,
   InvalidOutputError,
-  LlmError,
   MissingKeyError,
   OutputTruncatedError,
   ProviderUnavailableError,
@@ -52,6 +51,8 @@ export interface CallResult {
   costUsd: number;
   fallbackUsed: boolean;
   budget?: BudgetStatus;
+  /** The request as sent, after shrinking to fit the input limit. */
+  request: LlmRequest;
 }
 
 interface Resolved {
@@ -113,7 +114,11 @@ export class LlmClient {
     if (opts.projectId) assertBudget(this.db, this.config, opts.projectId);
 
     // Token counting goes to the provider too: when it is down, the reserve takes over here as well.
-    const attempt = async (r: Resolved, isFallback: boolean) => this.callLogged(opts, r, await this.fitInput(opts, r), isFallback);
+    let sent = opts.request;
+    const attempt = async (r: Resolved, isFallback: boolean) => {
+      sent = await this.fitInput(opts, r);
+      return this.callLogged(opts, r, sent, isFallback);
+    };
 
     let result: ProviderResult & { callId: number };
     let used = primary;
@@ -146,6 +151,7 @@ export class LlmClient {
       costUsd: this.cost(result.model, used.target.model, result.usage).costUsd,
       fallbackUsed,
       budget: opts.projectId ? budgetStatus(this.db, this.config, opts.projectId) : undefined,
+      request: sent,
     };
   }
 
@@ -162,13 +168,15 @@ export class LlmClient {
     if (firstCheck.ok) return { ...first, data: firstCheck.data };
     this.markInvalid(first.callId);
 
+    // The retry continues the request as it was sent (already shrunk, if it had to be).
+    // An empty answer is not echoed back: providers reject empty assistant turns.
     const retry: CallOptions = {
       ...opts,
       request: {
-        ...opts.request,
+        ...first.request,
         messages: [
-          ...opts.request.messages,
-          { role: 'assistant', content: first.text },
+          ...first.request.messages,
+          { role: 'assistant', content: first.text.trim() || '(пустой ответ)' },
           {
             role: 'user',
             content:
@@ -271,7 +279,9 @@ export class LlmClient {
           error: err instanceof Error ? err.message : String(err),
         })
         .run();
-      throw err instanceof LlmError ? err : new ProviderUnavailableError(resolved.provider, err);
+      // Adapters turn SDK and network failures into LlmError. Anything else is a bug in our
+      // code: it must surface, not quietly send the work to the reserve provider.
+      throw err;
     }
   }
 

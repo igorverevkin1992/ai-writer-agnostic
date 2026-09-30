@@ -2,6 +2,7 @@ import { genreKit, loadKb } from '@aiw/kb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDb, type Db } from '../db/client.ts';
 import { projects } from '../db/schema.ts';
+import { confirmChecklist } from '../demo.ts';
 import { loadGolden } from '../fixtures.ts';
 import { LlmClient } from '../providers/llm.ts';
 import { FakeProvider, testConfig } from '../providers/testing.ts';
@@ -35,6 +36,7 @@ function reply(req: LlmRequest): string {
   }
   if (task.startsWith('respond:')) return JSON.stringify({ action: 'cite', fact_id: 'f_dasha_target', explanation: 'Даша в опасности' });
   if (task.startsWith('judge:')) return JSON.stringify({ closed: true, reason: 'Закрыто' });
+  if (task === 'checklist_judge') return JSON.stringify(confirmChecklist(req.system ?? ''));
   throw new Error(task);
 }
 

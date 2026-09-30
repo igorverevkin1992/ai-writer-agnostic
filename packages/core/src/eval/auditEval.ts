@@ -5,12 +5,13 @@ import { parse } from 'yaml';
 import { z } from 'zod';
 import { runCodeChecks } from '../checks/code/runner.ts';
 import { scoreChecklist } from '../checks/code/checklist.ts';
+import { judgeChecklist } from '../checks/llm/checklistJudge.ts';
 import { runDevilAdvocate } from '../checks/llm/devilAdvocate.ts';
 import { resolveFinding } from '../checks/llm/resolve.ts';
 import { EvalMatches } from '../checks/llm/schemas.ts';
 import { FIXTURES_DIR, type ProjectFixture } from '../fixtures.ts';
 import { renderPrompt, schemaText } from '../prompts/render.ts';
-import { ROLE_NAMES, type RoleName } from '../providers/config.ts';
+import { ROLE_NAMES, type ProviderName, type RoleName } from '../providers/config.ts';
 import { BudgetExceededError } from '../providers/errors.ts';
 import type { LlmClient } from '../providers/llm.ts';
 import type { Finding } from '../schemas/finding.ts';
@@ -66,16 +67,17 @@ export interface EvalReport {
   producerFound: number;
   realFindings: number;
   seeded: SeededResult[];
-  checklist: { code: number; unknown: number; producer?: number };
+  /** judged: the agent's score after the model-judge (what the producer's score is compared with). */
+  checklist: { code: number; unknown: number; producer?: number; judged?: number; judgedUnknown?: number };
   anchors: { total: number; onPlace: number };
   resolved: { tried: number; closed: number; architect: RoleName };
   /** Set when the budget ran out: the report is partial. */
   stopped?: string;
 }
 
-/** Picks a judge role whose provider differs from the given one. */
-function judgeFor(llm: LlmClient, notProvider: string): RoleName {
-  const role = ROLE_NAMES.find((r) => llm.resolve(r).provider !== notProvider);
+/** Picks a judge role whose provider differs from all the given ones. */
+function judgeFor(llm: LlmClient, notProviders: string[]): RoleName {
+  const role = ROLE_NAMES.find((r) => !notProviders.includes(llm.resolve(r).provider));
   if (!role) throw new Error('Нет роли другого семейства для судьи');
   return role;
 }
@@ -116,7 +118,18 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
     resolved: { tried: 0, closed: 0, architect: architectRole },
   };
 
+  const auditors = new Set<ProviderName>([criticProvider]);
   try {
+    // 0. The checklist as the agent scores it: code, then the model-judge.
+    if (score.unknownPoints > 0) {
+      const judged = await judgeChecklist(deps, score, { ...golden, authorProvider: llm.resolve('architect_heavy').provider });
+      report.checklist.judged = judged.score;
+      report.checklist.judgedUnknown = judged.unknownPoints;
+    } else {
+      report.checklist.judged = score.score;
+      report.checklist.judgedUnknown = 0;
+    }
+
     // 1. The auditor on the golden bible and plan.
     for (const [target, authorRole] of [
       [{ bible: golden.bible }, 'architect'],
@@ -125,16 +138,17 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
       const res = await runDevilAdvocate(deps, { ...target, authorProvider: llm.resolve(authorRole).provider });
       report.findings.push(...res.findings);
       report.dropped += res.dropped;
+      for (const p of res.providers) auditors.add(p);
     }
 
     // 2. Match findings with the producer's holes (judge from another family than the auditor).
     if (report.findings.length) {
       const holes = input.producer?.holes ?? [];
       const { data } = await llm.completeJson(EvalMatches, {
-        role: judgeFor(llm, criticProvider),
+        role: judgeFor(llm, [...auditors]),
         projectId,
         step: 'eval',
-        authorProvider: criticProvider,
+        authorProvider: [...auditors],
         request: {
           task: 'eval_match',
           system: renderPrompt(kb, 'critic_of_writer/eval_match', {
@@ -207,7 +221,9 @@ export function renderEvalReport(r: EvalReport, meta: { date: string; project: s
   const precision = pct(r.realFindings, r.findings.length);
   const seededFound = r.seeded.filter((s) => s.code || s.model).length;
   const seededPct = pct(seededFound, r.seeded.length);
-  const divergence = r.checklist.producer === undefined ? null : Math.abs(r.checklist.producer - r.checklist.code - r.checklist.unknown);
+  // The agent's own score (after the judge) against the producer's; unjudged points count as not scored.
+  const agentScore = r.checklist.judged ?? r.checklist.code;
+  const divergence = r.checklist.producer === undefined ? null : Math.abs(r.checklist.producer - agentScore);
   const anchorsPct = pct(r.anchors.onPlace, r.anchors.total);
   const types = [...new Set(r.seeded.map((s) => s.hole.holeType))].sort((a, b) => a - b);
   const lines = [
@@ -227,7 +243,7 @@ export function renderEvalReport(r: EvalReport, meta: { date: string; project: s
     '| Сцены «можно снимать после лёгкой правки» | считает `pnpm pilot` | ≥40% | ≥60% |',
     `| Опорные точки на своих номерах | ${r.anchors.onPlace} из ${r.anchors.total} (${fmt(anchorsPct)}) | 100% ${mark(anchorsPct, 100)} | 100% |`,
     '',
-    `Чек-лист по коду: ${r.checklist.code} баллов, ещё ${r.checklist.unknown} оценивает только модель-судья.`,
+    `Чек-лист: код — ${r.checklist.code} баллов, с судьёй — ${agentScore}${r.checklist.judgedUnknown ? ` (не подтверждено ${r.checklist.judgedUnknown})` : ''}${r.checklist.producer !== undefined ? `, у продюсера — ${r.checklist.producer}` : ''}.`,
     `Замечаний аудитора: ${r.findings.length}; отброшено без точной цитаты: ${r.dropped}.`,
     `Архитектор ответил на ${r.resolved.tried} реальных замечаний, судья закрыл ${r.resolved.closed}.`,
     '',

@@ -91,6 +91,9 @@ export class AnthropicProvider implements Provider {
 
 function wrap(err: unknown): Error {
   if (err instanceof LlmError) return err;
-  if (err instanceof Anthropic.BadRequestError) return new LlmError(`Anthropic отклонил запрос: ${err.message}`);
+  // A 400 about the account (no credit) is not a bad request: another provider can do the work.
+  if (err instanceof Anthropic.BadRequestError && !/credit balance|billing/iu.test(err.message)) {
+    return new LlmError(`Anthropic отклонил запрос: ${err.message}`);
+  }
   return new ProviderUnavailableError('anthropic', err);
 }

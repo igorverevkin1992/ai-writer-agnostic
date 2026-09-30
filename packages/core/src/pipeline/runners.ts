@@ -377,6 +377,8 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
       ctx.memory.saveScript(script);
       // The step result changed now: if the checks below fail, the run counts as unfinished.
       ctx.memory.saveArtifact('scripts', { episodes: ctx.memory.scripts().map((s) => s.ep) });
+      // Who really wrote it (the reserve may have stood in): later critics must be of another family.
+      ctx.memory.saveArtifact(`author:scripts:${ep}`, { provider: writer });
       try {
         const found = [
           ...checkScriptMetrics(script, p, f),

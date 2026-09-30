@@ -78,6 +78,6 @@ const text = renderEvalReport(report, {
 });
 const dir = resolve(REPO_ROOT, 'reports');
 mkdirSync(dir, { recursive: true });
-const file = join(dir, `eval-${date}${heavy ? '-heavy' : ''}.md`);
+const file = join(dir, `eval-${project}-${date}${heavy ? '-heavy' : ''}.md`);
 writeFileSync(file, text);
 console.log(`\n${text}\nОтчёт: ${file}`);

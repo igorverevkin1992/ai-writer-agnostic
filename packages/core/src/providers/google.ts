@@ -87,6 +87,10 @@ export class GoogleProvider implements Provider {
 
 function wrap(err: unknown): Error {
   if (err instanceof LlmError) return err;
-  if (err instanceof ApiError && err.status === 400) return new LlmError(`Google отклонил запрос: ${err.message}`);
+  // Gemini answers 400 also for an invalid key and for an unsupported country: the reserve can help there.
+  const accountProblem = /API key not valid|API_KEY_INVALID|FAILED_PRECONDITION|location is not supported/iu;
+  if (err instanceof ApiError && err.status === 400 && !accountProblem.test(err.message)) {
+    return new LlmError(`Google отклонил запрос: ${err.message}`);
+  }
   return new ProviderUnavailableError('google', err);
 }

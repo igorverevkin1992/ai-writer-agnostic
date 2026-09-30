@@ -203,6 +203,14 @@ describe('GoogleProvider', () => {
     );
   });
 
+  it('an unsupported country or a bad key lets the reserve take over; a bad request does not', async () => {
+    respond = () => ({ status: 400, body: JSON.stringify({ error: { code: 400, message: 'User location is not supported for the API use.', status: 'FAILED_PRECONDITION' } }) });
+    await expect(new GoogleProvider(env).complete(request, { model: 'g', maxOutput: 5 })).rejects.toThrow(ProviderUnavailableError);
+    respond = () => ({ status: 400, body: JSON.stringify({ error: { code: 400, message: 'Invalid JSON payload', status: 'INVALID_ARGUMENT' } }) });
+    const err = await new GoogleProvider(env).complete(request, { model: 'g', maxOutput: 5 }).catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(ProviderUnavailableError);
+  });
+
   it('counts tokens before a writer call', async () => {
     respond = () => ({ body: JSON.stringify({ totalTokens: 180000 }) });
     expect(await new GoogleProvider(env).countTokens(request, 'g-1')).toBe(180000);

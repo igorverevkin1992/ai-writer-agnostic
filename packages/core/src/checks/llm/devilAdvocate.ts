@@ -1,5 +1,5 @@
 import type { GenreKit, Kb } from '@aiw/kb';
-import type { Authors, RoleName } from '../../providers/config.ts';
+import type { Authors, ProviderName, RoleName } from '../../providers/config.ts';
 import type { LlmClient } from '../../providers/llm.ts';
 import type { Bible } from '../../schemas/bible.ts';
 import type { Finding } from '../../schemas/finding.ts';
@@ -43,6 +43,8 @@ export interface AuditResult {
   /** Drafts dropped because their quote is not in the audited text. */
   dropped: number;
   calls: number;
+  /** Providers that really answered (the reserve may have stood in): a judge of the audit must differ. */
+  providers: ProviderName[];
 }
 
 const normalize = (s: string) => s.replace(/[«»"“”„]/gu, '"').replace(/[ёЁ]/gu, 'е').replace(/\s+/gu, ' ').trim().toLowerCase();
@@ -101,6 +103,7 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
   const found = new Map<string, Finding>();
   let dropped = 0;
   let calls = 0;
+  const providers = new Set<ProviderName>();
 
   const ask = async (task: string, system: string, block: AuditBlock, holeType: number | null, check: string) => {
     calls++;
@@ -111,6 +114,7 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
       authorProvider: target.authorProvider,
       request: { task, cacheablePrefix: [kbText], system, messages: [{ role: 'user', content: 'Проверь текст. Ответ — только JSON.' }] },
     });
+    providers.add(res.provider);
     for (const d of res.data) {
       const f = toFinding(d, block, check, holeType ?? d.holeType);
       if (!f) {
@@ -156,5 +160,5 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
     }
   }
 
-  return { findings: [...found.values()], dropped, calls };
+  return { findings: [...found.values()], dropped, calls, providers: [...providers] };
 }

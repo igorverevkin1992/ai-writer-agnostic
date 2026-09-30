@@ -357,3 +357,34 @@ describe('review fixes: providers', () => {
     expect(extractJson('Ответ: {"t": "скобка } внутри"} конец')).toEqual({ t: 'скобка } внутри' });
   });
 });
+
+describe('review fixes 2: providers', () => {
+  it('an empty answer is not echoed back as an empty assistant turn', async () => {
+    anthropic = new FakeProvider('anthropic', ['', '{"ok":true}']);
+    await client().completeJson(z.object({ ok: z.boolean() }), { role: 'architect', request: ask });
+    const retry = anthropic.calls[1]!.req.messages;
+    expect(retry.every((m) => m.content.trim().length > 0)).toBe(true);
+  });
+
+  it('the retry continues the shrunk request, it does not shrink again from scratch', async () => {
+    let shrinks = 0;
+    google = new FakeProvider('google', ['не json', '{"ok":true}'], (req) => (req.system === 'полная библия' ? 5000 : 10));
+    await client().completeJson(z.object({ ok: z.boolean() }), {
+      role: 'writer',
+      request: { system: 'полная библия', messages: ask.messages },
+      shrink: (req) => {
+        shrinks++;
+        return { ...req, system: 'сжатая библия' };
+      },
+    });
+    expect(shrinks).toBe(1);
+    expect(google.calls[1]!.req.system).toBe('сжатая библия');
+  });
+
+  it('a bug in our code is not mistaken for an unavailable provider', async () => {
+    anthropic = new FakeProvider('anthropic', [new TypeError('x is undefined')]);
+    await expect(client({ RESERVE_MODEL: 'r-1' }).complete({ role: 'architect', request: ask })).rejects.toThrow(TypeError);
+    expect(reserve.calls).toHaveLength(0);
+  });
+});
+

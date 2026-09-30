@@ -9,6 +9,7 @@ import { ProjectMemory } from '../memory/store.ts';
 import { createProject } from '../pipeline/project.ts';
 import { runStep, skipStep } from '../pipeline/runners.ts';
 import { BudgetExceededError } from '../providers/errors.ts';
+import type { ProviderName } from '../providers/config.ts';
 import type { LlmClient } from '../providers/llm.ts';
 import type { Finding } from '../schemas/finding.ts';
 
@@ -73,7 +74,8 @@ export async function runPilot(
       else report.metricsPassed.push(s.ep);
     }
     for (const s of scripts) {
-      const r = await rateShootable({ llm, kb, kit, projectId, step: 'pilot' }, s, llm.resolve('writer').provider);
+      const author = (memory.latestArtifact(`author:scripts:${s.ep}`) as { provider: ProviderName } | undefined)?.provider;
+      const r = await rateShootable({ llm, kb, kit, projectId, step: 'pilot' }, s, author ?? llm.resolve('writer').provider);
       report.shootable.push({ ep: s.ep, verdict: r.verdict, reason: r.reason });
     }
     report.openBlockers = memory.openFindings().filter((f) => f.severity === 'blocker').length;
