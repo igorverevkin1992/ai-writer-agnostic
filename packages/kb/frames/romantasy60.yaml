@@ -1,0 +1,102 @@
+# Каркас сезона ромэнтэзи: 60 серий, три линии — месть, любовь, сила.
+# Источник: исследование продюсера, «Карта сезона» и YAML-модуль (skeleton: revenge, love, power).
+# Опорные точки всех трёх линий — в одном списке; у любовных приставка love_, у линии силы — power_.
+season_frame:
+  episodes: 60
+  free: 8
+  duration_s: {min: 60, max: 120, target: 90}
+  anchors:
+    # Месть
+    betrayal: 1                   # унижение и предательство, героиня видит сама
+    mask: [1, 3]                  # скрыть знание или силу
+    first_strike: "<=3"           # первая победа — снята пешка
+    paywall_hook: 8               # почти-поцелуй + частичное раскрытие природы героя + угроза
+    secret_turn: 10               # поворот № 1: тайна меняет цель мести
+    pinch1: 22
+    midpoint: 30                  # поворот № 2
+    pinch2: 37
+    fall: [45, 49]
+    reveal: [48, 51]
+    boss_takedown: [57, 59]
+    finale: [59, 60]              # одна сцена закрывает обе линии
+    # Любовь (Хейз, Труби)
+    love_meet: [1, 2]
+    love_no_way1: 3
+    love_deal: [5, 6]             # сцепка: сделка
+    love_first_dance: 7           # дуэль слов
+    love_near_kiss: 8
+    love_no_way2: [10, 11]
+    love_first_kiss: [20, 21]
+    love_trust_blow: 22           # удар по доверию
+    love_perfect_moment: 30       # идеальный момент + страшное открытие
+    love_chooses_clan: 37         # он «выбирает род»
+    love_breakup: [45, 47]
+    love_dark_night: 48
+    love_awakening: [49, 51]
+    love_grand_gesture: [55, 57]
+    love_reunion: [59, 60]
+    # Сила: пять ступеней пробуждения
+    power_spark: [1, 2]
+    power_trial: [3, 10]
+    power_cost: [11, 22]
+    power_mastery: [23, 37]
+    power_loss: [45, 47]
+    power_full: [50, 60]
+  anchor_labels:
+    betrayal: Предательство
+    mask: Маска
+    first_strike: Первая победа
+    paywall_hook: Точка оплаты
+    secret_turn: Поворот № 1
+    pinch1: Пинч 1
+    midpoint: Мидпоинт
+    pinch2: Пинч 2
+    fall: Падение
+    reveal: Главное раскрытие
+    boss_takedown: Босс снят
+    finale: Финал
+    love_meet: Знакомство
+    love_no_way1: «Ни за что» № 1
+    love_deal: Сцепка (сделка)
+    love_first_dance: «Первый танец»
+    love_near_kiss: Почти-поцелуй
+    love_no_way2: «Ни за что» № 2
+    love_first_kiss: Первый поцелуй
+    love_trust_blow: Удар по доверию
+    love_perfect_moment: Идеальный момент
+    love_chooses_clan: Он выбирает род
+    love_breakup: Разрыв
+    love_dark_night: Тёмная ночь
+    love_awakening: Пробуждение чувства
+    love_grand_gesture: Большой жест
+    love_reunion: Воссоединение
+    power_spark: Искра силы
+    power_trial: Проба силы
+    power_cost: Цена силы
+    power_mastery: Владение силой
+    power_loss: Потеря силы
+    power_full: Полная сила
+  lines:
+    revenge: Кайф мести
+    love: Кайф любви
+  villains:
+    count: 5
+    roles: {5: pawn, 4: executor, 3: guardian, 2: right_hand, 1: boss}
+    boss_on_screen_by: 1
+    all_on_screen_by: 10
+    # Правая рука — предатель из 1-й серии; пешку снимают в 3-й, значит, она в кадре раньше.
+    on_screen_by: {5: 2, 4: 6, 3: 10, 2: 1, 1: 1}
+    takedowns: {5: 3, 4: [18, 20], 3: [38, 40], 2: [48, 50], 1: [57, 59]}
+    counterstrike_within: 3
+    max_turned_allies: 1
+    turned_ally_ranks: [3, 4, 5]
+    public_and_legal: [2, 1]
+  rhythm:
+    response_within: 3            # удар → ответ за 1–3 серии
+    max_suffering_run: 2          # страдание не больше 2 серий подряд
+    max_same_hook_run: 2
+    emotions_per_episode: [2, 3]
+    max_without_line: 3           # не больше 3 серий без кайфа мести и без кайфа любви
+    line_gap_exempt: [love_breakup]  # исключение — падение (45–47), но и там нужна искра
+  blocks: [[1, 8], [9, 20], [21, 30], [31, 40], [41, 50], [51, 60]]
+  tolerance: 1

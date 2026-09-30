@@ -9,6 +9,7 @@ import {
   Checklist,
   Genre,
   Glossary,
+  Guide,
   HoleCatalog,
   LegalConstraints,
   Method,
@@ -38,6 +39,7 @@ export interface Kb {
   personas: ById<Personas>;
   legal: ById<LegalConstraints>;
   production: ById<ProductionConstraints>;
+  guides: ById<Guide>;
   /** Shared by all genres. */
   methods: Record<(typeof METHOD_IDS)[number], Method>;
   glossary: Glossary;
@@ -56,6 +58,7 @@ export interface GenreKit {
   personas: Personas;
   legal: LegalConstraints;
   production: ProductionConstraints;
+  guide?: Guide;
 }
 
 export class UnknownGenreError extends Error {
@@ -78,6 +81,7 @@ export function genreKit(kb: Kb, genreId: string): GenreKit {
     personas: kb.personas[genre.personas]!,
     legal: kb.legal[genre.constraints.legal]!,
     production: kb.production[genre.constraints.production]!,
+    guide: genre.guide ? kb.guides[genre.guide] : undefined,
   };
 }
 
@@ -107,6 +111,7 @@ export function loadKb(root: string = DEFAULT_KB_ROOT): Kb {
   const frameFiles = readDir('frames', SeasonFrame);
   const checklists = readDir('checklist', Checklist);
   const personas = readDir('personas', Personas);
+  const guides = readDir('guides', Guide);
   const frames = {
     loaded: Object.fromEntries(Object.entries(frameFiles.loaded).map(([id, f]) => [id, f.season_frame])) as ById<Frame>,
     failed: frameFiles.failed,
@@ -148,7 +153,7 @@ export function loadKb(root: string = DEFAULT_KB_ROOT): Kb {
   const prompts = readPrompts(root, issues);
 
   crossCheck(
-    { genres, rules, frames, checklists, personas, legal, production, holes, methods },
+    { genres, rules, frames, checklists, personas, legal, production, holes, methods, guides },
     issues,
   );
 
@@ -165,6 +170,7 @@ export function loadKb(root: string = DEFAULT_KB_ROOT): Kb {
     personas: personas.loaded,
     legal,
     production,
+    guides: guides.loaded,
     methods: methods as Kb['methods'],
     glossary,
     holes,
@@ -293,6 +299,7 @@ function crossCheck(
     production: ById<ProductionConstraints>;
     holes: HoleCatalog | undefined;
     methods: Partial<Kb['methods']>;
+    guides: Loaded<Guide>;
   },
   issues: KbIssue[],
 ): void {
@@ -312,6 +319,9 @@ function crossCheck(
       }
     }
     // A missing constraint file is already reported by readYaml as "not found".
+    if (g.guide && !(g.guide in kb.guides.loaded) && !kb.guides.failed.has(g.guide)) {
+      issues.push({ file, field: 'guide', message: `Нет файла guides/${g.guide}.yaml` });
+    }
 
     const rules = kb.rules.loaded[g.rules];
     const checklist = kb.checklists.loaded[g.checklist];
@@ -331,6 +341,17 @@ function crossCheck(
           for (const id of named) if (!anchors.has(id)) bad(where, id);
         }),
       );
+      frame.rhythm.line_gap_exempt.forEach((id, i) => {
+        if (!anchors.has(id)) bad({ file: `frames/${g.frame}.yaml`, field: `rhythm.line_gap_exempt[${i}]`, message: '' }, id);
+      });
+      if (frame.rhythm.max_without_line && Object.keys(frame.lines).length === 0) {
+        issues.push({ file: `frames/${g.frame}.yaml`, field: 'rhythm.max_without_line', message: 'Задан лимит серий без линии, но линии (lines) не заданы' });
+      }
+      for (const id of Object.keys(frame.anchors)) {
+        if (Object.keys(frame.anchor_labels).length && !frame.anchor_labels[id]) {
+          issues.push({ file: `frames/${g.frame}.yaml`, field: 'anchor_labels', message: `У опорной точки «${id}» нет названия` });
+        }
+      }
       checklist?.items.forEach((item, i) => {
         for (const o of item.only ?? []) {
           const m = /^season_frame\.anchor\.(.+)$/u.exec(o);
@@ -373,6 +394,14 @@ function crossCheck(
       issues.push({ file, message: `Сумма баллов ${sum} не равна итогу ${checklist.total}` });
     }
     if (checklist.pass > checklist.total) issues.push({ file, field: 'pass', message: 'Порог больше итога' });
+  }
+
+  for (const [id, guide] of Object.entries(kb.guides.loaded)) {
+    for (const key of Object.keys(guide.hole_questions)) {
+      if (kb.holes && !kb.holes.holes.some((h) => h.id === Number(key))) {
+        issues.push({ file: `guides/${id}.yaml`, field: `hole_questions.${key}`, message: `Нет типа дыры ${key} в holes/catalog.yaml` });
+      }
+    }
   }
 
   if (kb.holes) {

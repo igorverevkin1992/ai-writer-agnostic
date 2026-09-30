@@ -72,6 +72,11 @@ export const SeasonFrame = z.strictObject({
     anchors: z.record(Text, EpisodeSpec),
     /** Human names of anchors for screens and exports. */
     anchor_labels: z.record(Text, Text).default({}),
+    /**
+     * Optional story lines that each give the viewer their own kaif (e.g. revenge and love).
+     * id → name. Plan episodes list the lines that pay off in them (kaif_lines).
+     */
+    lines: z.record(z.string().regex(/^[a-z_]+$/, 'id линии — латиница и _'), Text).default({}),
     /** Optional: genres without a villain ladder omit it. */
     villains: z
       .strictObject({
@@ -92,6 +97,10 @@ export const SeasonFrame = z.strictObject({
       max_suffering_run: z.int().min(1),
       max_same_hook_run: z.int().min(1),
       emotions_per_episode: z.tuple([z.int().min(1), z.int().min(1)]),
+      /** With lines: at most this many episodes in a row without a line's kaif. */
+      max_without_line: z.int().min(1).optional(),
+      /** Anchors whose episodes may go without line kaif (e.g. the fall). */
+      line_gap_exempt: z.array(Text).default([]),
     }),
     blocks: z.array(z.tuple([z.int().min(1), z.int().min(1)])).min(1),
     tolerance: z.int().min(0),
@@ -206,6 +215,19 @@ export const Case = z.strictObject({
 });
 export type Case = z.infer<typeof Case>;
 
+/**
+ * Genre guide: craft notes the models get with the rules (tropes, libraries of moves,
+ * anti-patterns) and extra «devil's advocate» questions per hole type.
+ */
+export const Guide = z.strictObject({
+  stub: Stub,
+  source: Text.optional(),
+  sections: z.array(z.strictObject({ title: Text, items: z.array(Text).min(1) })).default([]),
+  /** Hole type id (1–11) → extra questions for the auditor in this genre. */
+  hole_questions: z.record(z.string().regex(/^\d+$/, 'Ключ — номер типа дыры'), z.array(Text).min(1)).default({}),
+});
+export type Guide = z.infer<typeof Guide>;
+
 /** Genre pack: which knowledge base files apply to projects of this genre and format. */
 export const Genre = z.strictObject({
   id: z.string().regex(/^[a-z0-9_]+$/, 'id — латиница, цифры и _'),
@@ -216,5 +238,7 @@ export const Genre = z.strictObject({
   checklist: Text,
   personas: Text,
   constraints: z.strictObject({ legal: Text, production: Text }),
+  /** Optional guides/<id>.yaml with craft notes for this genre. */
+  guide: Text.optional(),
 });
 export type Genre = z.infer<typeof Genre>;

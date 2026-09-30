@@ -53,4 +53,19 @@ describe('review fixes: model checks', () => {
     const res = await runDevilAdvocate({ llm: client(), kb, kit }, { bible: golden.bible, plan, authorProvider: 'anthropic' }, { holeTypes: [5], personas: false });
     expect(res.findings.map((f) => f.episode).sort((a, b) => a! - b!)).toEqual([11, 14]);
   });
+
+  it('the genre guide adds its own questions for the devil advocate', async () => {
+    const systems: string[] = [];
+    answer = (req) => {
+      systems.push(req.system ?? '');
+      return [];
+    };
+    const romantasy = genreKit(kb, 'romantasy_revenge');
+    await runDevilAdvocate({ llm: client(), kb, kit: romantasy }, { bible: golden.bible, authorProvider: 'anthropic' }, { holeTypes: [2], personas: false });
+    expect(systems[0]).toContain('Почему никто не видит магию и знаки рода?');
+    systems.length = 0;
+    await runDevilAdvocate({ llm: client(), kb, kit }, { bible: golden.bible, authorProvider: 'anthropic' }, { holeTypes: [2], personas: false });
+    expect(systems[0]).not.toContain('магию');
+  });
 });
+

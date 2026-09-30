@@ -6,7 +6,7 @@ import { KbLoadError } from './errors.ts';
 import { DEFAULT_KB_ROOT, UnknownGenreError, genreKit, loadKb } from './loader.ts';
 import { episodeRange } from './schemas.ts';
 
-const KB_ENTRIES = ['genres', 'rules', 'frames', 'checklist', 'methods', 'glossary.yaml', 'constraints', 'holes', 'personas', 'cases', 'prompts'];
+const KB_ENTRIES = ['genres', 'rules', 'frames', 'checklist', 'methods', 'glossary.yaml', 'constraints', 'holes', 'personas', 'cases', 'prompts', 'guides'];
 
 let dirs: string[] = [];
 
@@ -109,7 +109,7 @@ describe('other series, other genres', () => {
     const dir = kbCopy();
     addRomance(dir);
     const kb = loadKb(dir);
-    expect(Object.keys(kb.genres).sort()).toEqual(['revenge_thriller', 'romance30']);
+    expect(Object.keys(kb.genres).sort()).toEqual(['revenge_thriller', 'romance30', 'romantasy_revenge']);
     const romance = genreKit(kb, 'romance30');
     expect(romance.frame.episodes).toBe(30);
     expect(romance.frame.villains).toBeUndefined();

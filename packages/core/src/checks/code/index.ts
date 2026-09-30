@@ -8,3 +8,4 @@ export * from './knowledge.ts';
 export * from './production.ts';
 export * from './runner.ts';
 export * from './checklist.ts';
+export * from './world.ts';

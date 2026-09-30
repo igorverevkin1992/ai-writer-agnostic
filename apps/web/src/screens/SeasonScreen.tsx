@@ -57,6 +57,8 @@ export function SeasonScreen({ data }: { data: Overview }) {
   const plan = data.plan;
   if (!plan) return <p className="muted panel">Плана сезона пока нет: он появится после шага «План сезона».</p>;
   const label = (id: string) => data.genre.anchorLabels[id] ?? id;
+  // Genres with several story lines (e.g. revenge and love) show which of them pay off.
+  const lines = Object.entries(data.genre.lines ?? {});
   return (
     <section>
       <div className="panel">
@@ -71,6 +73,7 @@ export function SeasonScreen({ data }: { data: Overview }) {
               <th>Героиня</th>
               <th>Опорная точка</th>
               <th>Настроение</th>
+              {lines.length > 0 && <th>Кайф линий</th>}
               <th>Крючок</th>
             </tr>
           </thead>
@@ -89,6 +92,14 @@ export function SeasonScreen({ data }: { data: Overview }) {
                 <td>
                   <span className={`mood-tag mood-${e.mood}`}>{MOOD[e.mood]}</span>
                 </td>
+                {lines.length > 0 && (
+                  <td>
+                    {lines
+                      .filter(([id]) => ((e.kaif_lines as string[] | undefined) ?? []).includes(id))
+                      .map(([, name]) => name)
+                      .join(', ') || '—'}
+                  </td>
+                )}
                 <td>{e.hook_type}</td>
               </tr>
             ))}

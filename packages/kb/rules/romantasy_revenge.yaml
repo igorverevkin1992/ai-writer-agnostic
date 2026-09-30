@@ -1,0 +1,170 @@
+# 18 правил ромэнтэзи с реваншем. Источник: исследование продюсера (30.09.2026), «18 правил жанра».
+# check.code — что считает код; check.llm — что решает судья другого семейства с цитатой.
+# Привязка правил к проверкам кода — Claude Code, ждёт подтверждения продюсера.
+module: romantasy_revenge
+title: Женское ромэнтэзи с реваншем и наказанием подлеца
+stub: false
+rules:
+  - id: R01
+    module: romantasy_revenge
+    text: "Унижение и предательство — в 1-й серии, в первые 60–90 с. Героиня видит сама. Герой или его знак — в кадре"
+    check:
+      code: "секунда предательства в 1-й серии ≤ 90; опорная точка betrayal в 1-й серии"
+      llm: "Героиня сама видит предательство? Герой или его знак в кадре 1-й серии?"
+      run:
+        - {fn: betrayal_timing, params: {max_second: 90}}
+        - {fn: season_frame, only: [anchor.betrayal]}
+    severity: blocker
+  - id: R02
+    module: romantasy_revenge
+    text: "Предатель — близкий человек (жених, сестра, мачеха) с корыстью; он — правая рука. Босс связан с раной героини и с семьёй героя"
+    check:
+      code: "предатель (betrayal.who) — злодей ранга 2"
+      llm: "Мотив предателя корыстный, он близкий героине? Босс связан с её раной и с семьёй героя?"
+      run:
+        - {fn: betrayer_rank, params: {ranks: [2]}}
+    severity: blocker
+  - id: R03
+    module: romantasy_revenge
+    text: "Искра силы — в 1–2-й серии. Маска (скрыть знание или силу) — в 1–3-й"
+    check:
+      code: "опорные точки power_spark (1–2) и mask (1–3)"
+      llm: "Сила видна в кадре, а героиня прячет знание или силу?"
+      run:
+        - {fn: season_frame, only: [anchor.power_spark, anchor.mask]}
+    severity: blocker
+  - id: R04
+    module: romantasy_revenge
+    text: "Героиня действует в каждой серии. Страдание — не больше 2 серий подряд"
+    check:
+      code: "heroine_action в каждой серии; подряд не больше 2 серий mood suffering"
+      run:
+        - {fn: rhythm, only: [suffering]}
+    severity: blocker
+  - id: R05
+    module: romantasy_revenge
+    text: "Первая победа — в 3-й серии: снята пешка, сила работает как знание"
+    check:
+      code: "снятие ранга 5 в 3-й серии"
+      llm: "Победу принесло знание от силы, а не сила как оружие?"
+      run:
+        - {fn: villain_ladder, only: [takedown], params: {ranks: [5]}}
+    severity: blocker
+  - id: R06
+    module: romantasy_revenge
+    text: "Удар → ответ за 1–3 серии, и в мести, и в любви"
+    check:
+      code: "удар злодеев → ответ героини за 1–3 серии; после снятия злодея — ответный удар"
+      llm: "В любовной линии на рану от героя есть ответ за 1–3 серии?"
+      run:
+        - {fn: rhythm, only: [response]}
+        - {fn: villain_ladder, only: [counterstrike]}
+    severity: major
+  - id: R07
+    module: romantasy_revenge
+    text: "Серия: одно событие, один вопрос, 2–3 эмоциональные точки, клиффхэнгер. Крючки мести и любви чередуются, ни одна линия не пропадает дольше 3 серий"
+    check:
+      code: "тип крючка не больше 2 серий подряд; 2–3 эмоции; кайф мести и кайф любви — не реже чем раз в 4 серии"
+      llm: "В серии одно событие? Крючки мести и любви чередуются?"
+      run:
+        - {fn: rhythm, only: [hook_repeat, emotions, line_gap]}
+    severity: major
+  - id: R08
+    module: romantasy_revenge
+    text: "60 серий, опорные точки двух линий на своих номерах ±1"
+    check:
+      code: "checkSeasonFrame: все опорные точки мести, любви и силы"
+      run:
+        - {fn: season_frame}
+    severity: blocker
+  - id: R09
+    module: romantasy_revenge
+    text: "8-я серия — точка оплаты: почти-поцелуй + частичное раскрытие природы героя + угроза"
+    check:
+      code: "в серии paywall_hook есть reveals_secret и threat_to_heroine; love_near_kiss в 8-й"
+      llm: "В 8-й серии все три части: почти-поцелуй, природа героя, угроза? Это самый сильный крючок?"
+      run:
+        - {fn: paywall_hook, params: {anchor: paywall_hook}}
+        - {fn: season_frame, only: [anchor.love_near_kiss]}
+    severity: blocker
+  - id: R10
+    module: romantasy_revenge
+    text: "Тайна меняет цель мести дважды (около 10-й и 30-й), хотя бы раз — через героя"
+    check:
+      code: "не меньше двух смен цели около secret_turn и midpoint"
+      llm: "Цель мести реально меняется? Хотя бы одна смена приходит через героя?"
+      run:
+        - {fn: secret_turns, params: {min: 2, near: [secret_turn, midpoint]}}
+    severity: major
+  - id: R11
+    module: romantasy_revenge
+    text: "Ровно пять злодеев: пешка — 3, исполнитель — 18–20, страж — 38–40, правая рука — 48–50, босс — 57–59. Все в кадре к 10-й, босс — в 1-й. Минимум двое связаны с любовной линией"
+    check:
+      code: "checkVillainLadder"
+      llm: "Хотя бы двое злодеев связаны с любовной линией (невеста героя, соперник, его семья)?"
+      run:
+        - {fn: villain_ladder, only: [count, rank, role, on_screen, introduced, takedown, takedown_plan, order]}
+    severity: blocker
+  - id: R12
+    module: romantasy_revenge
+    text: "Каждая победа — ключ к следующему злодею. Ступень силы открывает ступень статуса"
+    check:
+      code: "у каждого злодея key_to_next, у босса — link_to_ghost"
+      llm: "Ключи к следующему злодею настоящие? Новая ступень силы даёт новую ступень статуса?"
+      run:
+        - {fn: villain_ladder, only: [key_to_next]}
+    severity: major
+  - id: R13
+    module: romantasy_revenge
+    text: "Злодей проигрывает уму и силе-знанию героини. Хотя бы одна победа — через стравливание злодеев"
+    check:
+      code: "хотя бы у одного злодея via_infighting: true"
+      llm: "Нет ли победы за счёт глупости злодея?"
+      run:
+        - {fn: villain_ladder, only: [infighting], params: {min_infighting: 1}}
+    severity: major
+  - id: R14
+    module: romantasy_revenge
+    text: "Самый сильный кайф — публичное разоблачение. Герой рядом, слово за ней"
+    check:
+      code: "punishment.public и закон у рангов 2 и 1"
+      llm: "Разоблачение публичное, говорит героиня, а не герой?"
+      run:
+        - {fn: villain_ladder, only: [public_legal]}
+    severity: major
+  - id: R15
+    module: romantasy_revenge
+    text: "Сила даёт знание, закон даёт наказание. Силовые структуры — нейтрально или позитивно. Без самосуда и ритуалов «по шагам». 16+"
+    check:
+      code: "checkLegalMarkers"
+      llm: "Наказание — по закону и доказательствам, не магией и не самосудом? Силовики не злодеи?"
+      run:
+        - {fn: legal_markers}
+    severity: blocker
+  - id: R16
+    module: romantasy_revenge
+    text: "Любовь равна мести по весу, но герой не выигрывает ни одной из пяти побед: его вклад — знание, допуск, укрытие, свидетельство, жертва. Женский союз обязателен. Финал закрывает обе линии одной сценой"
+    check:
+      llm: "Кто выигрывает каждую из пяти побед? Есть союзница? Финал закрывает месть и любовь одной сценой, одна нить — на второй сезон?"
+    severity: blocker
+  - id: R17
+    module: romantasy_revenge
+    text: "Одно чудо: 1–3 правила мира, у силы есть цена, ответы на «почему никто не замечает» видны в кадре. Известно, кто что знает и с какой серии"
+    check:
+      code: "правил мира 1–3; хронология и знание персонажей"
+      llm: "У силы есть цена? На «почему никто не видит», «почему суд не верит магии», «почему герой не решит сам» есть ответ в кадре?"
+      run:
+        - {fn: world_rules, params: {min: 1, max: 3}}
+        - {fn: timeline}
+        - {fn: knowledge}
+    severity: blocker
+  - id: R18
+    module: romantasy_revenge
+    text: "До 8 героев, 1 локация на 10 зон, до 3 говорящих в сцене, практические эффекты без графики, раскрытие понятно без звука за 2 с, реплика-удар до 12 слов"
+    check:
+      code: "checkLimits, checkScriptMetrics"
+      llm: "«Проверка метро»: сила и раскрытия читаются без звука и без графики?"
+      run:
+        - {fn: limits}
+        - {fn: script_metrics}
+    severity: blocker

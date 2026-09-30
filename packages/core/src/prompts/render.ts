@@ -38,7 +38,8 @@ export function knowledgeBlock(kb: Kb, kit: GenreKit): string {
   const f = kit.frame;
   const anchors = Object.entries(f.anchors).map(([id, spec]) => {
     const { min, max } = episodeRange(spec);
-    return `${id}: ${min === max ? min : `${min}–${max}`}`;
+    const label = f.anchor_labels[id];
+    return `${id}${label ? ` (${label})` : ''}: ${min === max ? min : `${min}–${max}`}`;
   });
   const v = f.villains;
   const ladder = v
@@ -63,6 +64,13 @@ export function knowledgeBlock(kb: Kb, kit: GenreKit): string {
     `Опорные точки (id: серия): ${anchors.join('; ')}.`,
     `Блоки: ${f.blocks.map(([a, b]) => `${a}–${b}`).join(', ')}.`,
     `Ритм: ответ на удар за ${f.rhythm.response_within} серии; страдание не дольше ${f.rhythm.max_suffering_run} серий подряд; один тип крючка не больше ${f.rhythm.max_same_hook_run} серий подряд; ${f.rhythm.emotions_per_episode.join('–')} эмоциональные точки в серии.`,
+    ...(Object.keys(f.lines).length
+      ? [
+          `Линии кайфа (id: название): ${Object.entries(f.lines).map(([id, name]) => `${id}: ${name}`).join('; ')}.` +
+            (f.rhythm.max_without_line ? ` Каждая линия — не реже чем раз в ${f.rhythm.max_without_line + 1} серии.` : '') +
+            (f.rhythm.line_gap_exempt.length ? ` Исключение: ${f.rhythm.line_gap_exempt.map((a) => f.anchor_labels[a] ?? a).join(', ')}.` : ''),
+        ]
+      : []),
     '## Лестница злодеев',
     list(ladder),
     '## Чек-лист сезона',
@@ -75,6 +83,9 @@ export function knowledgeBlock(kb: Kb, kit: GenreKit): string {
       ...kit.legal.principles.map((x) => x.text),
       `Возрастной рейтинг ${kit.legal.age_rating}.`,
     ]),
+    ...(kit.guide
+      ? kit.guide.sections.flatMap((s) => [`## ${s.title}`, list(s.items)])
+      : []),
     '## Словарь',
     list(kb.glossary.terms.map((t) => `${t.term} — ${t.definition}`)),
     '## Методики',

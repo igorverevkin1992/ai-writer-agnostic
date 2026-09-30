@@ -1,0 +1,26 @@
+# Чек-лист сезона ромэнтэзи на 20 баллов. Пункты — из YAML-модуля исследования (checklist_20).
+# Баллы (по 1) и порог 15 — предложение Claude Code, ждут решения продюсера.
+stub: false
+total: 20
+pass: 15
+items:
+  - {id: C01, text: "Предательство в 1-й серии за 90 с", points: 1, rule: R01}
+  - {id: C02, text: "Герой в кадре в 1-й серии", points: 1}
+  - {id: C03, text: "Босс в 1-й, все злодеи в кадре к 10-й", points: 1, rule: R11, only: [villain_ladder.on_screen]}
+  - {id: C04, text: "Искра силы в 1–2-й серии", points: 1, rule: R03, only: [season_frame.anchor.power_spark]}
+  - {id: C05, text: "Пешка снята в 3-й серии", points: 1, rule: R05}
+  - {id: C06, text: "8-я серия: почти-поцелуй + природа героя + угроза", points: 1, rule: R09}
+  - {id: C07, text: "Злодеи снимаются по рангу и вовремя", points: 1, rule: R11, only: [villain_ladder.takedown, villain_ladder.order]}
+  - {id: C08, text: "Смены цели мести около 10-й и 30-й", points: 1, rule: R10}
+  - {id: C09, text: "Первый поцелуй в 20–21-й", points: 1, rule: R08, only: [season_frame.anchor.love_first_kiss]}
+  - {id: C10, text: "Пинч 1 бьёт по доверию в любви", points: 1, rule: R08, only: [season_frame.anchor.pinch1, season_frame.anchor.love_trust_blow]}
+  - {id: C11, text: "Мидпоинт двойной: идеальный момент и страшное открытие", points: 1, rule: R08, only: [season_frame.anchor.midpoint, season_frame.anchor.love_perfect_moment]}
+  - {id: C12, text: "Пинч 2: герой «выбирает род»", points: 1, rule: R08, only: [season_frame.anchor.pinch2, season_frame.anchor.love_chooses_clan]}
+  - {id: C13, text: "Падение и разрыв в 45–47-й", points: 1, rule: R08, only: [season_frame.anchor.fall, season_frame.anchor.love_breakup]}
+  - {id: C14, text: "Главное раскрытие в 48–51-й", points: 1, rule: R08, only: [season_frame.anchor.reveal]}
+  - {id: C15, text: "Герой не выигрывает ни одной из пяти побед", points: 1, rule: R16}
+  - {id: C16, text: "Есть женская союзница", points: 1}
+  - {id: C17, text: "Публичное разоблачение, слово за героиней", points: 1, rule: R14}
+  - {id: C18, text: "Законный финал: сила даёт знание, закон — наказание", points: 1, rule: R15}
+  - {id: C19, text: "Одно чудо: 1–3 правила с ценой", points: 1, rule: R17, only: [world_rules.count]}
+  - {id: C20, text: "Финал закрывает обе линии, одна нить — на второй сезон", points: 1}

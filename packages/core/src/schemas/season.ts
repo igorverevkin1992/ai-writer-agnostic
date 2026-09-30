@@ -15,6 +15,8 @@ export const EpisodeOutline = z.object({
   /** What the heroine does in this episode: she acts in every one. */
   heroine_action: NonEmpty,
   mood: Mood,
+  /** Story lines (ids from the genre frame's `lines`) that give the viewer kaif in this episode. */
+  kaif_lines: z.array(NonEmpty).default([]),
   /** Anchor ids from the genre frame (packages/kb/frames/*.yaml), e.g. "paywall_hook". */
   anchors: z.array(NonEmpty).default([]),
   strike_by_villain: z.boolean().default(false),

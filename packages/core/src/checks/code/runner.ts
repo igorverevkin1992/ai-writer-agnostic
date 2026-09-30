@@ -11,6 +11,7 @@ import { checkGuns, checkLegalMarkers, checkLimits, checkScriptMetrics, collectT
 import { checkRhythm } from './rhythm.ts';
 import { checkBetrayalTiming, checkPaywallHook, checkSecretTurns, type SecretTurnParams } from './story.ts';
 import { checkTimeline } from './timeline.ts';
+import { checkWorldRules } from './world.ts';
 
 /** What is available to check. Checks whose inputs are missing are skipped. */
 export interface CheckInput {
@@ -44,7 +45,7 @@ const strs = (p: Params, key: string): string[] =>
 /** Every code check a genre rule may reference in check.run[].fn. */
 export const CODE_CHECKS: Record<string, CodeCheck> = {
   season_frame: { always: true, codes: ['count', 'anchor'], run: ({ plan, kit }) => plan && checkSeasonFrame(plan, kit.frame) },
-  rhythm: { always: true, codes: ['response', 'suffering', 'hook_repeat', 'emotions'], run: ({ plan, kit }) => plan && checkRhythm(plan, kit.frame) },
+  rhythm: { always: true, codes: ['response', 'suffering', 'hook_repeat', 'emotions', 'line_gap'], run: ({ plan, kit }) => plan && checkRhythm(plan, kit.frame) },
   villain_ladder: {
     always: true, codes: ['count', 'rank', 'role', 'on_screen', 'introduced', 'takedown', 'takedown_plan', 'key_to_next', 'counterstrike', 'public_legal', 'order', 'punishment', 'turned_ally', 'infighting'],
     run: ({ bible, plan, kit }, p) =>
@@ -83,6 +84,10 @@ export const CODE_CHECKS: Record<string, CodeCheck> = {
       if (typeof p.anchor !== 'string') throw new UnknownCheckError('Проверке «paywall_hook» нужен параметр anchor — id опорной точки из каркаса');
       return plan && checkPaywallHook(plan, p.anchor);
     },
+  },
+  world_rules: {
+    always: false, codes: ['count'],
+    run: ({ bible }, p) => bible && checkWorldRules(bible, { min: num(p, 'min') ?? 1, max: num(p, 'max') ?? Infinity }),
   },
   secret_turns: {
     always: false, codes: ['count', 'near'],

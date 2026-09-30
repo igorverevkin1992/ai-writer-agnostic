@@ -1,0 +1,14 @@
+# Жанровый пакет: ромэнтэзи с реваншем и наказанием подлеца.
+# Источник: исследование продюсера «Ромэнтэзи с реваншем и наказанием подлеца: жанровый модуль
+# для вертикальных микросериалов (Иви)», 30.09.2026.
+id: romantasy_revenge
+title: Женское ромэнтэзи с реваншем и наказанием подлеца
+platform: Иви
+rules: romantasy_revenge      # rules/romantasy_revenge.yaml
+frame: romantasy60            # frames/romantasy60.yaml
+checklist: romantasy20        # checklist/romantasy20.yaml
+personas: romantasy_viewers   # personas/romantasy_viewers.yaml
+constraints:
+  legal: ru_legal_fantasy     # constraints/ru_legal_fantasy.yaml
+  production: production      # constraints/production.yaml — те же лимиты, что у триллера
+guide: romantasy_revenge      # guides/romantasy_revenge.yaml — тропы, библиотеки, антипаттерны

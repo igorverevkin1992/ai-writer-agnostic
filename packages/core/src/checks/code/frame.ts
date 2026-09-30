@@ -32,6 +32,8 @@ export function checkSeasonFrame(plan: SeasonPlan, frame: SeasonFrame): Finding[
     const tagged = plan.episodes.filter((e) => e.anchors.includes(anchor)).map((e) => e.ep);
     const code = `season_frame.anchor.${anchor}`;
     const place = min === max ? `${min}-й серии` : `сериях ${min}–${max}`;
+    // People read the anchor's name from the frame, not its id.
+    const name = frame.anchor_labels[anchor] ?? anchor;
 
     if (tagged.length === 0) {
       out.push(
@@ -41,9 +43,9 @@ export function checkSeasonFrame(plan: SeasonPlan, frame: SeasonFrame): Finding[
           severity: 'blocker',
           holeType: 10,
           episode: min,
-          quote: `Опорная точка «${anchor}» не отмечена ни в одной серии`,
-          question: `где «${anchor}»? По каркасу она в ${place}.`,
-          fixes: [`Поставить «${anchor}» в ${place} и отметить её в плане`],
+          quote: `Опорная точка «${name}» не отмечена ни в одной серии`,
+          question: `где «${name}»? По каркасу она в ${place}.`,
+          fixes: [`Поставить «${name}» в ${place} и отметить её в плане`],
         }),
       );
       continue;
@@ -58,9 +60,9 @@ export function checkSeasonFrame(plan: SeasonPlan, frame: SeasonFrame): Finding[
           severity: 'blocker',
           holeType: 10,
           episode: Math.min(...tagged),
-          quote: `«${anchor}» длится ${tagged.length} серий (${formatEpisodes(tagged)})`,
-          question: `почему «${anchor}» тянется так долго? Допустимо не больше ${span} серий.`,
-          fixes: [`Сократить «${anchor}» до ${span} серий`],
+          quote: `«${name}» длится ${tagged.length} серий (${formatEpisodes(tagged)})`,
+          question: `почему «${name}» тянется так долго? Допустимо не больше ${span} серий.`,
+          fixes: [`Сократить «${name}» до ${span} серий`],
         }),
       );
     }
@@ -77,13 +79,13 @@ export function checkSeasonFrame(plan: SeasonPlan, frame: SeasonFrame): Finding[
           severity: 'blocker',
           holeType: 10,
           episode: ep,
-          quote: `«${anchor}» стоит в ${ep}-й серии`,
+          quote: `«${name}» стоит в ${ep}-й серии`,
           question: withinTolerance
-            ? `почему «${anchor}» сдвинута с ${place}? Объяснения автора нет.`
-            : `почему «${anchor}» не на своём месте? По каркасу она в ${place}.`,
+            ? `почему «${name}» сдвинута с ${place}? Объяснения автора нет.`
+            : `почему «${name}» не на своём месте? По каркасу она в ${place}.`,
           fixes: withinTolerance
-            ? [`Вернуть «${anchor}» в ${place}`, 'Записать причину сдвига в план (deviations)']
-            : [`Перенести «${anchor}» в ${place}`],
+            ? [`Вернуть «${name}» в ${place}`, 'Записать причину сдвига в план (deviations)']
+            : [`Перенести «${name}» в ${place}`],
         }),
       );
     }

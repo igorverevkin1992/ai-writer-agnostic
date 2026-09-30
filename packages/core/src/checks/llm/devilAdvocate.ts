@@ -132,7 +132,8 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
         hole.notice ? noticeQuestions(target.bible, block, target.plan).slice(0, MAX_NOTICE_QUESTIONS) : [];
       const system = renderPrompt(deps.kb, `${role}/devil_advocate`, {
         hole: `${hole.id}. ${hole.name}`,
-        hole_questions: hole.questions.map((q) => `- ${q}`).join('\n'),
+        // Genre questions (e.g. «почему никто не видит магию?») join the catalog's.
+        hole_questions: [...hole.questions, ...(deps.kit.guide?.hole_questions[String(hole.id)] ?? [])].map((q) => `- ${q}`).join('\n'),
         extra_questions: notice.length ? `\nВопросы по конкретным событиям:\n${notice.map((q) => `- ${q}`).join('\n')}\n` : '',
         target: block.label,
         text: block.text,

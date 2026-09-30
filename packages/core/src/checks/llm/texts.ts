@@ -44,6 +44,7 @@ export function episodeLine(e: EpisodeOutline): string {
     e.takedown_rank && `снят злодей ${e.takedown_rank}`,
     e.reveals_secret && 'раскрытие тайны',
     e.threat_to_heroine && 'угроза героине',
+    e.kaif_lines.length > 0 && `кайф: ${e.kaif_lines.join(', ')}`,
   ].filter(Boolean);
   return (
     `Серия ${e.ep}. «${e.title}». ${e.event}. Героиня: ${e.heroine_action}. Крючок: ${e.cliffhanger}.` +

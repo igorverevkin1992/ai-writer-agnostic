@@ -1,4 +1,4 @@
-import type { SeasonFrame } from '@aiw/kb';
+import { episodeRange, type SeasonFrame } from '@aiw/kb';
 import type { Finding } from '../../schemas/finding.ts';
 import type { EpisodeOutline, SeasonPlan } from '../../schemas/season.ts';
 import { formatEpisodes, makeFinding } from './finding.ts';
@@ -71,6 +71,44 @@ export function checkRhythm(plan: SeasonPlan, frame: SeasonFrame): Finding[] {
         fixes: [`Сменить тип крючка в ${run.eps[r.max_same_hook_run]}-й серии`],
       }),
     );
+  }
+
+  // Several story lines (e.g. revenge and love): none may fall silent for too long.
+  if (r.max_without_line) {
+    const max = r.max_without_line;
+    const exempt = new Set(
+      r.line_gap_exempt.flatMap((id) => {
+        const spec = frame.anchors[id];
+        if (spec === undefined) return [];
+        const { min, max: to } = episodeRange(spec);
+        return Array.from({ length: to - min + 1 }, (_, i) => min + i);
+      }),
+    );
+    for (const [line, name] of Object.entries(frame.lines)) {
+      let gap: number[] = [];
+      const flush = () => {
+        if (gap.length > max) {
+          out.push(
+            makeFinding({
+              check: 'rhythm.line_gap',
+              controller: 'structure',
+              severity: 'major',
+              holeType: 10,
+              episode: gap[max],
+              quote: `${name}: нет в сериях ${formatEpisodes(gap)}`,
+              question: `куда пропала линия «${name}»? ${gap.length} серии подряд без неё.`,
+              fixes: [`Дать «${name}» не позже ${gap[max]}-й серии`],
+            }),
+          );
+        }
+        gap = [];
+      };
+      for (const e of eps) {
+        if (e.kaif_lines.includes(line) || exempt.has(e.ep)) flush();
+        else gap.push(e.ep);
+      }
+      flush();
+    }
   }
 
   const [lo, hi] = r.emotions_per_episode;

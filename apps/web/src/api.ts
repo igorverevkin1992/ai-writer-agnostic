@@ -57,7 +57,7 @@ export type Doc = Record<string, any>; // eslint-disable-line @typescript-eslint
 export interface Overview {
   project: { id: string; title: string; genreId: string };
   demo: boolean;
-  genre: { id: string; title: string; episodes: number; free: number; anchors: Record<string, unknown>; anchorLabels: Record<string, string>; pass: number; total: number };
+  genre: { id: string; title: string; episodes: number; free: number; anchors: Record<string, unknown>; anchorLabels: Record<string, string>; lines: Record<string, string>; pass: number; total: number };
   steps: StepState[];
   next: NextTask;
   idea: string | null;

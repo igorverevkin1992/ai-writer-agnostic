@@ -256,7 +256,7 @@ export function checkBetrayerRank(bible: Bible, ranks: number[]): Finding[] {
       severity: 'blocker',
       holeType: 6,
       quote: villain ? `Предатель ${who} — злодей ранга ${villain.rank}` : `Предатель ${who} — не в списке злодеев`,
-      question: `почему предатель ${who} не главный враг?`,
+      question: villain ? `почему предатель ${who} так далеко от вершины лестницы злодеев?` : `почему предатель ${who} не среди злодеев?`,
       fixes: [`Сделать предателя злодеем ранга ${ranks.join(' или ')}`],
     }),
   ];

@@ -56,7 +56,7 @@ describe('checkSeasonFrame', () => {
     for (const n of [44, 48, 49]) ep(n).anchors.push('fall');
     const f = checkSeasonFrame(p.plan, frame);
     expect(f.map((x) => x.quote)).toEqual(
-      expect.arrayContaining(['Опорная точка «paywall_hook» не отмечена ни в одной серии', '«fall» длится 6 серий (44–49)']),
+      expect.arrayContaining(['Опорная точка «Точка оплаты» не отмечена ни в одной серии', '«Падение» длится 6 серий (44–49)']),
     );
   });
 });

@@ -332,5 +332,23 @@ describe('review fixes: pipeline', () => {
     approveStep(deps(), 'concept', { choice: 2 });
     expect(new Pipeline(db, projectId).get('logline').status).toBe('draft');
   });
+
+  it('a romantasy project goes through steps 1–4 with its own frame and checks', async () => {
+    projectId = createProject(db, kb, { title: 'Наследница', genreId: 'romantasy_revenge', idea: 'Служанка в родовом отеле — тайная наследница' });
+    await throughLogline();
+    // The thriller bible breaks romantasy rules (the betrayer must be the right hand, 1–3 world rules).
+    const bible = await runStep(deps(), 'bible');
+    expect(bible.findings.map((f) => f.check)).toEqual(expect.arrayContaining(['betrayer_rank.rank', 'world_rules.count']));
+    skipStep(deps(), 'bible');
+    calls = [];
+    const plan = await runStep(deps(), 'season_plan');
+    // The fake answers with the thriller plan: the romantasy frame finds its love and power anchors missing.
+    const open = new ProjectMemory(db, projectId).findingsOf('season_plan', 'open').map((f) => f.check);
+    expect(open).toContain('season_frame.anchor.love_near_kiss');
+    expect(plan.status).toBe('needs_fix');
+    expect(calls.filter((c) => c.startsWith('persona:'))).toEqual([
+      'persona:romantasy_fan', 'persona:skeptic', 'persona:slavic_mystic', 'persona:lawyer', 'persona:teen_mom',
+    ]);
+  });
 });
 
