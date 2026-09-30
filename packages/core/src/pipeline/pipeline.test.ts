@@ -9,7 +9,8 @@ import { LlmClient } from '../providers/llm.ts';
 import { FakeProvider, testConfig } from '../providers/testing.ts';
 import type { LlmRequest } from '../providers/types.ts';
 import { parseModelsConfig } from '../providers/config.ts';
-import { sampleConcept, sampleLogline } from '../schemas/samples.ts';
+import { EpisodeCard } from '../schemas/episodeCard.ts';
+import { sampleCard, sampleConcept, sampleLogline } from '../schemas/samples.ts';
 import { dismissByProducer } from './findings.ts';
 import { Pipeline, recoverStaleSteps } from './machine.ts';
 import { nextTask } from './next.ts';
@@ -314,4 +315,22 @@ describe('review fixes: pipeline', () => {
     const done = new ProjectMemory(db, projectId).findingsOf('season_plan', 'resolved')[0]!;
     expect(() => dismissByProducer(db, projectId, done.id, 'f_dasha_target')).toThrow('Замечание уже закрыто');
   });
+
+  it('a new season plan outdates the old cards and their block approvals', async () => {
+    await throughBible();
+    await runStep(deps(), 'season_plan');
+    const memory = new ProjectMemory(db, projectId);
+    memory.saveCard(EpisodeCard.parse({ ...sampleCard, ep: 1 }));
+    memory.saveArtifact('card_blocks', { approved: [1] });
+    await runStep(deps(), 'season_plan');
+    expect(memory.staleEpisodes().cards).toEqual([1]);
+    expect(memory.latestArtifact('card_blocks')).toEqual({ approved: [] });
+  });
+
+  it('choosing another concept sends later approvals back to draft', async () => {
+    await throughLogline();
+    approveStep(deps(), 'concept', { choice: 2 });
+    expect(new Pipeline(db, projectId).get('logline').status).toBe('draft');
+  });
 });
+

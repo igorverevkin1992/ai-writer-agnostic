@@ -107,6 +107,8 @@ export function choosePolish(deps: { db: Db; kb: Kb; projectId: string }, varian
     note: `Доработка ${state.ep}-й серии: выбран вариант ${variant + 1} из ${state.variants.length}${state.note ? ` («${state.note}»)` : ''}`,
   });
   memory.saveArtifact('polish', { ...state, chosen: variant });
+  // Files downloaded before this change are out of date: export needs doing again.
+  new Pipeline(deps.db, deps.projectId).resetLater('polish');
 
   const findings = [...checkScriptMetrics(script, kit.production, kit.frame), ...checkLegalMarkers(collectTexts({ scripts: [script] }), kit.legal)];
   memory.saveFindings(findings, 'scripts');

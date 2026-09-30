@@ -4,6 +4,7 @@ import { openDb } from '../db/client.ts';
 import { checkQueue } from '../db/schema.ts';
 import { loadGolden } from '../fixtures.ts';
 import { EpisodeCard } from '../schemas/episodeCard.ts';
+import { Script } from '../schemas/script.ts';
 import { sampleCard } from '../schemas/samples.ts';
 import { ProjectMemory } from './store.ts';
 
@@ -149,3 +150,20 @@ describe('review fixes', () => {
     expect(mem.finding('x1')?.status).toBe('open');
   });
 });
+
+describe('review fixes 2', () => {
+  it('a changed card makes the script of its episode outdated', () => {
+    mem.saveScript(Script.parse({ ep: 8, title: 'С', duration_s: 90, blocks: [{ t0: 0, t1: 90, kind: 'scene', text: 'ИНТ. АРХИВ.' }] }));
+    mem.saveCard(EpisodeCard.parse({ ...sampleCard, ep: 8, acts_on: [] }), ['e_saw_father']);
+    expect(mem.staleEpisodes().scripts).toEqual([]);
+    mem.saveCard(EpisodeCard.parse({ ...sampleCard, ep: 8, event: 'Совсем другое событие', acts_on: [] }), ['e_saw_father']);
+    expect(mem.staleEpisodes().scripts).toEqual([8]);
+  });
+
+  it('an existing fact is not overwritten by adding it again', () => {
+    const fact = mem.currentBible()!.facts[0]!;
+    expect(() => mem.addFact({ ...fact, text: 'Другой текст' }, [], producer)).toThrow(/уже есть/);
+    expect(mem.currentBible()!.facts[0]!.text).toBe(fact.text);
+  });
+});
+

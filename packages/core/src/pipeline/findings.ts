@@ -30,6 +30,7 @@ export function resolveByProducer(db: Db, projectId: string, findingId: string, 
   let factId = input.factId;
   if (input.fact) {
     const fact = Fact.parse(input.fact);
+    if (bible.facts.some((f) => f.id === fact.id)) throw new PipelineError(`Факт ${fact.id} уже есть: выберите его из списка или дайте новому факту другой id`);
     const known = (input.knowledge ?? []).map((k) => KnowledgeEntry.parse(k));
     const candidate = Bible.parse({ ...bible, facts: [...bible.facts.filter((f) => f.id !== fact.id), fact], knowledge: [...bible.knowledge, ...known] });
     const plan = memory.currentPlan();

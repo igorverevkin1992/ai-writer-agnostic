@@ -118,6 +118,8 @@ export function approveStep(deps: Omit<StepDeps, 'llm'>, step: StepId, opts: { c
     const eps = cardBlocks(plan.episodes.map((e) => e.ep)).find((b) => b[0] === opts.block)!;
     const cards = new Set(memory.cards().map((c) => c.ep));
     if (eps.some((ep) => !cards.has(ep))) throw new PipelineError(`В блоке ${eps[0]}–${eps.at(-1)} есть серии без карточек`);
+    const outdated = memory.staleEpisodes().cards.filter((ep) => eps.includes(ep));
+    if (outdated.length) throw new PipelineError(`В блоке ${eps[0]}–${eps.at(-1)} устаревшие карточки: ${outdated.join(', ')}. Перепишите их`);
     // Blockers of the block's episodes and those about all cards at once (no episode).
     const blockers = memory
       .findingsOf('episode_cards', 'open')
@@ -140,8 +142,15 @@ export function approveStep(deps: Omit<StepDeps, 'llm'>, step: StepId, opts: { c
     const chosen = opts.choice === undefined ? undefined : concepts[opts.choice];
     if (!chosen) throw new PipelineError('Выберите одну из трёх концепций');
     pipeline.approve(step);
+    const before = memory.latestArtifact('concept_choice');
     memory.saveArtifact('concept_choice', chosen);
+    // Another concept: everything built on the old one needs approval again.
+    if (before && JSON.stringify(before) !== JSON.stringify(chosen)) pipeline.resetLater(step);
     return;
+  }
+  if (step === 'scripts') {
+    const outdated = memory.staleEpisodes().scripts;
+    if (outdated.length) throw new PipelineError(`Устаревшие или непроверенные сценарии: ${outdated.join(', ')}. Перепишите их`);
   }
   pipeline.approve(step);
 }
@@ -366,19 +375,25 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
       const script = { ...data, ep };
       ctx.memory.closeObsolete('scripts', ep, 'Сценарий переписан');
       ctx.memory.saveScript(script);
-
-      const found = [
-        ...checkScriptMetrics(script, p, f),
-        ...checkLegalMarkers(collectTexts({ scripts: [script] }), ctx.kit.legal),
-      ];
-      const model = await runScriptControllers(
-        { llm: ctx.llm, kb: ctx.kb, kit: ctx.kit, projectId: ctx.projectId, step: 'scripts' },
-        { script, card, outline: plan?.episodes.find((e) => e.ep === ep), authorProvider: writer },
-      );
-      found.push(...model.findings);
-      ctx.memory.saveFindings(found, 'scripts');
+      // The step result changed now: if the checks below fail, the run counts as unfinished.
       ctx.memory.saveArtifact('scripts', { episodes: ctx.memory.scripts().map((s) => s.ep) });
-      all.push(...found);
+      try {
+        const found = [
+          ...checkScriptMetrics(script, p, f),
+          ...checkLegalMarkers(collectTexts({ scripts: [script] }), ctx.kit.legal),
+        ];
+        const model = await runScriptControllers(
+          { llm: ctx.llm, kb: ctx.kb, kit: ctx.kit, projectId: ctx.projectId, step: 'scripts' },
+          { script, card, outline: plan?.episodes.find((e) => e.ep === ep), authorProvider: writer },
+        );
+        found.push(...model.findings);
+        ctx.memory.saveFindings(found, 'scripts');
+        all.push(...found);
+      } catch (err) {
+        // An unchecked script must be written and checked again, not approved.
+        ctx.memory.markOutdated('scripts', [ep]);
+        throw err;
+      }
     }
     return { findings: all };
   },
@@ -417,6 +432,12 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
       authors.add(provider);
     }
     ctx.memory.importPlan(SeasonPlan.parse({ episodes, deviations }));
+    // Cards were written from the old plan: they need rewriting and approving again.
+    const oldCards = ctx.memory.cards().map((c) => c.ep);
+    if (oldCards.length) {
+      ctx.memory.markOutdated('cards', oldCards);
+      ctx.memory.saveArtifact('card_blocks', { approved: [] });
+    }
     return audit(ctx, 'season_plan', [...authors]);
   },
 };

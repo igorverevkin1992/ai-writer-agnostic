@@ -10,6 +10,7 @@ import type { LlmRequest } from '../providers/types.ts';
 import { Script } from '../schemas/script.ts';
 import { compressBible } from './compress.ts';
 import { Pipeline } from './machine.ts';
+import { nextTask } from './next.ts';
 import { choosePolish, proposePolish } from './polish.ts';
 import { createProject } from './project.ts';
 import { approveStep, runStep, skipStep } from './runners.ts';
@@ -279,6 +280,28 @@ describe('polish', () => {
     choosePolish({ db, kb, projectId }, 0);
     approveStep({ db, kb, projectId }, 'polish');
     await expect(proposePolish(deps(), { ep: 7, from: 1, to: 1 })).rejects.toThrow('Доработка уже утверждена');
+  });
+});
+
+describe('review fixes 2: scripts', () => {
+  beforeEach(async () => {
+    await runStep(deps(), 'episode_cards');
+    skipStep({ db, kb, projectId }, 'episode_cards');
+  });
+
+  it('a script whose checks failed is unfinished: not approvable, offered for rewriting', async () => {
+    await runStep(deps(), 'scripts', { episodes: [1, 2] });
+    controllerReply = (_c, ep) => {
+      if (ep === '1') throw new Error('сеть упала');
+      return [];
+    };
+    await expect(runStep(deps(), 'scripts', { episodes: [1], fix: true })).rejects.toThrow();
+    const pipeline = new Pipeline(db, projectId);
+    expect(pipeline.get('scripts').status).toBe('needs_fix');
+    expect(pipeline.hasIncomplete('scripts')).toBe(true);
+    expect(new ProjectMemory(db, projectId).staleEpisodes().scripts).toEqual([1]);
+    expect(nextTask(db, kb, projectId)).toMatchObject({ step: 'scripts', action: 'run' });
+    expect(nextTask(db, kb, projectId).episodes).toContain(1);
   });
 });
 

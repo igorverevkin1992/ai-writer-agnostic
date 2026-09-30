@@ -97,14 +97,14 @@ describe('next task (one task at a time)', () => {
     expect(nextTask(db, kb, pid)).toMatchObject({ step: 'episode_cards', action: 'run', task: 'Запустите шаг «Карточки серий»' });
     const m = new ProjectMemory(db, pid);
     m.saveArtifact('episode_cards', {});
-    expect(nextTask(db, kb, pid)).toMatchObject({ action: 'run', task: 'Допишите карточки: не хватает 59' });
+    expect(nextTask(db, kb, pid)).toMatchObject({ action: 'run', task: 'Напишите карточки заново или допишите: 59' });
     for (let ep = 2; ep <= 60; ep++) m.saveCard(EpisodeCard.parse({ ...sampleCard, ep }));
     expect(nextTask(db, kb, pid)).toMatchObject({ action: 'approve_block', block: 1, task: 'Утвердите карточки серий 1–10' });
     approveStep({ db, kb, projectId: pid }, 'episode_cards', { block: 1 });
     expect(nextTask(db, kb, pid)).toMatchObject({ block: 11 });
     skipStep({ db, kb, projectId: pid }, 'episode_cards');
     m.saveArtifact('scripts', {});
-    expect(nextTask(db, kb, pid)).toMatchObject({ step: 'scripts', action: 'run', task: 'Напишите сценарии: осталось 59' });
+    expect(nextTask(db, kb, pid)).toMatchObject({ step: 'scripts', action: 'run', task: 'Напишите сценарии (новые или устаревшие): 59' });
     skipStep({ db, kb, projectId: pid }, 'scripts');
     expect(nextTask(db, kb, pid)).toMatchObject({ step: 'polish', action: 'polish' });
     skipStep({ db, kb, projectId: pid }, 'polish');

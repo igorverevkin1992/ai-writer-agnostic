@@ -162,8 +162,15 @@ export class ProjectMemory {
     return stored ? SeasonPlan.parse(stored) : undefined;
   }
 
+  /** A changed card makes the episode's script outdated: it was written from the old card. */
   saveCard(card: EpisodeCard, extraFactIds: string[] = []): void {
+    const prev = this.db
+      .select({ data: episodeCards.data })
+      .from(episodeCards)
+      .where(and(eq(episodeCards.projectId, this.projectId), eq(episodeCards.ep, card.ep)))
+      .get();
     this.saveEpisodeDoc(episodeCards, card.ep, card);
+    if (prev && JSON.stringify(prev.data) !== JSON.stringify(card)) this.markStale(scripts, [card.ep]);
     this.replaceLinks('card', [{ ep: card.ep, factIds: [...card.acts_on.map((a) => a.fact), ...extraFactIds] }], [card.ep]);
   }
 
@@ -238,6 +245,11 @@ export class ProjectMemory {
 
   logEdit(entity: string, entityId: string, before: unknown, after: unknown, meta: EditMeta): number {
     return this.logRevision(entity, entityId, before, after, meta);
+  }
+
+  /** Marks episode documents as outdated: they have to be written again. */
+  markOutdated(kind: 'cards' | 'scripts', eps: number[]): number[] {
+    return this.markStale(kind === 'cards' ? episodeCards : scripts, eps);
   }
 
   staleEpisodes(): { cards: number[]; scripts: number[] } {
@@ -446,12 +458,15 @@ export class ProjectMemory {
   }
 
   /** Adds a new fact (and who knows it) to the fact base. */
+  /** Adds a new fact. An existing one is changed only through updateFact (logged and propagated). */
   addFact(fact: Fact, known: KnowledgeEntry[], meta: EditMeta): number {
     const p = this.projectId;
+    if (this.db.select().from(facts).where(and(eq(facts.projectId, p), eq(facts.id, fact.id))).get()) {
+      throw new Error(`Факт ${fact.id} уже есть. Чтобы изменить его, поправьте факт, а не добавляйте новый`);
+    }
     this.db
       .insert(facts)
       .values({ projectId: p, id: fact.id, text: fact.text, sinceEp: fact.since_ep ?? null, source: meta.author })
-      .onConflictDoUpdate({ target: [facts.projectId, facts.id], set: { text: fact.text, sinceEp: fact.since_ep ?? null, source: meta.author } })
       .run();
     for (const k of known) {
       this.db.insert(knowledge).values({ projectId: p, who: k.who, factId: k.fact, sinceEp: k.since_ep, how: k.how ?? null }).run();
