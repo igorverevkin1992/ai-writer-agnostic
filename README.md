@@ -73,6 +73,12 @@ API: `POST /api/projects`, `GET /api/projects/:id`, `POST /api/projects/:id/step
 `POST /api/projects/:id/polish/choose`, `GET /api/projects/:id/overview`, `GET /api/projects/:id/export?format=docx|xlsx|json|md|video`,
 `GET /api/projects/:id/costs`.
 
+## Эталоны
+
+В `fixtures/golden/` лежат эталонные проекты — по одному на жанр: «Муж женился на мне ради крови»
+(триллер мести) и «Наследница Вороновых» (ромэнтэзи). На них работают демо-режим, `pnpm eval`,
+`pnpm pilot` и посев дыр. Для ромэнтэзи добавляйте `--project=naslednitsa --genre=romantasy_revenge`.
+
 ## Разные сериалы
 
 Продукт подходит для любых сериалов. Жанр, число серий, опорные точки, правила и чек-лист

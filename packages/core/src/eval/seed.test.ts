@@ -20,6 +20,17 @@ describe('seeded holes', () => {
     expect(seedHoles(golden, kit, 2)).not.toEqual(holes);
   });
 
+  it('the romantasy golden project has its own committed set, found by code except world-rule reasons', () => {
+    const rkit = genreKit(loadKb(), 'romantasy_revenge');
+    const rgolden = loadGolden('naslednitsa');
+    const file = parse(readFileSync(join(FIXTURES_DIR, 'seeded', 'naslednitsa.yaml'), 'utf8')) as { seed: number; genre: string; holes: unknown };
+    expect(file.genre).toBe('romantasy_revenge');
+    const holes = seedHoles(rgolden, rkit, file.seed);
+    expect(file.holes).toEqual(holes);
+    const missed = detectSeeded(rkit, rgolden, holes).results.filter((r) => !r.found).map((r) => r.hole.holeType);
+    expect(new Set(missed)).toEqual(new Set([1]));
+  });
+
   it('the committed set matches the generator', () => {
     const file = parse(readFileSync(join(FIXTURES_DIR, 'seeded', 'muzh_krov.yaml'), 'utf8')) as { seed: number; holes: unknown };
     expect(file.holes).toEqual(seedHoles(golden, kit, file.seed));

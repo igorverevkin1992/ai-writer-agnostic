@@ -14,8 +14,9 @@ try {
   // Runs that were in progress when the app stopped will not finish: mark them.
   const stale = recoverStaleSteps(db);
   if (stale) console.log(`Прерванных шагов после перезапуска: ${stale}. Их можно запустить ещё раз.`);
-  const llm = new LlmClient({ config, db, ...(demo ? { providers: demoProviders() } : {}) });
-  deps = { kb: loadKb(), config, db, llm, demo };
+  const kb = loadKb();
+  const llm = new LlmClient({ config, db, ...(demo ? { providers: demoProviders(kb) } : {}) });
+  deps = { kb, config, db, llm, demo };
   if (demo) console.log('Демо-режим: модели отвечают заготовками по эталону, ключи не нужны. База — data/demo.db.');
 } catch (err) {
   console.error(err instanceof KbLoadError || err instanceof ConfigError ? err.message : err);

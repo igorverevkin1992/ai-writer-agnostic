@@ -1,0 +1,1260 @@
+# Эталонный план сезона ромэнтэзи «Наследница Вороновых» по карте сезона из исследования продюсера.
+# Корректный: проходит все кодовые проверки жанра romantasy_revenge. Основа для посева дыр.
+episodes:
+- ep: 1
+  title: Измена
+  event: На приёме в холле отеля Туманских Вера видит, как жених Кирилл целует Алину, а Маргарита заверяет завещание её матери чужой подписью. Лев Туманский смотрит на неё через зал
+  question: Зачем Кириллу её наследство?
+  emotions:
+  - шок
+  - унижение
+  heroine_action: Молчит и запоминает, кто подписал
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - betrayal
+  - love_meet
+  - power_spark
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced:
+  - 5
+  - 4
+  - 2
+  - 1
+  hook_type: предательство
+  cliffhanger: Лампы в холле гаснут, когда Кирилл лжёт ей в лицо
+  acts_on: []
+- ep: 2
+  title: Прачечная
+  event: Маргарита переводит Веру из помощниц в прачечную. Лев возвращает ей медальон матери, и медальон теплеет в руке у лжеца
+  question: Почему медальон теплеет?
+  emotions:
+  - обида
+  - тепло
+  heroine_action: Прячет медальон и делает вид, что смирилась
+  mood: suffering
+  kaif_lines:
+  - love
+  anchors:
+  - mask
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced:
+  - 3
+  hook_type: сила
+  cliffhanger: Медальон обжигает ладонь, когда Лида говорит «я на вашей стороне»
+  acts_on: []
+- ep: 3
+  title: Ловушка для Лиды
+  event: Горничная Лида шпионит за Верой. Вера слышит её ложь и ловит на краже при всей кухне. Лиду увольняют
+  question: На кого работала Лида?
+  emotions:
+  - азарт
+  - торжество
+  heroine_action: Подбрасывает Лиде меченую записку и ловит её
+  mood: kaif
+  kaif_lines:
+  - revenge
+  anchors:
+  - first_strike
+  - love_no_way1
+  - power_trial
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  takedown_rank: 5
+  villains_introduced: []
+  hook_type: месть
+  cliffhanger: 'Уходя, Лида шепчет: «Это Алина велела»'
+  acts_on: []
+- ep: 4
+  title: Угроза
+  event: 'Кирилл угрожает Вере: молчи о завещании, иначе прачечная станет улицей. Лев бросает ему: «Не играй с моей матерью»'
+  question: Кого Лев защищает?
+  emotions:
+  - страх
+  - надежда
+  heroine_action: Записывает угрозу на телефон
+  mood: suffering
+  kaif_lines:
+  - love
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: Пальцы Веры покрываются инеем
+  acts_on: []
+- ep: 5
+  title: Сделка
+  event: 'В архиве Вера находит фото матери со знаком рода. Лев предлагает сделку: допуск в архив в обмен на правду о её даре'
+  question: Что Лев знает о её роде?
+  emotions:
+  - любопытство
+  - влечение
+  heroine_action: Соглашается на сделку и ставит свои условия
+  mood: kaif
+  kaif_lines:
+  - revenge
+  - love
+  anchors:
+  - love_deal
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: тайна
+  cliffhanger: На фото у матери тот же медальон
+  acts_on: []
+- ep: 6
+  title: Кража
+  event: Алина обвиняет Веру в краже фамильного кольца. Лев тайно передаёт ей запись с камер
+  question: Зачем Лев помогает ей тайком?
+  emotions:
+  - унижение
+  - благодарность
+  heroine_action: Молчит на допросе и ждёт приёма
+  mood: suffering
+  kaif_lines:
+  - love
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: обвинение
+  cliffhanger: На записи видна рука с кольцом Алины
+  acts_on: []
+- ep: 7
+  title: Первый танец
+  event: 'На приёме Вера включает запись: кольцо спрятала сама Алина. Лев ведёт её в танце, и они спорят словами'
+  question: Кто кого переиграл?
+  emotions:
+  - торжество
+  - влечение
+  heroine_action: Показывает запись гостям
+  mood: kaif
+  kaif_lines:
+  - revenge
+  - love
+  anchors:
+  - love_first_dance
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: любовь
+  cliffhanger: 'Лев шепчет: «Ты опаснее, чем кажешься»'
+  acts_on: []
+- ep: 8
+  title: Точка оплаты
+  event: 'В архиве Вера узнаёт: мать была Вороновой, пожар не случаен, Маргарита всё знает. Почти-поцелуй — глаза Льва вспыхивают. За дверью Савелий Дёмин с ключами'
+  question: Кто такой Лев на самом деле?
+  emotions:
+  - шок
+  - страсть
+  - страх
+  heroine_action: Уносит из архива страницу с гербом Вороновых
+  mood: kaif
+  kaif_lines:
+  - love
+  anchors:
+  - paywall_hook
+  - love_near_kiss
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: тайна
+  cliffhanger: Ключ поворачивается в замке архива снаружи
+  acts_on: []
+- ep: 9
+  title: Слежка
+  event: Савелий следит за Верой и запирает её в подвале. Лев холоден днём, но ночью вытаскивает её. У Веры появляется седая прядь
+  question: Чем она платит за дар?
+  emotions:
+  - страх
+  - нежность
+  heroine_action: Запоминает маршрут Савелия
+  mood: suffering
+  kaif_lines:
+  - love
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: В зеркале седая прядь
+  acts_on: []
+- ep: 10
+  title: Наследница
+  event: 'Нотариус отдаёт Вере письмо матери: она наследница доли Вороновых в отеле. Лев отталкивает её: «Ни за что»'
+  question: Кому выгодно, чтобы она не узнала?
+  emotions:
+  - надежда
+  - обида
+  heroine_action: Забирает письмо и копию доли
+  mood: kaif
+  kaif_lines:
+  - revenge
+  anchors:
+  - secret_turn
+  - love_no_way2
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: поворот
+  cliffhanger: В письме — подпись Маргариты как свидетеля
+  acts_on: []
+- ep: 11
+  title: Нотариус
+  event: Вера ищет нотариуса, заверявшего подлог. Алина назначает свадьбу с Львом на осень
+  question: Успеет ли Вера до свадьбы?
+  emotions:
+  - ревность
+  - упорство
+  heroine_action: Находит адрес нотариуса
+  mood: suffering
+  kaif_lines:
+  - revenge
+  anchors:
+  - power_cost
+  strike_by_villain: true
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ревность
+  cliffhanger: На двери нотариуса — печать Туманских
+  acts_on: []
+- ep: 12
+  title: Сумасшедшая
+  event: Алина распускает слух о «сумасшедшей горничной». На людях у Веры лопаются лампы. Лев лечит её обожжённую руку
+  question: Сможет ли она управлять даром?
+  emotions:
+  - стыд
+  - нежность
+  heroine_action: Уходит с приёма, не оправдываясь
+  mood: suffering
+  kaif_lines:
+  - love
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: сила
+  cliffhanger: Лев не отпускает её руку
+  acts_on: []
+- ep: 13
+  title: Сообщник
+  event: Вера находит сообщника Алины — портье, который прятал кольцо, и получает его письменные показания
+  question: Что ещё прятал портье?
+  emotions:
+  - азарт
+  - облегчение
+  heroine_action: Уговаривает портье дать показания
+  mood: kaif
+  kaif_lines:
+  - revenge
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: месть
+  cliffhanger: Портье отдаёт ей ключ от сейфа Алины
+  acts_on: []
+- ep: 14
+  title: Ревность
+  event: Кирилл хочет вернуть Веру. Лев ревнует и впервые признаёт это вслух
+  question: Кого она выберет?
+  emotions:
+  - смятение
+  - радость
+  heroine_action: Отказывает Кириллу при Льве
+  mood: neutral
+  kaif_lines:
+  - love
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ревность
+  cliffhanger: 'Кирилл: «Он тебя погубит»'
+  acts_on: []
+- ep: 15
+  title: Стравливание
+  event: Вера подбрасывает Кириллу переписку Алины с портье. Кирилл и Алина ссорятся при гостях
+  question: Кто из них сдаст другого?
+  emotions:
+  - азарт
+  - удовлетворение
+  heroine_action: Подбрасывает переписку
+  mood: kaif
+  kaif_lines:
+  - revenge
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: месть
+  cliffhanger: 'Алина: «Я знаю, кто подделал завещание»'
+  acts_on: []
+- ep: 16
+  title: Шрам
+  event: Алина теряет Кирилла как союзника. Вера видит шрам Льва — след проклятия
+  question: Что за проклятие на Льве?
+  emotions:
+  - сочувствие
+  - тревога
+  heroine_action: Спрашивает Льва о шраме
+  mood: neutral
+  kaif_lines:
+  - revenge
+  - love
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: тайна
+  cliffhanger: Шрам светится под её ладонью
+  acts_on: []
+- ep: 17
+  title: Союз
+  event: Лев просит Веру уехать ради её безопасности — она отказывается. Горничные приносят ей ключи от служебных коридоров
+  question: Кому она может доверять?
+  emotions:
+  - решимость
+  - тепло
+  heroine_action: Остаётся и собирает союз горничных
+  mood: neutral
+  kaif_lines:
+  - love
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: любовь
+  cliffhanger: Ключи звенят в её кармане
+  acts_on: []
+- ep: 18
+  title: Помолвка
+  event: На помолвке Льва и Алины Вера при гостях показывает показания портье и подделанную подпись в договоре родов
+  question: Что сделает Алина?
+  emotions:
+  - торжество
+  - риск
+  heroine_action: Показывает доказательства при гостях
+  mood: kaif
+  kaif_lines:
+  - revenge
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: месть
+  cliffhanger: Лев молчит и не смотрит на Алину
+  acts_on:
+  - who: Вера
+    fact: f_forged_will
+- ep: 19
+  title: Разоблачение Алины
+  event: Алину разоблачают перед её кругом — семьями договора. Лев разрывает помолвку
+  question: Свободен ли Лев?
+  emotions:
+  - торжество
+  - надежда
+  heroine_action: Даёт слово совету семей
+  mood: kaif
+  kaif_lines:
+  - revenge
+  - love
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: разоблачение
+  cliffhanger: Маргарита смотрит на Веру из галереи
+  acts_on: []
+- ep: 20
+  title: Первый поцелуй
+  event: Совет семей лишает Алину места. Лев и Вера целуются в зимнем саду
+  question: Что теперь сделает Маргарита?
+  emotions:
+  - счастье
+  - страх
+  heroine_action: Сама целует Льва
+  mood: kaif
+  kaif_lines:
+  - revenge
+  - love
+  anchors:
+  - love_first_kiss
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  takedown_rank: 4
+  villains_introduced: []
+  hook_type: любовь
+  cliffhanger: Савелий фотографирует их через стекло
+  acts_on: []
+- ep: 21
+  title: Охота
+  event: 'Савелий обыскивает комнату Веры и забирает письмо матери. Лев: «Это ошибка»'
+  question: Что Савелий ищет?
+  emotions:
+  - гнев
+  - тревога
+  heroine_action: Прячет копию письма у Ники
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: Письма на месте нет
+  acts_on: []
+- ep: 22
+  title: Пинч 1
+  event: 'Савелий подбрасывает «улику»: Вера крадёт документы семьи. Льву доказывают, что она его использует. Дар бессилен'
+  question: Поверит ли Лев?
+  emotions:
+  - отчаяние
+  - обида
+  heroine_action: Требует проверки улики по закону
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - pinch1
+  - love_trust_blow
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: предательство
+  cliffhanger: Лев отворачивается
+  acts_on: []
+- ep: 23
+  title: Защита
+  event: 'Подруга-юристка Ника добивается экспертизы «улики»: подпись поддельная. Лев верит, но просит правды'
+  question: Расскажет ли она свой секрет?
+  emotions:
+  - облегчение
+  - решимость
+  heroine_action: Идёт с Никой к следователю
+  mood: kaif
+  kaif_lines:
+  - revenge
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: закон
+  cliffhanger: 'Эксперт: «Подпись ставил левша»'
+  acts_on: []
+- ep: 24
+  title: Доля
+  event: Суд подтверждает долю Вороновых. Вера рассказывает Льву про пожар и мать
+  question: Кто устроил пожар?
+  emotions:
+  - гордость
+  - доверие
+  heroine_action: Открывает Льву свою рану
+  mood: kaif
+  kaif_lines:
+  - revenge
+  - love
+  anchors:
+  - power_mastery
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: тайна
+  cliffhanger: Лев бледнеет, услышав дату пожара
+  acts_on: []
+- ep: 25
+  title: Сговор
+  event: Кирилл и Савелий объединяются против Веры. Лев делится с ней планом защиты
+  question: Против кого они сговорились?
+  emotions:
+  - тревога
+  - тепло
+  heroine_action: Подслушивает сговор через служебный коридор
+  mood: suffering
+  kaif_lines:
+  - love
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: 'Савелий: «Она не доживёт до совета»'
+  acts_on: []
+- ep: 26
+  title: Ловушка Савелию
+  event: Вера ставит ловушку Савелию и получает допуск на третий этаж. Ночной разговор с Львом
+  question: Что на третьем этаже?
+  emotions:
+  - азарт
+  - нежность
+  heroine_action: Меняет ключи Савелия на свои
+  mood: kaif
+  kaif_lines:
+  - revenge
+  - love
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: месть
+  cliffhanger: За дверью третьего этажа — запах гари
+  acts_on: []
+- ep: 27
+  title: Деньги
+  event: Маргарита предлагает Вере деньги, чтобы она уехала. Лев узнаёт об этом
+  question: Возьмёт ли она деньги?
+  emotions:
+  - соблазн
+  - гнев
+  heroine_action: Просит время подумать
+  mood: neutral
+  kaif_lines:
+  - love
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: сделка
+  cliffhanger: Конверт лежит на её кровати
+  acts_on: []
+- ep: 28
+  title: Отказ
+  event: Вера при свидетелях отказывается от денег. Лев гордится ею. Для её дара Маргарита «пустая» — ложь не звенит
+  question: Почему дар не слышит Маргариту?
+  emotions:
+  - гордость
+  - тревога
+  heroine_action: Возвращает конверт при совете
+  mood: kaif
+  kaif_lines:
+  - revenge
+  - love
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: разоблачение
+  cliffhanger: 'Маргарита улыбается: «Ты ничего не услышишь»'
+  acts_on: []
+- ep: 29
+  title: Комната матери
+  event: Вера открывает закрытую комнату матери ключом Льва и находит старую запись
+  question: Что на записи?
+  emotions:
+  - страх
+  - надежда
+  heroine_action: Прячет запись в медальон
+  mood: neutral
+  kaif_lines:
+  - love
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: тайна
+  cliffhanger: На записи — голос матери
+  acts_on: []
+- ep: 30
+  title: Мидпоинт
+  event: 'Вера узнаёт: пожар устроила Маргарита, а проклятие Льва — украденный дар Вороновых. Идеальная ночь — и страшное открытие'
+  question: Знал ли Лев?
+  emotions:
+  - счастье
+  - ужас
+  heroine_action: Уходит до рассвета
+  mood: kaif
+  kaif_lines:
+  - love
+  anchors:
+  - midpoint
+  - love_perfect_moment
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: поворот
+  cliffhanger: Шрам Льва горит, пока он спит
+  acts_on: []
+- ep: 31
+  title: Новая цель
+  event: Вера решает доказать, что Маргарита убила её мать. Цена дара — обморок
+  question: Хватит ли ей сил?
+  emotions:
+  - решимость
+  - слабость
+  heroine_action: Составляет список свидетелей пожара
+  mood: suffering
+  kaif_lines:
+  - revenge
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: сила
+  cliffhanger: Она падает в коридоре
+  acts_on:
+  - who: Вера
+    fact: f_fire_arson
+- ep: 32
+  title: Бабушка
+  event: 'Вера собирает союз: горничные и бабушка Льва Евдокия. Евдокия подтверждает, что Маргарита была в доме в ночь пожара'
+  question: Знал ли Лев?
+  emotions:
+  - надежда
+  - тревога
+  heroine_action: Уговаривает Евдокию говорить
+  mood: kaif
+  kaif_lines:
+  - revenge
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: союз
+  cliffhanger: 'Евдокия: «Мой внук ничего не знал»'
+  acts_on: []
+- ep: 33
+  title: Клятва
+  event: Савелий давит на свидетелей. Лев приносит клятву, что не знал о пожаре, — клятва чиста
+  question: Простит ли она?
+  emotions:
+  - облегчение
+  - боль
+  heroine_action: Проверяет клятву даром
+  mood: neutral
+  kaif_lines:
+  - love
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: любовь
+  cliffhanger: Клятва светится ровным светом
+  acts_on: []
+- ep: 34
+  title: Свидетель
+  event: Свидетель пожара возвращается и даёт показания Нике
+  question: Дойдёт ли он до суда?
+  emotions:
+  - надежда
+  - азарт
+  heroine_action: Прячет свидетеля в прачечной
+  mood: kaif
+  kaif_lines:
+  - revenge
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: закон
+  cliffhanger: Свидетель узнаёт на фото Савелия
+  acts_on: []
+- ep: 35
+  title: Пресса
+  event: 'Кирилл подкупает прессу: газеты называют Веру аферисткой'
+  question: Отвернутся ли от неё?
+  emotions:
+  - гнев
+  - стыд
+  heroine_action: Собирает счета Кирилла
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: Её лицо на первой полосе
+  acts_on: []
+- ep: 36
+  title: Счета
+  event: Вера отдаёт журналистам счета Кирилла. Лев защищает её своим статусом
+  question: Чем Лев заплатит?
+  emotions:
+  - торжество
+  - тепло
+  heroine_action: Даёт интервью с документами
+  mood: kaif
+  kaif_lines:
+  - revenge
+  - love
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: месть
+  cliffhanger: Маргарита вызывает Льва к себе
+  acts_on: []
+- ep: 37
+  title: Пинч 2
+  event: 'Маргарита ставит условие: 30 дней, иначе Лев лишится рода. Лев «выбирает род». Дар Веры слабеет'
+  question: Бросит ли он её?
+  emotions:
+  - предательство
+  - боль
+  heroine_action: Не просит Льва остаться
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - pinch2
+  - love_chooses_clan
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: предательство
+  cliffhanger: Лев отдаёт ей ключ от комнаты матери
+  acts_on: []
+- ep: 38
+  title: Документы
+  event: Вера находит документы о подлогах Савелия
+  question: Кто стоит за Савелием?
+  emotions:
+  - азарт
+  - холод
+  heroine_action: Копирует документы
+  mood: kaif
+  kaif_lines:
+  - revenge
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: тайна
+  cliffhanger: В документах — подпись Кирилла
+  acts_on: []
+- ep: 39
+  title: Подлог
+  event: Савелия ловят на подлоге завещания
+  question: Сдаст ли он Маргариту?
+  emotions:
+  - торжество
+  - тревога
+  heroine_action: Передаёт документы следователю
+  mood: kaif
+  kaif_lines:
+  - revenge
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: разоблачение
+  cliffhanger: Савелий молчит на допросе
+  acts_on: []
+- ep: 40
+  title: Страж снят
+  event: Савелия задерживают по показаниям свидетеля. Лев тайно помогает. Вера — совладелица отеля
+  question: Что ответит Маргарита?
+  emotions:
+  - торжество
+  - нежность
+  heroine_action: Подписывает документы совладелицы
+  mood: kaif
+  kaif_lines:
+  - revenge
+  - love
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  takedown_rank: 3
+  villains_introduced: []
+  hook_type: закон
+  cliffhanger: Кирилл входит в кабинет Маргариты
+  acts_on: []
+- ep: 41
+  title: Переход
+  event: Кирилл переходит к Маргарите и подставляет Веру через Алину
+  question: Кто теперь враг?
+  emotions:
+  - тревога
+  - гнев
+  heroine_action: Проверяет ложь Алины даром
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: 'Алина: «Меня заставили»'
+  acts_on: []
+- ep: 42
+  title: Иск
+  event: Маргарита подаёт иск о недееспособности Веры. Дар срывается
+  question: Отнимут ли у неё всё?
+  emotions:
+  - страх
+  - бессилие
+  heroine_action: Нанимает с Никой экспертов
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: сила
+  cliffhanger: Лампы гаснут в зале суда
+  acts_on: []
+- ep: 43
+  title: Экспертиза
+  event: Независимая экспертиза признаёт Веру здоровой
+  question: Что дальше?
+  emotions:
+  - облегчение
+  - решимость
+  heroine_action: Проходит экспертизу
+  mood: kaif
+  kaif_lines:
+  - revenge
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: закон
+  cliffhanger: Маргарита блокирует её счета
+  acts_on: []
+- ep: 44
+  title: Блокировка
+  event: Активы Веры заблокированы. Лев впервые идёт против матери на совете
+  question: Выберет ли он её?
+  emotions:
+  - тревога
+  - надежда
+  heroine_action: Требует отчёт совета
+  mood: neutral
+  kaif_lines:
+  - love
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: любовь
+  cliffhanger: 'Маргарита: «Тогда вы оба уйдёте»'
+  acts_on: []
+- ep: 45
+  title: Падение
+  event: 'Веру выгоняют из отеля. Разрыв: «Ты такой же Туманский». Сила уходит'
+  question: Что у неё осталось?
+  emotions:
+  - отчаяние
+  - гнев
+  heroine_action: Уходит, забрав только медальон
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - fall
+  - love_breakup
+  - power_loss
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: предательство
+  cliffhanger: Двери отеля закрываются
+  acts_on: []
+- ep: 46
+  title: Торжество Кирилла
+  event: Кирилл торжествует. Лев слабеет от проклятия. Вера с Никой находит квитанции Кирилла
+  question: Что в квитанциях?
+  emotions:
+  - унижение
+  - искра
+  heroine_action: Находит квитанции нотариуса
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: месть
+  cliffhanger: Квитанция подписана левой рукой
+  acts_on: []
+- ep: 47
+  title: Ясность
+  event: 'Одна, но ясная: Вера принимает дар без жажды мести и слушает запись матери до конца'
+  question: Что сказала мать?
+  emotions:
+  - тишина
+  - ясность
+  heroine_action: Слушает запись до конца
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: сила
+  cliffhanger: Мать на записи называет имя Савелия
+  acts_on: []
+- ep: 48
+  title: Раскрытие
+  event: 'Запись матери: Кирилл — сын Савелия, подлог завещания готовил он. Тёмная ночь Льва'
+  question: Как доказать?
+  emotions:
+  - шок
+  - ясность
+  heroine_action: Несёт запись следователю
+  mood: kaif
+  kaif_lines:
+  - revenge
+  anchors:
+  - reveal
+  - love_dark_night
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: поворот
+  cliffhanger: Следователь включает запись
+  acts_on: []
+- ep: 49
+  title: Подлог вскрыт
+  event: Вера предъявляет следователю запись и подлинное завещание. Узнаёт о тайной помощи Льва
+  question: Простит ли она Льва?
+  emotions:
+  - торжество
+  - нежность
+  heroine_action: Предъявляет доказательства
+  mood: kaif
+  kaif_lines:
+  - revenge
+  - love
+  anchors:
+  - love_awakening
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: разоблачение
+  cliffhanger: Кирилл получает повестку
+  acts_on:
+  - who: Вера
+    fact: f_kirill_son
+- ep: 50
+  title: Правая рука
+  event: Кирилла задерживают при всём отеле. Вера идёт к Льву
+  question: Что сделает Маргарита?
+  emotions:
+  - торжество
+  - любовь
+  heroine_action: Сама приходит к Льву
+  mood: kaif
+  kaif_lines:
+  - revenge
+  - love
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  takedown_rank: 2
+  villains_introduced: []
+  hook_type: закон
+  cliffhanger: Маргарита запирает кабинет
+  acts_on: []
+- ep: 51
+  title: Поводок
+  event: Лев узнаёт, что проклятие — поводок матери. Признание. Сила Веры сильнее прежней
+  question: Выдержит ли Лев?
+  emotions:
+  - боль
+  - любовь
+  heroine_action: Держит его руку, пока проклятие отступает
+  mood: kaif
+  kaif_lines:
+  - love
+  anchors:
+  - power_full
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: любовь
+  cliffhanger: 'Маргарита: «Совет решит иначе»'
+  acts_on: []
+- ep: 52
+  title: Удар
+  event: Маргарита лишает Льва наследства и запирает бабушку Евдокию
+  question: Как спасти Евдокию?
+  emotions:
+  - гнев
+  - тревога
+  heroine_action: Ищет союзников в совете
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: Дверь Евдокии заперта
+  acts_on: []
+- ep: 53
+  title: Совет созван
+  event: Вера по праву совладелицы созывает совет рода. Лев в больнице
+  question: Успеет ли она?
+  emotions:
+  - решимость
+  - тревога
+  heroine_action: Созывает совет
+  mood: neutral
+  kaif_lines:
+  - revenge
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: месть
+  cliffhanger: Совет назначен на пятницу
+  acts_on: []
+- ep: 54
+  title: Доказательства
+  event: Вера и Ника собирают доказательства. Время Льва на исходе
+  question: Хватит ли доказательств?
+  emotions:
+  - азарт
+  - страх
+  heroine_action: Выводит Евдокию из-под замка
+  mood: neutral
+  kaif_lines:
+  - revenge
+  - love
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: тайна
+  cliffhanger: Евдокия отдаёт ей дневник
+  acts_on: []
+- ep: 55
+  title: Отравление
+  event: Маргарита обвиняет Веру в отравлении Льва. Лев встаёт с больничной койки и идёт на совет
+  question: Успеет ли он?
+  emotions:
+  - страх
+  - любовь
+  heroine_action: Не бежит и ждёт совета
+  mood: suffering
+  kaif_lines:
+  - love
+  anchors:
+  - love_grand_gesture
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: любовь
+  cliffhanger: Лев входит в зал совета
+  acts_on: []
+- ep: 56
+  title: Совет рода
+  event: Совет рода собирается в зале. Маргарита приводит своих свидетелей
+  question: Кому поверит совет?
+  emotions:
+  - тревога
+  - решимость
+  heroine_action: Проверяет свидетелей даром
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: угроза
+  cliffhanger: Свидетель Маргариты лжёт — ложь звенит
+  acts_on: []
+- ep: 57
+  title: Битва историй
+  event: В «битве историй» Вера предъявляет правду. Лев свидетельствует против матери
+  question: Что решит совет?
+  emotions:
+  - торжество
+  - боль
+  heroine_action: Говорит перед советом
+  mood: kaif
+  kaif_lines:
+  - revenge
+  - love
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: разоблачение
+  cliffhanger: Совет слышит голос матери Веры
+  acts_on:
+  - who: Лев
+    fact: f_stolen_gift
+- ep: 58
+  title: Задержание
+  event: Следователь задерживает Маргариту по доказательствам. Проклятие снято
+  question: Что будет с родом?
+  emotions:
+  - облегчение
+  - торжество
+  heroine_action: Передаёт следователю дневник Евдокии
+  mood: kaif
+  kaif_lines:
+  - revenge
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: закон
+  cliffhanger: Шрам Льва исчезает
+  acts_on: []
+- ep: 59
+  title: Хозяйка рода
+  event: Суд лишает Маргариту места в роду. Вера и Лев воссоединяются
+  question: Какой будет их жизнь?
+  emotions:
+  - счастье
+  - покой
+  heroine_action: Принимает управление отелем
+  mood: kaif
+  kaif_lines:
+  - revenge
+  - love
+  anchors:
+  - boss_takedown
+  - love_reunion
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  takedown_rank: 1
+  villains_introduced: []
+  hook_type: любовь
+  cliffhanger: Лев надевает ей кольцо рода
+  acts_on: []
+- ep: 60
+  title: Имя матери
+  event: 'Имя матери восстановлено. Обручение по обычаю рода. Письмо: у Вороновых была вторая дочь'
+  question: Кто вторая дочь?
+  emotions:
+  - радость
+  - интрига
+  heroine_action: Открывает письмо о сестре
+  mood: kaif
+  kaif_lines:
+  - revenge
+  - love
+  anchors:
+  - finale
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: тайна
+  cliffhanger: На конверте — медальон, как у неё
+  acts_on: []
+deviations: []

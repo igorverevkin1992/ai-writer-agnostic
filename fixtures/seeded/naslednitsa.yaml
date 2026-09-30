@@ -1,0 +1,343 @@
+# Посеянные дыры для проекта naslednitsa (seed 1). Каждая дыра — правка эталона fixtures/golden/naslednitsa.
+# Создано командой pnpm seed-holes. Не править вручную.
+project: naslednitsa
+seed: 1
+genre: romantasy_revenge
+holes:
+  - id: h01
+    holeType: 7
+    description: Лев родился в 2014, но участвует в «Маргарита присваивает дар Вороновых; у Льва появляется «проклятие»» (2008)
+    patch:
+      - op: replace
+        path: /bible/characters/1/birth_year
+        value: 2014
+  - id: h02
+    holeType: 7
+    description: Кирилл родился в 2028, но участвует в «Измена Кирилла и подлог завещания» (2026)
+    patch:
+      - op: replace
+        path: /bible/characters/3/birth_year
+        value: 2028
+  - id: h03
+    holeType: 7
+    description: "Вера родился в 2016, но участвует в «Пожар в доме Вороновых: гибнет мать Веры; дар рода «уходит»» (2008)"
+    patch:
+      - op: replace
+        path: /bible/characters/0/birth_year
+        value: 2016
+  - id: h04
+    holeType: 7
+    description: В «Маргарита присваивает дар Вороновых; у Льва появляется «проклятие»» (2008) Лев 17 лет вместо 12
+    patch:
+      - op: replace
+        path: /bible/timeline/events/10/ages/Лев
+        value: 17
+  - id: h05
+    holeType: 7
+    description: В «Измена Кирилла и подлог завещания» (2026) Вера 32 лет вместо 24
+    patch:
+      - op: replace
+        path: /bible/timeline/events/13/ages/Вера
+        value: 32
+  - id: h06
+    holeType: 7
+    description: В «Измена Кирилла и подлог завещания» (2026) Лев 22 лет вместо 30
+    patch:
+      - op: replace
+        path: /bible/timeline/events/13/ages/Лев
+        value: 22
+  - id: h07
+    holeType: 7
+    description: "«Пожар в доме Вороновых: гибнет мать Веры; дар рода «уходит»» перенесено в 1998, раньше «Рождение Веры Вороновой» (2002)"
+    patch:
+      - op: replace
+        path: /bible/timeline/events/9/year
+        value: 1998
+  - id: h08
+    holeType: 7
+    description: «Измена Кирилла и подлог завещания» перенесено в 2018, раньше «Кирилл делает предложение Вере, помощнице в отеле Туманских» (2025)
+    patch:
+      - op: replace
+        path: /bible/timeline/events/13/year
+        value: 2018
+  - id: h09
+    holeType: 7
+    description: «Помолвка Льва и Алины по договору родов» перенесено в 2003, раньше «Маргарита присваивает дар Вороновых; у Льва появляется «проклятие»» (2008)
+    patch:
+      - op: replace
+        path: /bible/timeline/events/11/year
+        value: 2003
+  - id: h10
+    holeType: 7
+    description: Маргарита умирает в 2016, но участвует в «Измена Кирилла и подлог завещания» (2026)
+    patch:
+      - op: add
+        path: /bible/timeline/events/-
+        value:
+          id: e_seed_death_Маргарита
+          year: 2016
+          kind: death
+          text: "Смерть: Маргарита"
+          participants:
+            - Маргарита
+          ages: {}
+          after: []
+  - id: h11
+    holeType: 7
+    description: "Савелий умирает в 2005, но участвует в «Пожар в доме Вороновых: гибнет мать Веры; дар рода «уходит»» (2008)"
+    patch:
+      - op: add
+        path: /bible/timeline/events/-
+        value:
+          id: e_seed_death_Савелий
+          year: 2005
+          kind: death
+          text: "Смерть: Савелий"
+          participants:
+            - Савелий
+          ages: {}
+          after: []
+  - id: h12
+    holeType: 7
+    description: "Маргарита умирает в 2006, но участвует в «Пожар в доме Вороновых: гибнет мать Веры; дар рода «уходит»» (2008)"
+    patch:
+      - op: add
+        path: /bible/timeline/events/-
+        value:
+          id: e_seed_death_Маргарита
+          year: 2006
+          kind: death
+          text: "Смерть: Маргарита"
+          participants:
+            - Маргарита
+          ages: {}
+          after: []
+  - id: h13
+    holeType: 11
+    episode: 57
+    description: Лев узнаёт «f_stolen_gift» только в 61-й серии, а действует по нему в 57-й
+    patch:
+      - op: replace
+        path: /bible/knowledge/6/since_ep
+        value: 61
+  - id: h14
+    holeType: 11
+    episode: 49
+    description: Вера узнаёт «f_kirill_son» только в 55-й серии, а действует по нему в 49-й
+    patch:
+      - op: replace
+        path: /bible/knowledge/5/since_ep
+        value: 55
+  - id: h15
+    holeType: 11
+    episode: 18
+    description: Вера узнаёт «f_forged_will» только в 24-й серии, а действует по нему в 18-й
+    patch:
+      - op: replace
+        path: /bible/knowledge/1/since_ep
+        value: 24
+  - id: h16
+    holeType: 11
+    episode: 28
+    description: Вера действует по «f_fire_arson» в 28-й серии, а узнаёт его в 30-й
+    patch:
+      - op: add
+        path: /plan/episodes/27/acts_on/-
+        value:
+          who: Вера
+          fact: f_fire_arson
+  - id: h17
+    holeType: 11
+    episode: 5
+    description: Вера действует по «f_voronova» в 5-й серии, а узнаёт его в 8-й
+    patch:
+      - op: add
+        path: /plan/episodes/4/acts_on/-
+        value:
+          who: Вера
+          fact: f_voronova
+  - id: h18
+    holeType: 11
+    episode: 46
+    description: Вера действует по «f_kirill_son» в 46-й серии, а узнаёт его в 48-й
+    patch:
+      - op: add
+        path: /plan/episodes/45/acts_on/-
+        value:
+          who: Вера
+          fact: f_kirill_son
+  - id: h19
+    holeType: 11
+    episode: 18
+    description: Евдокия действует по «f_forged_will» в 18-й серии, но нигде об этом не узнаёт
+    patch:
+      - op: add
+        path: /plan/episodes/17/acts_on/-
+        value:
+          who: Евдокия
+          fact: f_forged_will
+  - id: h20
+    holeType: 11
+    episode: 13
+    description: Лида действует по «f_stolen_gift» в 13-й серии, но нигде об этом не узнаёт
+    patch:
+      - op: add
+        path: /plan/episodes/12/acts_on/-
+        value:
+          who: Лида
+          fact: f_stolen_gift
+  - id: h21
+    holeType: 11
+    episode: 53
+    description: Кирилл действует по «f_kirill_son» в 53-й серии, но нигде об этом не узнаёт
+    patch:
+      - op: add
+        path: /plan/episodes/52/acts_on/-
+        value:
+          who: Кирилл
+          fact: f_kirill_son
+  - id: h22
+    holeType: 1
+    description: У правила мира «Дар Вороновых — слышать ложь и видеть клятвы» нет причины
+    patch:
+      - op: replace
+        path: /bible/world_rules/0/why
+        value: Так работает
+  - id: h23
+    holeType: 1
+    description: У правила мира «Клятва рода связывает Туманских» нет причины
+    patch:
+      - op: replace
+        path: /bible/world_rules/1/why
+        value: Так работает
+  - id: h24
+    holeType: 1
+    description: У правила мира «Суд не принимает магию» нет причины
+    patch:
+      - op: replace
+        path: /bible/world_rules/2/why
+        value: Так работает
+  - id: h25
+    holeType: 10
+    episode: 40
+    description: «pinch2» сдвинута с 37-й на 40-ю серию
+    patch:
+      - op: replace
+        path: /plan/episodes/36/anchors
+        value:
+          - love_chooses_clan
+      - op: add
+        path: /plan/episodes/39/anchors/-
+        value: pinch2
+  - id: h26
+    holeType: 10
+    episode: 33
+    description: «love_perfect_moment» сдвинута с 30-й на 33-ю серию
+    patch:
+      - op: replace
+        path: /plan/episodes/29/anchors
+        value:
+          - midpoint
+      - op: add
+        path: /plan/episodes/32/anchors/-
+        value: love_perfect_moment
+  - id: h27
+    holeType: 10
+    episode: 10
+    description: «love_first_dance» сдвинута с 7-й на 10-ю серию
+    patch:
+      - op: replace
+        path: /plan/episodes/6/anchors
+        value: []
+      - op: add
+        path: /plan/episodes/9/anchors/-
+        value: love_first_dance
+  - id: h28
+    holeType: 10
+    episode: 4
+    description: «betrayal» сдвинута с 1-й на 4-ю серию
+    patch:
+      - op: replace
+        path: /plan/episodes/0/anchors
+        value:
+          - love_meet
+          - power_spark
+      - op: add
+        path: /plan/episodes/3/anchors/-
+        value: betrayal
+  - id: h29
+    holeType: 10
+    episode: 11
+    description: «paywall_hook» сдвинута с 8-й на 11-ю серию
+    patch:
+      - op: replace
+        path: /plan/episodes/7/anchors
+        value:
+          - love_near_kiss
+      - op: add
+        path: /plan/episodes/10/anchors/-
+        value: paywall_hook
+  - id: h30
+    holeType: 3
+    episode: 22
+    description: После удара злодеев в 22-й серии героиня не отвечает
+    patch:
+      - op: replace
+        path: /plan/episodes/22/strike_by_heroine
+        value: false
+      - op: replace
+        path: /plan/episodes/23/strike_by_heroine
+        value: false
+  - id: h31
+    holeType: 3
+    episode: 33
+    description: После удара злодеев в 33-й серии героиня не отвечает
+    patch:
+      - op: replace
+        path: /plan/episodes/33/strike_by_heroine
+        value: false
+      - op: replace
+        path: /plan/episodes/35/strike_by_heroine
+        value: false
+  - id: h32
+    holeType: 3
+    episode: 11
+    description: После удара злодеев в 11-й серии героиня не отвечает
+    patch:
+      - op: replace
+        path: /plan/episodes/12/strike_by_heroine
+        value: false
+  - id: h33
+    holeType: 3
+    episode: 52
+    description: После удара злодеев в 52-й серии героиня не отвечает
+    patch:
+      - op: replace
+        path: /plan/episodes/52/strike_by_heroine
+        value: false
+      - op: replace
+        path: /plan/episodes/53/strike_by_heroine
+        value: false
+  - id: h34
+    holeType: 8
+    description: "Добавлено постоянных героев: 1, сверх лимита 8"
+    patch:
+      - op: add
+        path: /bible/characters/-
+        value:
+          name: Лишний герой 1
+          birth_year: 2002
+          look: Худенькая, тёмная коса, форменное платье горничной; со временем седая прядь
+          ghost: Мать погибла при пожаре, и дар рода «ушёл»
+          lie: Я никто. Любовь — сделка
+          truth: Сила — её собственная, и любить не значит проиграть
+          want: Вернуть имя и наследство, наказать предателей
+          need: Принять силу как свою и позволить себя любить
+          arc_type: позитивная
+          mask: Покорная помощница, которая ничего не знает
+          hidden_power: Слышит ложь и видит клятвы
+          knows_at_start: []
+          speech: Коротко и вежливо, удар — одной фразой
+          limits:
+            - Не наказывает сама — только через закон
+          regular: true
