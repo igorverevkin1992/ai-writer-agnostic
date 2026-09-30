@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
 import { api, post, type Doc, type Fact, type Finding, type Overview } from '../api.ts';
 import { FindingCard, topThree } from './Findings.tsx';
 
@@ -17,9 +17,14 @@ function blockLine(b: Doc): string {
 /** Card, script, up to three findings, and polishing of a selected fragment. */
 export function EpisodeScreen({ data, refresh }: { data: Overview; refresh: () => Promise<void> }) {
   const pid = data.project.id;
-  const eps = data.plan?.episodes.map((e) => e.ep as number) ?? [];
-  const [ep, setEp] = useState<number>(data.scripts[0] ?? eps[0] ?? 1);
   const [cards, setCards] = useState<Doc[]>([]);
+  // Every episode that has something: a plan line, a card or a script.
+  const eps = [...new Set([...(data.plan?.episodes.map((e) => e.ep as number) ?? []), ...cards.map((c) => c.ep as number), ...data.scripts])].sort((a, b) => a - b);
+  const [ep, setEp] = useState<number>(data.scripts[0] ?? data.plan?.episodes[0]?.ep ?? 1);
+  const status = (step: string) => data.steps.find((s) => s.step === step)?.status;
+  // The server accepts polishing only after scripts, before polish is approved, while no step runs.
+  const polishOpen =
+    ['approved', 'skipped'].includes(status('scripts') ?? '') && status('polish') !== 'approved' && !data.steps.some((s) => s.status === 'checking');
   const [script, setScript] = useState<ScriptView | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [sel, setSel] = useState<[number, number] | null>(null);
@@ -55,7 +60,7 @@ export function EpisodeScreen({ data, refresh }: { data: Overview; refresh: () =
   const outline = data.plan?.episodes.find((e) => e.ep === ep);
   // A new selection makes old variants meaningless: they were written for another fragment.
   const pick = (i: number) => {
-    if (busy) return;
+    if (busy || !polishOpen) return;
     setVariants(null);
     setSel((s) => (!s ? [i, i] : s[0] === s[1] && i > s[0] ? [s[0], i] : [i, i]));
   };
@@ -131,7 +136,7 @@ export function EpisodeScreen({ data, refresh }: { data: Overview; refresh: () =
             <p className="muted">{outline ? `По плану: ${outline.event}` : 'Карточки пока нет.'}</p>
           )}
           {topThree(findings).map((f) => (
-            <FindingCard key={f.id} f={f} facts={(data.bible?.facts ?? []) as Fact[]} projectId={pid} onDone={() => void refresh()} />
+            <FindingCard key={f.id} f={f} facts={(data.bible?.facts ?? []) as Fact[]} projectId={pid} canAddFact={!!data.bible} onDone={() => void refresh()} />
           ))}
         </article>
         <article className="panel">
@@ -140,15 +145,38 @@ export function EpisodeScreen({ data, refresh }: { data: Overview; refresh: () =
             <p className="muted">Сценария этой серии пока нет.</p>
           ) : (
             <>
-              <p className="muted">Выделите реплики для доработки: щёлкните по первой и по последней строке фрагмента.</p>
+              <p className="muted">
+                {polishOpen
+                  ? 'Выделите реплики для доработки: щёлкните (или нажмите Enter) по первой и по последней строке фрагмента.'
+                  : status('polish') === 'approved'
+                    ? 'Доработка утверждена: фрагменты больше не меняются.'
+                    : 'Дорабатывать фрагменты можно после того, как сценарии утверждены или пропущены.'}
+              </p>
               <ol className="script">
                 {script.script.blocks.map((b, i) => (
-                  <li key={i} className={`blk blk-${b.kind} ${sel && i >= sel[0] && i <= sel[1] ? 'blk-sel' : ''}`} onClick={() => pick(i)}>
+                  <li
+                    key={i}
+                    className={`blk blk-${b.kind} ${sel && i >= sel[0] && i <= sel[1] ? 'blk-sel' : ''}`}
+                    {...(polishOpen
+                      ? {
+                          role: 'button',
+                          tabIndex: 0,
+                          'aria-pressed': !!sel && i >= sel[0] && i <= sel[1],
+                          onClick: () => pick(i),
+                          onKeyDown: (e: KeyboardEvent) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              pick(i);
+                            }
+                          },
+                        }
+                      : {})}
+                  >
                     {blockLine(b)}
                   </li>
                 ))}
               </ol>
-              {sel && (
+              {sel && polishOpen && (
                 <div className="polish">
                   <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Пожелание: жёстче, смешнее, с подтекстом…" />
                   <button className="primary" disabled={busy} onClick={propose}>

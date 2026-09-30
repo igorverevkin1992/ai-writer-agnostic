@@ -43,7 +43,7 @@ export function NowScreen({ data, refresh }: { data: Overview; refresh: () => Pr
         <h2>{working ? `Агент работает: «${next.stepLabel}». Это может занять несколько минут — экран обновится сам` : next.task}</h2>
         <p className="criterion">Готово, когда: {next.criterion}</p>
         {error && <p className="error">{error}</p>}
-        {!working && job?.error && <p className="error">Последний запуск не удался: {job.error}</p>}
+        {!working && job?.error && job.step === next.step && <p className="error">Последний запуск не удался: {job.error}</p>}
         <div className="actions">
           {next.action === 'run' && (
             <button className="primary" disabled={busy || working} onClick={() => run(next.episodes ? { episodes: next.episodes } : {})}>
@@ -55,7 +55,14 @@ export function NowScreen({ data, refresh }: { data: Overview; refresh: () => Pr
               <button className="primary" disabled={busy || working} onClick={() => approve()}>
                 Утвердить
               </button>
-              <button disabled={busy || working} onClick={() => run()}>
+              <button
+                disabled={busy || working}
+                onClick={() => {
+                  // Redoing cards or scripts rewrites the whole season: it costs time and money.
+                  const whole = next.step === 'episode_cards' || next.step === 'scripts';
+                  if (!whole || window.confirm(`Переписать заново весь шаг «${next.stepLabel}»? Это займёт время и потратит бюджет.`)) void run();
+                }}
+              >
                 Переделать
               </button>
             </>
@@ -71,8 +78,11 @@ export function NowScreen({ data, refresh }: { data: Overview; refresh: () => Pr
             </>
           )}
           {next.action === 'resolve' && (
-            <button disabled={busy || working} onClick={() => run(next.step === 'scripts' ? { episodes: [...new Set(findings.map((f) => f.episode).filter(Boolean))], fix: true } : {})}>
-              {next.step === 'scripts' ? 'Переписать серии с замечаниями' : 'Переделать шаг'}
+            <button
+              disabled={busy || working}
+              onClick={() => run(next.episodes ? { episodes: next.episodes, ...(next.step === 'scripts' ? { fix: true } : {}) } : {})}
+            >
+              {next.episodes ? `Переписать серии с замечаниями: ${next.episodes.join(', ')}` : 'Переделать шаг'}
             </button>
           )}
           {next.action === 'polish' && (
@@ -135,7 +145,7 @@ export function NowScreen({ data, refresh }: { data: Overview; refresh: () => Pr
         <div className="findings">
           <h3>Замечания {findings.filter((f) => f.status === 'open').length > 3 ? `(показаны 3 из ${findings.filter((f) => f.status === 'open').length})` : ''}</h3>
           {top.map((f) => (
-            <FindingCard key={f.id} f={f} facts={facts} projectId={pid} onDone={() => void refresh()} />
+            <FindingCard key={f.id} f={f} facts={facts} projectId={pid} canAddFact={!!data.bible} onDone={() => void refresh()} />
           ))}
         </div>
       )}

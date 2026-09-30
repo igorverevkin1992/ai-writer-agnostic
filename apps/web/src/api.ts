@@ -25,6 +25,7 @@ export interface Finding {
   status: 'open' | 'resolved' | 'dismissed';
   verdict: string | null;
   resolutionFactId: string | null;
+  check: string | null;
 }
 
 export interface StepState {

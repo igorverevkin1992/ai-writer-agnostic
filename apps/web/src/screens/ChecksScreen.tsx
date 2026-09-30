@@ -54,7 +54,7 @@ export function ChecksScreen({ data, refresh }: { data: Overview; refresh: () =>
       {shown.length === 0 ? (
         <p className="muted panel">Здесь пусто.</p>
       ) : (
-        shown.map((f) => <FindingCard key={f.id} f={f} facts={(data.bible?.facts ?? []) as Fact[]} projectId={pid} onDone={() => void refresh()} />)
+        shown.map((f) => <FindingCard key={f.id} f={f} facts={(data.bible?.facts ?? []) as Fact[]} projectId={pid} canAddFact={!!data.bible} onDone={() => void refresh()} />)
       )}
     </section>
   );

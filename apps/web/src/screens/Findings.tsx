@@ -13,7 +13,8 @@ const CONTROLLER: Record<string, string> = {
 };
 
 /** One finding in the viewer's language, with the producer's actions. */
-export function FindingCard({ f, facts, projectId, onDone }: { f: Finding; facts: Fact[]; projectId: string; onDone: () => void }) {
+/** canAddFact: the project has a bible, so a new fact can be added. */
+export function FindingCard({ f, facts, projectId, onDone, canAddFact = true }: { f: Finding; facts: Fact[]; projectId: string; onDone: () => void; canAddFact?: boolean }) {
   const [mode, setMode] = useState<'' | 'resolve' | 'dismiss'>('');
   const [factId, setFactId] = useState('');
   const [newText, setNewText] = useState('');
@@ -62,13 +63,19 @@ export function FindingCard({ f, facts, projectId, onDone }: { f: Finding; facts
         Как исправить: {f.fixes.join(' / ')}
         {f.verdict && <span className="muted"> · Судья: {f.verdict}</span>}
       </p>
-      {f.status === 'open' ? (
+      {f.status === 'open' && f.check === 'pipeline.incomplete' ? (
+        <p className="muted">Закроется, когда шаг будет выполнен заново до конца.</p>
+      ) : f.status === 'open' && facts.length === 0 && !canAddFact ? (
+        <p className="muted">Закрыть фактом можно после того, как появится библия.</p>
+      ) : f.status === 'open' ? (
         mode === '' ? (
           <div className="actions">
             <button onClick={() => setMode('resolve')}>Закрыть фактом</button>
-            <button className="ghost" onClick={() => setMode('dismiss')}>
-              Это не дыра
-            </button>
+            {facts.length > 0 && (
+              <button className="ghost" onClick={() => setMode('dismiss')}>
+                Это не дыра
+              </button>
+            )}
           </div>
         ) : (
           <div className="resolve-form">
@@ -81,7 +88,7 @@ export function FindingCard({ f, facts, projectId, onDone }: { f: Finding; facts
                     {x.text}
                   </option>
                 ))}
-                {mode === 'resolve' && <option value="__new">+ Новый факт…</option>}
+                {mode === 'resolve' && canAddFact && <option value="__new">+ Новый факт…</option>}
               </select>
             </label>
             {factId === '__new' && (
