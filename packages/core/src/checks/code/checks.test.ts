@@ -160,13 +160,16 @@ describe('story checks', () => {
 });
 
 describe('checkTimeline', () => {
-  it('finds the contradiction in the concept: Liza was 2 when her aunt died in 1996, but is 28 in 2026', () => {
-    const aunt = p.bible.timeline.events.find((e) => e.id === 'e_aunt')!;
-    aunt.participants.push('Лиза');
-    aunt.ages['Лиза'] = 2;
+  it('the fixed golden bible (Liza 32 in 2026) has no chronology holes', () => {
+    expect(checkTimeline(p.bible)).toEqual([]);
+  });
+
+  it('finds the contradiction of the first concept: Liza was 2 when her aunt died in 1996, but is 28 in 2026', () => {
+    p.bible.characters.find((c) => c.name === 'Лиза')!.birth_year = 1998;
+    p.bible.timeline.events.find((e) => e.id === 'e_lisa_born')!.year = 1998;
     const f = checkTimeline(p.bible);
-    expect(codes(f)).toEqual(['timeline.born_after', 'timeline.age']);
-    expect(f[1]!.quote).toBe('«Смерть двоюродной тёти Лизы от «болезни крови»; подмена сестёр» (1996): Лиза 2 лет, а по году рождения (1998) — -2');
+    expect(codes(f)).toEqual(expect.arrayContaining(['timeline.born_after', 'timeline.age']));
+    expect(f.map((x) => x.quote)).toContain('«Смерть двоюродной тёти Лизы от «болезни крови»; подмена сестёр» (1996): Лиза 2 лет, а по году рождения (1998) — -2');
   });
 
   it('reports a dead character taking part later', () => {
