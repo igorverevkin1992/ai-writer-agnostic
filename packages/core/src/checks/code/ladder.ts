@@ -95,6 +95,19 @@ export function checkVillainLadder(
       });
     }
 
+    // The plan says where a villain first appears: it must agree with the bible.
+    const introduced = plan.episodes.filter((e) => e.villains_introduced.includes(x.rank)).map((e) => e.ep);
+    if (introduced.length && Math.min(...introduced) !== x.on_screen_ep) {
+      add({
+        check: 'villain_ladder.introduced',
+        severity: 'major',
+        episode: Math.min(...introduced),
+        quote: `${x.name}: в плане впервые в ${Math.min(...introduced)}-й серии, в библии — в ${x.on_screen_ep}-й`,
+        question: `когда мы впервые видим ${x.name}?`,
+        fixes: ['Согласовать первое появление злодея в плане и в библии'],
+      });
+    }
+
     const spec = v.takedowns[key];
     if (spec !== undefined) {
       const { min, max } = episodeRange(spec);
@@ -104,7 +117,8 @@ export function checkVillainLadder(
       const tolerated =
         ep >= min - frame.tolerance &&
         ep <= max + frame.tolerance &&
-        plan.deviations.some((d) => d.anchor === `villain_${x.rank}` && d.ep === ep);
+        // The author explains a moved takedown with the villain's role id from the frame (e.g. "executor").
+        plan.deviations.some((d) => (d.anchor === v.roles[x.rank] || d.anchor === x.role) && d.ep === ep);
       if (!inside && !tolerated) {
         add({
           check: 'villain_ladder.takedown',

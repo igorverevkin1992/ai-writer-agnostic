@@ -46,6 +46,5 @@ season_frame:
     max_suffering_run: 2          # страдание не дольше 2 серий подряд
     max_same_hook_run: 2          # тип крючка не больше двух серий подряд
     emotions_per_episode: [2, 3]
-    max_fall_length: 5
   blocks: [[1, 8], [9, 20], [21, 30], [31, 40], [41, 50], [51, 60]]
   tolerance: 1

@@ -1,6 +1,7 @@
 import { loadKb } from '@aiw/kb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDb, type Db } from '../db/client.ts';
+import { confirmChecklist } from '../demo.ts';
 import { loadGolden } from '../fixtures.ts';
 import { ProjectMemory } from '../memory/store.ts';
 import { SameFamilyError } from '../providers/errors.ts';
@@ -51,7 +52,7 @@ function reply(req: LlmRequest): string {
     case 'season_plan':
       return JSON.stringify(planPart(a));
     case 'checklist_judge':
-      return JSON.stringify({ items: [] });
+      return JSON.stringify(confirmChecklist(req.system ?? ''));
     case 'devil_advocate':
       return JSON.stringify(b === 'библия' ? (script.auditBible?.(a) ?? []) : (script.auditPlan?.(a, b) ?? []));
     case 'persona':

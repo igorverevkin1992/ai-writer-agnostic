@@ -217,10 +217,10 @@ describe('checkKnowledge', () => {
 describe('production checks', () => {
   const card = (over: Partial<EpisodeCard>): EpisodeCard => CardSchema.parse({ ...sampleCard, location: 'архив', ...over });
 
-  it('limits regular characters, locations and speakers', () => {
+  it('limits regular characters and locations; everyone in the episode is not a speaker', () => {
     for (let i = 0; i < 3; i++) p.bible.characters.push({ ...p.bible.characters[0]!, name: `Новый ${i}` });
     const f = checkLimits(p.bible, [card({ ep: 3, location: 'вокзал', cast: ['Лиза', 'Вера', 'Анна', 'Герман'] })], kit.production);
-    expect(codes(f).sort()).toEqual(['limits.location_not_listed', 'limits.regular_characters', 'limits.speakers']);
+    expect(codes(f).sort()).toEqual(['limits.location_not_listed', 'limits.regular_characters']);
   });
 
   it('every gun fires, and after it is planted', () => {
@@ -289,7 +289,8 @@ describe('scoreChecklist', () => {
     villain('Кира').takedown_ep = 6;
     const score = scoreChecklist(kit.checklist, kit.rules, runCodeChecks({ kit, ...p }));
     expect(score.items.filter((i) => i.status === 'fail').map((i) => i.id).sort()).toEqual(['C02', 'C07']);
-    expect(score.score).toBe(14);
+    // Model-judged rules (R01, R09, R10, R15, R16) wait for the judge: 10 points unknown.
+    expect(score.score).toBe(4);
     expect(score.passed).toBe(null);
   });
 
@@ -326,7 +327,31 @@ describe('review fixes', () => {
     ep(40).anchors.push('pinch2');
     const score = scoreChecklist(kit.checklist, kit.rules, runCodeChecks({ kit, ...p }));
     expect(score.items.filter((i) => i.status === 'fail')).toEqual([]);
-    expect(score.score).toBe(18);
+    expect(score.score).toBe(8);
+  });
+
+  it('«законный финал» fails on a vigilante marker instead of scoring by code', () => {
+    ep(60).event = 'Героиня устраивает самосуд и своими руками наказывает мужа';
+    const score = scoreChecklist(kit.checklist, kit.rules, runCodeChecks({ kit, ...p }));
+    expect(score.items.find((i) => i.id === 'C08')?.status).toBe('fail');
+  });
+
+  it('a legal marker matches «е» written for «ё»', () => {
+    expect(checkLegalMarkers([{ where: 'План', text: 'Он бьет её.' }], kit.legal)).toHaveLength(1);
+  });
+
+  it('a moved takedown is excused by the villain role in the deviations', () => {
+    const k = villain('Кира');
+    const planned = ep(k.takedown_ep);
+    const moved = k.takedown_ep + 1;
+    planned.takedown_rank = undefined;
+    ep(moved).takedown_rank = k.rank;
+    k.takedown_ep = moved;
+    const before = codes(checkVillainLadder(p.bible, p.plan, frame));
+    p.plan.deviations.push({ anchor: k.role, ep: moved, reason: 'Нужна лишняя серия на подготовку' });
+    const after = codes(checkVillainLadder(p.bible, p.plan, frame));
+    expect(before).toContain('villain_ladder.takedown');
+    expect(after).not.toContain('villain_ladder.takedown');
   });
 
   it('legal markers are minor suspicions and match words, not parts of other words', () => {

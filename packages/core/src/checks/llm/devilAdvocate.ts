@@ -9,8 +9,6 @@ import { makeFinding } from '../code/finding.ts';
 import { FindingDraft, FindingDrafts } from './schemas.ts';
 import { bibleText, factsText, noticeQuestions, planBlocks, type AuditBlock } from './texts.ts';
 
-/** The «почему никто не заметил?» hole type gets code-generated questions. */
-const NOTICE_HOLE_TYPE = 2;
 const DEFAULT_BLOCK_SIZE = 10;
 const MAX_NOTICE_QUESTIONS = 30;
 
@@ -47,14 +45,21 @@ export interface AuditResult {
   calls: number;
 }
 
-const normalize = (s: string) => s.replace(/[«»"“”„]/gu, '"').replace(/\s+/gu, ' ').trim().toLowerCase();
+const normalize = (s: string) => s.replace(/[«»"“”„]/gu, '"').replace(/[ёЁ]/gu, 'е').replace(/\s+/gu, ' ').trim().toLowerCase();
 
-/** Episode of a quote inside a plan block: the "Серия N." line it comes from. */
-function episodeOfQuote(block: AuditBlock, quote: string): number | undefined {
+/**
+ * Episode of a quote inside a plan block: the "Серия N." line it comes from.
+ * When the same words stand in several episodes, the one the auditor named wins.
+ */
+function episodeOfQuote(block: AuditBlock, quote: string, named?: number): number | undefined {
   const q = normalize(quote);
-  const line = block.text.split('\n').find((l) => normalize(l).includes(q));
-  const m = line && /^Серия (\d+)\./u.exec(line);
-  return m ? Number(m[1]) : undefined;
+  const eps = block.text
+    .split('\n')
+    .filter((l) => normalize(l).includes(q))
+    .map((l) => /^Серия (\d+)\./u.exec(l))
+    .filter((m): m is RegExpExecArray => !!m)
+    .map((m) => Number(m[1]));
+  return named !== undefined && eps.includes(named) ? named : eps[0];
 }
 
 function toFinding(d: FindingDraft, block: AuditBlock, check: string, holeType: number): Finding | undefined {
@@ -62,7 +67,7 @@ function toFinding(d: FindingDraft, block: AuditBlock, check: string, holeType: 
   // The model's episode number counts only inside the audited block.
   const inBlock = (ep: number | undefined) =>
     ep !== undefined && (!block.episodes || (ep >= block.episodes[0] && ep <= block.episodes[1])) ? ep : undefined;
-  const episode = block.episodes ? (episodeOfQuote(block, d.quote) ?? inBlock(d.episode)) : d.episode;
+  const episode = block.episodes ? (episodeOfQuote(block, d.quote, d.episode) ?? inBlock(d.episode)) : d.episode;
   const question = d.viewerQuestion.replace(/^Зритель спросит:\s*/u, '');
   return makeFinding({
     check,
@@ -112,7 +117,7 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
         dropped++;
         continue;
       }
-      const key = `${f.holeType}|${normalize(f.quote)}`;
+      const key = `${f.holeType}|${f.episode ?? 0}|${normalize(f.quote)}`;
       if (!found.has(key)) found.set(key, f);
     }
   };
@@ -120,7 +125,7 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
   for (const hole of holes) {
     for (const block of blocks) {
       const notice =
-        hole.id === NOTICE_HOLE_TYPE ? noticeQuestions(target.bible, block, target.plan).slice(0, MAX_NOTICE_QUESTIONS) : [];
+        hole.notice ? noticeQuestions(target.bible, block, target.plan).slice(0, MAX_NOTICE_QUESTIONS) : [];
       const system = renderPrompt(deps.kb, `${role}/devil_advocate`, {
         hole: `${hole.id}. ${hole.name}`,
         hole_questions: hole.questions.map((q) => `- ${q}`).join('\n'),

@@ -405,6 +405,7 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
             to,
             written: episodes.length ? episodes.map(episodeLine).join('\n') : 'Это начало сезона.',
             anchor_ids: Object.keys(f.anchors).join(', '),
+            villain_roles: Object.values(f.villains?.roles ?? {}).join(', ') || 'в жанре нет лестницы злодеев',
             tolerance: f.tolerance,
             schema: schemaText(part),
           }),

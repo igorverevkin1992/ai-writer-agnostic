@@ -126,7 +126,7 @@ function assertPolishOpen(pipeline: Pipeline): void {
   if (pipeline.get('polish').status === 'approved') throw new PipelineError('Доработка уже утверждена');
 }
 
-const norm = (s: string) => s.replace(/\s+/gu, ' ').trim().toLowerCase();
+const norm = (s: string) => s.replace(/[ёЁ]/gu, 'е').replace(/\s+/gu, ' ').trim().toLowerCase();
 
 /** A variant must start between its neighbours, keep time order and end within the episode. */
 function assertFits(blocks: ScriptBlock[], start: number, nextStart: number, end: number): void {

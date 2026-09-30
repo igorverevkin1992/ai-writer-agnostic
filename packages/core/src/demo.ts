@@ -57,6 +57,23 @@ function script(ep: number, fixed: boolean) {
   };
 }
 
+/**
+ * A judge that confirms every checklist item it is asked about, quoting the first line
+ * of the judged text. For the demo and for tests: never used with real models.
+ */
+export function confirmChecklist(system: string): { items: { id: string; ok: boolean; quote: string; reason: string }[] } {
+  const items = /Пункты:\n([\s\S]*?)\n\n/u.exec(system)?.[1] ?? '';
+  const text = /Библия и план сезона:\n([\s\S]*)/u.exec(system)?.[1] ?? '';
+  const quote = text.split('\n').find((l) => l.trim().length > 0)?.trim() ?? '';
+  return {
+    items: items
+      .split('\n')
+      .map((l) => /^([^:\s]+):/u.exec(l)?.[1])
+      .filter((id): id is string => !!id)
+      .map((id) => ({ id, ok: true, quote, reason: 'Выполнено в эталоне' })),
+  };
+}
+
 function answer(task: string, req: LlmRequest): unknown {
   const [kind, a = '', b = ''] = task.split(':');
   switch (kind) {
@@ -116,7 +133,7 @@ function answer(task: string, req: LlmRequest): unknown {
       return { variants: tone.map((p) => [{ t0, t1, kind: 'line', speaker: 'ЛИЗА', parenthetical: p, text: 'Я знаю, что ты сделала. И скоро узнают все.' }]) };
     }
     case 'checklist_judge':
-      return { items: [{ id: 'C09', ok: true, quote: 'Анна в чужом городе смотрит на афишу с фамилией бабушки', reason: 'Нить на второй сезон' }] };
+      return confirmChecklist(req.system ?? '');
     case 'shootable':
       return { verdict: 'light_edit', reason: 'Реплики стоит сделать живее' };
     case 'eval_match':

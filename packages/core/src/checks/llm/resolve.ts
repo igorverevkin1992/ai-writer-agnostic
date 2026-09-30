@@ -60,6 +60,10 @@ export async function resolveFinding(deps: ResolveDeps, finding: Finding, bible:
   if (reply.action === 'cite' && !fact) {
     return { finding, reply, bible, verdict: `Автор сослался на факт ${reply.fact_id}, которого нет в базе` };
   }
+  if (reply.action === 'new_fact' && reply.fact && bible.facts.some((f) => f.id === reply.fact!.id)) {
+    // A new fact must not quietly rewrite an existing one: that is the producer's decision.
+    return { finding, reply, bible, verdict: `Автор выдал за новый факт уже существующий ${reply.fact.id}` };
+  }
   if (reply.action === 'new_fact' && reply.fact) {
     const candidate = Bible.parse({
       ...bible,

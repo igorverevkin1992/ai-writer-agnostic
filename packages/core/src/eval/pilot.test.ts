@@ -4,6 +4,7 @@ import { runCodeChecks } from '../checks/code/runner.ts';
 import { scoreChecklist } from '../checks/code/checklist.ts';
 import { judgeChecklist } from '../checks/llm/checklistJudge.ts';
 import { openDb, type Db } from '../db/client.ts';
+import { confirmChecklist } from '../demo.ts';
 import { loadGolden } from '../fixtures.ts';
 import { LlmClient } from '../providers/llm.ts';
 import { FakeProvider, testConfig } from '../providers/testing.ts';
@@ -39,7 +40,7 @@ function reply(req: LlmRequest): string {
     return JSON.stringify({ ep, title: `Серия ${ep}`, duration_s: 90, blocks: [{ t0: 0, t1: 5, kind: 'scene', text: 'ИНТ. АРХИВ — НОЧЬ.' }, ...lines, { t0: 85, t1: 90, kind: 'scene', text: 'Темнота.' }] });
   }
   if (kind === 'controller') return '[]';
-  if (kind === 'checklist_judge') return JSON.stringify(judge);
+  if (kind === 'checklist_judge') return JSON.stringify(judge ?? confirmChecklist(req.system ?? ''));
   if (kind === 'shootable') return JSON.stringify({ verdict: Number(a) % 3 === 0 ? 'no' : 'light_edit', reason: 'Реплики однообразные' });
   throw new Error(t);
 }
@@ -49,7 +50,7 @@ const client = () =>
 
 beforeEach(() => {
   db = openDb(':memory:');
-  judge = { items: [{ id: 'C09', ok: true, quote: 'Анна в чужом городе смотрит на афишу с фамилией бабушки', reason: 'Нить на второй сезон' }] };
+  judge = undefined;
 });
 
 describe('checklist judge', () => {

@@ -71,7 +71,7 @@ export interface ControllerDeps {
   criticRole?: RoleName;
 }
 
-const norm = (s: string) => s.replace(/[«»"“”„]/gu, '"').replace(/\s+/gu, ' ').trim().toLowerCase();
+const norm = (s: string) => s.replace(/[«»"“”„]/gu, '"').replace(/[ёЁ]/gu, 'е').replace(/\s+/gu, ' ').trim().toLowerCase();
 
 /** Runs model controllers over one script. The critic is from another family than the writer. */
 export async function runScriptControllers(

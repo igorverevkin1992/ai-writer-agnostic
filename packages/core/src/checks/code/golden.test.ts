@@ -26,6 +26,7 @@ describe('golden project «Муж женился на мне ради крови
     const score = scoreChecklist(kit.checklist, kit.rules, result);
     expect(score.items.filter((i) => i.status === 'fail')).toEqual([]);
     expect(score.score + score.unknownPoints).toBe(20);
-    expect(score.passed).toBe(true);
+    // Items of model-judged rules wait for the judge: code alone does not pass them.
+    expect(score.passed).not.toBe(false);
   });
 });

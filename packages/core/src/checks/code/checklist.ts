@@ -1,7 +1,7 @@
 import type { Checklist, RulesFile } from '@aiw/kb';
 import type { Finding } from '../../schemas/finding.ts';
 import { makeFinding } from './finding.ts';
-import { codeMatches, type CodeCheckResult } from './runner.ts';
+import { CODE_CHECKS, codeMatches, UnknownCheckError, type CodeCheckResult } from './runner.ts';
 
 export type ItemStatus = 'ok' | 'fail' | 'unknown';
 
@@ -18,19 +18,22 @@ export interface ChecklistScore {
 }
 
 /**
- * Scores the season checklist from code check results: an item scores when its rule
- * was evaluated by code and has no blocker or major findings.
+ * Scores the season checklist from code check results. Code can fail an item (its rule has
+ * blocker or major findings, or any finding when the rule is also judged by a model);
+ * it can pass an item only when the rule has no model part. The rest goes to the model-judge.
  */
 export function scoreChecklist(checklist: Checklist, rules: RulesFile, result: CodeCheckResult): ChecklistScore {
-  const known = new Set(rules.rules.map((r) => r.id));
+  const byId = new Map(rules.rules.map((r) => [r.id, r]));
   const items = checklist.items.map((item) => {
     let status: ItemStatus = 'unknown';
-    if (item.rule && known.has(item.rule) && result.evaluatedRules.has(item.rule)) {
+    const rule = item.rule ? byId.get(item.rule) : undefined;
+    if (rule && item.only) assertOnlyCodes(item.id, item.only, rule.check.run.map((r) => r.fn));
+    if (rule && result.evaluatedRules.has(rule.id)) {
       const only = item.only;
-      const bad = (result.byRule[item.rule] ?? [])
-        .filter((f) => !only || only.some((o) => codeMatches(f.check, o)))
-        .some((f) => f.severity !== 'minor');
-      status = bad ? 'fail' : 'ok';
+      const found = (result.byRule[rule.id] ?? []).filter((f) => !only || only.some((o) => codeMatches(f.check, o)));
+      // A model-judged rule: even a suspicion (e.g. a legal marker) means the item is not done.
+      const bad = rule.check.llm ? found.length > 0 : found.some((f) => f.severity !== 'minor');
+      status = bad ? 'fail' : rule.check.llm ? 'unknown' : 'ok';
     }
     return { id: item.id, text: item.text, points: item.points, rule: item.rule, status };
   });
@@ -62,4 +65,17 @@ export function checklistFinding(score: Omit<ChecklistScore, 'finding'>, undecid
     question: 'почему это должно меня зацепить?',
     fixes: [`Закрыть пункты чек-листа до ${score.pass} баллов`],
   });
+}
+
+/** A checklist filter must name a code one of the rule's checks can emit, or it silently scores nothing. */
+function assertOnlyCodes(itemId: string, only: string[], fns: string[]): void {
+  for (const o of only) {
+    const ok = fns.some((fn) => {
+      const codes = CODE_CHECKS[fn]?.codes;
+      if (!o.startsWith(`${fn}.`)) return false;
+      const code = o.slice(fn.length + 1);
+      return codes === null || codes === undefined ? !!CODE_CHECKS[fn] : codes.some((c) => code === c || code.startsWith(`${c}.`));
+    });
+    if (!ok) throw new UnknownCheckError(`Пункт чек-листа ${itemId}: фильтр «${o}» не совпадает ни с одним кодом проверок его правила`);
+  }
 }

@@ -34,7 +34,7 @@ export const Villain = z
     /** Role id from the genre frame, e.g. "pawn" or "boss". */
     role: NonEmpty,
     threat: NonEmpty,
-    /** Link to the heroine's main wound; required for rank 1. */
+    /** Link to the heroine's main wound. Whether the boss needs it is a genre rule (villain_ladder check). */
     link_to_ghost: z.string().trim().optional(),
     motive: NonEmpty,
     own_plan: NonEmpty,
@@ -51,15 +51,7 @@ export const Villain = z
     ties: z.array(z.object({ villain: NonEmpty, relation: NonEmpty })).default([]),
     knows: z.array(z.object({ fact: NonEmpty, since_ep: EpisodeNumber })).default([]),
   })
-  .superRefine((v, ctx) => {
-    if (v.rank === 1 && !v.link_to_ghost) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['link_to_ghost'],
-        message: 'У финального босса (ранг 1) обязательна связь с раной героини',
-      });
-    }
-  });
+;
 export type Villain = z.infer<typeof Villain>;
 
 export const Betrayal = z.object({

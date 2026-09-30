@@ -46,7 +46,7 @@ export const CODE_CHECKS: Record<string, CodeCheck> = {
   season_frame: { always: true, codes: ['count', 'anchor'], run: ({ plan, kit }) => plan && checkSeasonFrame(plan, kit.frame) },
   rhythm: { always: true, codes: ['response', 'suffering', 'hook_repeat', 'emotions'], run: ({ plan, kit }) => plan && checkRhythm(plan, kit.frame) },
   villain_ladder: {
-    always: true, codes: ['count', 'rank', 'role', 'on_screen', 'takedown', 'takedown_plan', 'key_to_next', 'counterstrike', 'public_legal', 'order', 'punishment', 'turned_ally', 'infighting'],
+    always: true, codes: ['count', 'rank', 'role', 'on_screen', 'introduced', 'takedown', 'takedown_plan', 'key_to_next', 'counterstrike', 'public_legal', 'order', 'punishment', 'turned_ally', 'infighting'],
     run: ({ bible, plan, kit }, p) =>
       bible && plan && checkVillainLadder(bible, plan, kit.frame, { ranks: nums(p, 'ranks'), min_infighting: num(p, 'min_infighting') } satisfies LadderParams),
   },
@@ -58,7 +58,7 @@ export const CODE_CHECKS: Record<string, CodeCheck> = {
       return bible && items && checkKnowledge(items, bible);
     },
   },
-  limits: { always: true, codes: ['regular_characters', 'locations', 'location_not_listed', 'speakers'], run: ({ bible, cards, kit }) => bible && checkLimits(bible, cards ?? [], kit.production) },
+  limits: { always: true, codes: ['regular_characters', 'locations', 'location_not_listed'], run: ({ bible, cards, kit }) => bible && checkLimits(bible, cards ?? [], kit.production) },
   guns: { always: true, codes: ['not_fired', 'order', 'outside'], run: ({ bible, plan, kit }) => bible && checkGuns(bible, kit.frame, plan) },
   script_metrics: {
     always: true, codes: ['chars_per_minute', 'line_words', 'overlay_words', 'duration', 'speakers'],
@@ -78,7 +78,11 @@ export const CODE_CHECKS: Record<string, CodeCheck> = {
   betrayer_rank: { always: false, codes: ['rank'], run: ({ bible }, p) => bible && checkBetrayerRank(bible, nums(p, 'ranks') ?? []) },
   paywall_hook: {
     always: false, codes: ['content'],
-    run: ({ plan }, p) => plan && checkPaywallHook(plan, typeof p.anchor === 'string' ? p.anchor : 'paywall_hook'),
+    run: ({ plan }, p) => {
+      // The anchor id comes from the genre rule: code does not know the frame's anchor names.
+      if (typeof p.anchor !== 'string') throw new UnknownCheckError('Проверке «paywall_hook» нужен параметр anchor — id опорной точки из каркаса');
+      return plan && checkPaywallHook(plan, p.anchor);
+    },
   },
   secret_turns: {
     always: false, codes: ['count', 'near'],

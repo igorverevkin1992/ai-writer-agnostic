@@ -92,7 +92,6 @@ export const SeasonFrame = z.strictObject({
       max_suffering_run: z.int().min(1),
       max_same_hook_run: z.int().min(1),
       emotions_per_episode: z.tuple([z.int().min(1), z.int().min(1)]),
-      max_fall_length: z.int().min(1),
     }),
     blocks: z.array(z.tuple([z.int().min(1), z.int().min(1)])).min(1),
     tolerance: z.int().min(0),
@@ -168,7 +167,15 @@ export type ProductionConstraints = z.infer<typeof ProductionConstraints>;
 
 export const HoleCatalog = z.strictObject({
   holes: z
-    .array(z.strictObject({ id: z.int().min(1).max(11), name: Text, questions: z.array(Text).min(1) }))
+    .array(
+      z.strictObject({
+        id: z.int().min(1).max(11),
+        name: Text,
+        questions: z.array(Text).min(1),
+        /** «Почему никто не заметил?»: the auditor also gets questions about who was near each event. */
+        notice: z.boolean().optional(),
+      }),
+    )
     .length(11, 'В каталоге должно быть ровно 11 типов дыр'),
 });
 export type HoleCatalog = z.infer<typeof HoleCatalog>;

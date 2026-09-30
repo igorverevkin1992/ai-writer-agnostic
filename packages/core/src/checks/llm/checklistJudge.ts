@@ -12,7 +12,7 @@ export const ChecklistVerdicts = z.object({
   items: z.array(z.object({ id: z.string().min(1), ok: z.boolean(), quote: z.string(), reason: z.string().min(1) })),
 });
 
-const norm = (s: string) => s.replace(/[«»"“”„]/gu, '"').replace(/\s+/gu, ' ').trim().toLowerCase();
+const norm = (s: string) => s.replace(/[«»"“”„]/gu, '"').replace(/[ёЁ]/gu, 'е').replace(/\s+/gu, ' ').trim().toLowerCase();
 
 /**
  * Judges the checklist items code cannot count. An item counts only when the judge

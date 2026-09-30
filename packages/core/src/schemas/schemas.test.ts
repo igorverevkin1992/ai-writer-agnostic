@@ -76,11 +76,9 @@ describe('Bible', () => {
     const v = Villain.parse({ ...sampleVillains[0], via_infighting: undefined });
     expect(v.via_infighting).toBe(false);
   });
-  it('requires link_to_ghost for the final boss only', () => {
+  it('leaves the boss link to the wound to the genre check, not the schema', () => {
     const boss = sampleVillains.find((v) => v.rank === 1)!;
-    expect(issuePaths(Villain.safeParse({ ...boss, link_to_ghost: undefined }))).toEqual(['link_to_ghost']);
-    const pawn = sampleVillains.find((v) => v.rank === 5)!;
-    expect(Villain.safeParse({ ...pawn, link_to_ghost: undefined }).success).toBe(true);
+    expect(Villain.safeParse({ ...boss, link_to_ghost: undefined }).success).toBe(true);
   });
   it('rejects an empty role and an unknown punishment type', () => {
     const res = Villain.safeParse({ ...sampleVillains[0], role: '', punishment: { type: 'death', public: true } });

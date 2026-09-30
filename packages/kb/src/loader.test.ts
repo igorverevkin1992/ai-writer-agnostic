@@ -97,7 +97,7 @@ describe('other series, other genres', () => {
     writeFileSync(join(dir, 'frames/season30.yaml'), [
       'season_frame:', '  episodes: 30', '  free: 5', '  duration_s: {min: 60, max: 120, target: 90}',
       '  anchors: {meet: 1, kiss: 15, finale: 30}',
-      '  rhythm: {response_within: 2, max_suffering_run: 1, max_same_hook_run: 2, emotions_per_episode: [1, 3], max_fall_length: 3}',
+      '  rhythm: {response_within: 2, max_suffering_run: 1, max_same_hook_run: 2, emotions_per_episode: [1, 3]}',
       '  blocks: [[1, 10], [11, 20], [21, 30]]', '  tolerance: 1', '',
     ].join('\n'));
     writeFileSync(join(dir, 'checklist/romance10.yaml'), [

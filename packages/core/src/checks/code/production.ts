@@ -56,20 +56,6 @@ export function checkLimits(bible: Bible, cards: EpisodeCard[], production: Prod
         }),
       );
     }
-    if (c.cast.length > l.max_speakers_per_scene) {
-      out.push(
-        makeFinding({
-          check: 'limits.speakers',
-          controller: 'production',
-          severity: 'major',
-          holeType: 8,
-          episode: c.ep,
-          quote: `${c.ep}-я серия: в кадре ${c.cast.join(', ')}`,
-          question: 'кто тут говорит?',
-          fixes: [`Не больше ${l.max_speakers_per_scene} говорящих в сцене`],
-        }),
-      );
-    }
   }
   if (listed.size === 0 && used.size > l.max_locations) {
     out.push(
@@ -169,6 +155,8 @@ export interface TextSource {
   text: string;
 }
 
+const yo = (s: string) => s.replace(/ё/gu, 'е').replace(/Ё/gu, 'Е');
+
 function escape(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
@@ -183,11 +171,12 @@ export function checkLegalMarkers(texts: TextSource[], legal: LegalConstraints):
   for (const marker of legal.markers) {
     // A marker is a word or stem: up to 3 more letters (endings), then a word boundary.
     // So «бьёт» and «сигарету» match, «ментальный» does not match «мент».
-    const re = new RegExp(`(?<![\\p{L}])(?:${marker.words.map(escape).join('|')})\\p{L}{0,3}(?![\\p{L}])`, 'iu');
+    // «ё» is often written as «е»: both sides are compared without it.
+    const re = new RegExp(`(?<![\\p{L}])(?:${marker.words.map((w) => escape(yo(w))).join('|')})\\p{L}{0,3}(?![\\p{L}])`, 'iu');
     for (const t of texts) {
-      const m = re.exec(t.text);
+      const m = re.exec(yo(t.text));
       if (!m) continue;
-      const sentence = t.text.split(/(?<=[.!?…])\s+/u).find((s) => re.test(s)) ?? t.text;
+      const sentence = t.text.split(/(?<=[.!?…])\s+/u).find((s) => re.test(yo(s))) ?? t.text;
       out.push(
         makeFinding({
           check: `legal_markers.${marker.category}`,
