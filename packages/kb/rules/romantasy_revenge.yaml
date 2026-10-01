@@ -127,7 +127,7 @@ rules:
     module: romantasy_revenge
     text: "Самый сильный кайф — публичное разоблачение. Герой рядом, слово за ней"
     check:
-      code: "punishment.public и закон у рангов 2 и 1"
+      code: "у финального босса punishment.public и закон"
       llm: "Разоблачение публичное, говорит героиня, а не герой?"
       run:
         - {fn: villain_ladder, only: [public_legal]}
