@@ -83,6 +83,14 @@ function toFinding(d: FindingDraft, block: AuditBlock, check: string, holeType: 
   });
 }
 
+/** Rules of the review categories that cover this hole type, with the category's check. */
+function reviewRules(kb: Kb, holeType: number): string {
+  return kb.review.categories
+    .filter((c) => c.hole_types.includes(holeType))
+    .map((c) => `${c.id}. ${c.name}. ${c.check}\n${c.rules.map((r) => `- ${r}`).join('\n')}`)
+    .join('\n\n');
+}
+
 /**
  * «Адвокат дьявола»: one pass per hole type over each block (the bible, or the plan
  * in blocks of 10 episodes), code-generated «почему никто не заметил?» questions,
@@ -134,6 +142,8 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
         hole: `${hole.id}. ${hole.name}`,
         // Genre questions (e.g. «почему никто не видит магию?») join the catalog's.
         hole_questions: [...hole.questions, ...(deps.kit.guide?.hole_questions[String(hole.id)] ?? [])].map((q) => `- ${q}`).join('\n'),
+        review_rules: reviewRules(deps.kb, hole.id),
+        six_questions: deps.kb.review.six_questions.map((q, i) => `${i + 1}. ${q}`).join('\n'),
         extra_questions: notice.length ? `\nВопросы по конкретным событиям:\n${notice.map((q) => `- ${q}`).join('\n')}\n` : '',
         target: block.label,
         text: block.text,

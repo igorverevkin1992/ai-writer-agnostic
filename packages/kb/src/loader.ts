@@ -11,6 +11,7 @@ import {
   Glossary,
   Guide,
   HoleCatalog,
+  ReviewMethod,
   LegalConstraints,
   Method,
   Personas,
@@ -44,6 +45,8 @@ export interface Kb {
   methods: Record<(typeof METHOD_IDS)[number], Method>;
   glossary: Glossary;
   holes: HoleCatalog;
+  /** Method of the hole review (review/review.yaml), shared by all genres. */
+  review: ReviewMethod;
   cases: Case[];
   /** Prompt texts keyed by "<role>/<step>". */
   prompts: Record<string, string>;
@@ -147,6 +150,19 @@ export function loadKb(root: string = DEFAULT_KB_ROOT): Kb {
   ) as Partial<Kb['methods']>;
   const glossary = read('glossary.yaml', Glossary);
   const holes = read('holes/catalog.yaml', HoleCatalog);
+  const review = read('review/review.yaml', ReviewMethod);
+  if (review) {
+    const seen = new Set<string>();
+    review.categories.forEach((c, i) => {
+      if (seen.has(c.id)) issues.push({ file: 'review/review.yaml', field: `categories[${i}].id`, message: `Категория ${c.id} встречается дважды` });
+      seen.add(c.id);
+    });
+    for (const h of holes?.holes ?? []) {
+      if (!review.categories.some((c) => c.hole_types.includes(h.id))) {
+        issues.push({ file: 'review/review.yaml', message: `Тип дыры ${h.id} («${h.name}») не получает правил ни одной категории` });
+      }
+    }
+  }
   const cases = listFiles(root, 'cases', '.yaml')
     .map((f) => read(f, Case))
     .filter(isDefined);
@@ -157,7 +173,7 @@ export function loadKb(root: string = DEFAULT_KB_ROOT): Kb {
     issues,
   );
 
-  if (issues.length > 0 || !glossary || !holes || METHOD_IDS.some((id) => !methods[id])) {
+  if (issues.length > 0 || !glossary || !holes || !review || METHOD_IDS.some((id) => !methods[id])) {
     throw new KbLoadError(issues);
   }
 
@@ -174,6 +190,7 @@ export function loadKb(root: string = DEFAULT_KB_ROOT): Kb {
     methods: methods as Kb['methods'],
     glossary,
     holes,
+    review,
     cases,
     prompts,
   };

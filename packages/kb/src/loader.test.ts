@@ -6,7 +6,7 @@ import { KbLoadError } from './errors.ts';
 import { DEFAULT_KB_ROOT, UnknownGenreError, genreKit, loadKb } from './loader.ts';
 import { episodeRange } from './schemas.ts';
 
-const KB_ENTRIES = ['genres', 'rules', 'frames', 'checklist', 'methods', 'glossary.yaml', 'constraints', 'holes', 'personas', 'cases', 'prompts', 'guides'];
+const KB_ENTRIES = ['genres', 'rules', 'frames', 'checklist', 'methods', 'glossary.yaml', 'constraints', 'holes', 'personas', 'cases', 'prompts', 'guides', 'review'];
 
 let dirs: string[] = [];
 

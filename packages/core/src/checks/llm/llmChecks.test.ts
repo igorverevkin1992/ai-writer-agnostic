@@ -67,5 +67,18 @@ describe('review fixes: model checks', () => {
     await runDevilAdvocate({ llm: client(), kb, kit }, { bible: golden.bible, authorProvider: 'anthropic' }, { holeTypes: [2], personas: false });
     expect(systems[0]).not.toContain('магию');
   });
+
+  it('every audit pass gets the six questions and the review rules of its categories', async () => {
+    const systems: string[] = [];
+    answer = (req) => {
+      systems.push(req.system ?? '');
+      return [];
+    };
+    await runDevilAdvocate({ llm: client(), kb, kit }, { bible: golden.bible, authorProvider: 'anthropic' }, { holeTypes: [11], personas: false });
+    expect(systems[0]).toContain('Откуда он это знает?');
+    expect(systems[0]).toContain('Д. Информация.');
+    expect(systems[0]).toContain('Каждую улику вести по цепочке «у кого она сейчас»');
+    expect(systems[0]).not.toContain('Б. Закон.');
+  });
 });
 

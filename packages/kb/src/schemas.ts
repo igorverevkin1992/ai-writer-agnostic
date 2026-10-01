@@ -191,6 +191,30 @@ export const HoleCatalog = z.strictObject({
 });
 export type HoleCatalog = z.infer<typeof HoleCatalog>;
 
+/**
+ * Method of the hole review, shared by all genres: six questions to every action,
+ * categories А–П with their rules, sample holes, severity levels.
+ */
+export const ReviewMethod = z.strictObject({
+  stub: Stub,
+  six_questions: z.array(Text).length(6),
+  severities: z.strictObject({ critical: Text, high: Text, medium: Text, low: Text }),
+  patterns: z.array(Text).min(1),
+  categories: z
+    .array(
+      z.strictObject({
+        id: z.string().regex(/^[А-Я]$/u, 'Категория — одна заглавная буква'),
+        name: Text,
+        check: Text,
+        /** Hole types of holes/catalog.yaml whose audit pass gets this category's rules. */
+        hole_types: z.array(z.int().min(1).max(11)).min(1),
+        rules: z.array(Text).min(1),
+      }),
+    )
+    .min(1),
+});
+export type ReviewMethod = z.infer<typeof ReviewMethod>;
+
 export const Personas = z.strictObject({
   stub: Stub,
   personas: z
