@@ -49,6 +49,7 @@ function reply(req: { task?: string; system?: string }): string {
   if (t.startsWith('devil_advocate:А:план сезона')) return JSON.stringify([hole]);
   if (t.startsWith('devil_advocate:') || t.startsWith('persona:')) return '[]';
   if (t.startsWith('respond:')) return JSON.stringify({ action: 'cite', fact_id: 'f_dasha_target', explanation: 'Даша' });
+  if (t === 'review_summary') return JSON.stringify({ verdict: 'Сезон почти готов.', dangers: [{ where: 'Серия 1', why: 'Первая серия' }], legal: [] });
   if (t.startsWith('judge:')) return JSON.stringify({ closed: false, reason: 'Не видно в кадре' });
   throw new Error(t);
 }
@@ -98,6 +99,7 @@ describe('server', () => {
 
     const open = (await get(`/api/projects/${id}/findings?status=open&limit=3`)).json() as { id: string; episode: number }[];
     expect(open).toMatchObject([{ episode: 42, severity: 'blocker', verdict: 'Не видно в кадре' }]);
+    expect((open[0] as unknown as { categoryNames: string[] }).categoryNames[0]).toMatch(/^А — \S/u);
 
     const bad = await post(`/api/findings/${encodeURIComponent(open[0]!.id)}/resolve`, { projectId: id, factId: 'f_nope' });
     expect(bad.json().error).toMatch(/факта f_nope нет/);

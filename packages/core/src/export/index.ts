@@ -3,6 +3,7 @@ import type { Db } from '../db/client.ts';
 import { loadBundle } from './bundle.ts';
 import { buildDocx } from './docx.ts';
 import { renderMarkdown } from './markdown.ts';
+import { buildReviewDocx } from './review.ts';
 import { videoPrompts, videoPromptsMarkdown } from './video.ts';
 import { buildXlsx } from './xlsx.ts';
 
@@ -11,8 +12,9 @@ export * from './video.ts';
 export { renderMarkdown } from './markdown.ts';
 export { buildDocx } from './docx.ts';
 export { buildXlsx } from './xlsx.ts';
+export { buildReviewDocx, latestReview } from './review.ts';
 
-export const EXPORT_FORMATS = ['docx', 'xlsx', 'json', 'md', 'video'] as const;
+export const EXPORT_FORMATS = ['docx', 'review', 'xlsx', 'json', 'md', 'video'] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
 
 export interface ExportFile {
@@ -34,6 +36,8 @@ export async function exportProject(db: Db, kb: Kb, projectId: string, format: E
   switch (format) {
     case 'docx':
       return { filename: `${name}.docx`, contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', body: await buildDocx(b) };
+    case 'review':
+      return { filename: `${name}-razbor.docx`, contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', body: await buildReviewDocx(b, kb) };
     case 'xlsx':
       return { filename: `${name}.xlsx`, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', body: await buildXlsx(b) };
     case 'md':

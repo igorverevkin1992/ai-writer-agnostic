@@ -14,6 +14,7 @@ import { compressBible, MAX_COMPRESSION, type CompressionLevel } from './compres
 import { checklistFinding, scoreChecklist, type ChecklistScore } from '../checks/code/checklist.ts';
 import { judgeChecklist } from '../checks/llm/checklistJudge.ts';
 import { runDevilAdvocate } from '../checks/llm/devilAdvocate.ts';
+import { runReviewSummary } from '../checks/llm/reviewSummary.ts';
 import { resolveFinding } from '../checks/llm/resolve.ts';
 import { ExtractedFacts } from '../checks/llm/schemas.ts';
 import type { Db } from '../db/client.ts';
@@ -504,6 +505,11 @@ async function audit(ctx: Ctx, step: 'bible' | 'season_plan', authors: ProviderN
   );
   const raised = [...findings, ...auditRes.findings];
   ctx.memory.saveFindings(raised, step);
+  // The closing part of the review: tables from the bible, verdict and dangers from the critic.
+  ctx.memory.saveArtifact(
+    `review:${step}`,
+    await runReviewSummary({ llm: ctx.llm, kb: ctx.kb, kit: ctx.kit, projectId: ctx.projectId, step }, { bible, plan, authorProvider: authors }, raised),
+  );
   ctx.memory.closeSuperseded(step, raised.map((f) => f.id), 'Заменено новой версией');
 
   const outcome: Finding[] = [...findings];

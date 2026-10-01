@@ -62,6 +62,8 @@ function reply(req: LlmRequest): string {
       return JSON.stringify(script.respond ?? { action: 'cite', fact_id: 'f_dasha_target', explanation: 'Бабушка в 10-й серии говорит, что Даша следующая' });
     case 'judge':
       return JSON.stringify({ closed: script.judgeClosed ?? true, reason: 'Ответ виден в кадре' });
+    case 'review_summary':
+      return JSON.stringify({ verdict: 'Сезон почти готов.', dangers: [{ where: 'Серия 1', why: 'Первая серия' }], legal: [] });
     default:
       throw new Error(`Неожиданная задача ${task}`);
   }
@@ -156,6 +158,11 @@ describe('steps 1–4 end to end', () => {
     expect(calls.filter((c) => c.startsWith('devil_advocate:'))).toHaveLength(15);
     expect(calls.filter((c) => c.startsWith('persona:'))).toHaveLength(5);
     expect(calls).toContain('devil_advocate:Г:план сезона');
+    // Then one closing call: verdict and dangers, saved with the code tables.
+    expect(calls.filter((c) => c === 'review_summary')).toHaveLength(1);
+    const review = new ProjectMemory(db, projectId).latestArtifact('review:season_plan') as { summary?: { verdict: string }; tables: { guns: unknown[] } };
+    expect(review.summary?.verdict).toBe('Сезон почти готов.');
+    expect(review.tables.guns.length).toBeGreaterThan(0);
   });
 
   it('an unresolved blocker keeps the step in needs_fix and blocks approval', async () => {

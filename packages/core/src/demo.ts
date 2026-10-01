@@ -31,6 +31,7 @@ const DemoScript = z.object({
   audit: z.object({ category: z.string(), block: z.string(), finding: z.unknown() }),
   respond: z.unknown(),
   judge: z.unknown(),
+  summary: z.unknown(),
 });
 type DemoScript = z.infer<typeof DemoScript>;
 
@@ -179,6 +180,8 @@ function answer(g: Golden, task: string, req: LlmRequest): unknown {
       return confirmChecklist(req.system ?? '');
     case 'shootable':
       return { verdict: 'light_edit', reason: 'Реплики стоит сделать живее' };
+    case 'review_summary':
+      return d.summary;
     case 'eval_match':
       return { matches: [] };
     default:

@@ -26,6 +26,14 @@ export interface Finding {
   verdict: string | null;
   resolutionFactId: string | null;
   check: string | null;
+  /** Hole review format: categories А–П, level, all episodes, why noticed, rule for the agent. */
+  category: string[] | null;
+  categoryNames?: string[];
+  level: 'critical' | 'high' | 'medium' | 'low' | null;
+  episodes: string | null;
+  whyNoticed: string | null;
+  agentRule: string | null;
+  doubt: boolean | null;
 }
 
 export interface StepState {

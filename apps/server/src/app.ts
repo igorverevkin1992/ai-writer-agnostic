@@ -228,7 +228,12 @@ export function buildApp({ kb, db, config, llm, demo = false, runsInBackground =
         .findingsOf(req.query.step, req.query.status)
         .sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9) || (a.episode ?? 0) - (b.episode ?? 0));
       const limit = Number(req.query.limit);
-      return Number.isFinite(limit) && limit > 0 ? list.slice(0, limit) : list;
+      const names = new Map(kb.review.categories.map((c) => [c.id, c.name]));
+      // Review categories with their names from the knowledge base: the screen shows «А — …».
+      return (Number.isFinite(limit) && limit > 0 ? list.slice(0, limit) : list).map((f) => ({
+        ...f,
+        categoryNames: (f.category ?? []).map((id) => `${id} — ${names.get(id) ?? ''}`.replace(/ — $/u, '')),
+      }));
     },
   );
 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { post, STEP_LABELS, type Fact, type Finding } from '../api.ts';
 
 const SEVERITY: Record<Finding['severity'], string> = { blocker: 'блокирующее', major: 'серьёзное', minor: 'мелкое' };
+const LEVEL: Record<NonNullable<Finding['level']>, string> = { critical: 'критическая', high: 'высокая', medium: 'средняя', low: 'низкая' };
 const CONTROLLER: Record<string, string> = {
   logic: 'логика',
   genre: 'жанр',
@@ -52,17 +53,21 @@ export function FindingCard({ f, facts, projectId, onDone, canAddFact = true }: 
       <header>
         <span className={`sev sev-${f.severity}`}>{SEVERITY[f.severity]}</span>
         <span className="muted">
-          {f.episode ? `${f.episode}-я серия · ` : ''}
-          {CONTROLLER[f.controller] ?? f.controller}
+          {f.episodes ? `серии ${f.episodes} · ` : f.episode ? `${f.episode}-я серия · ` : ''}
+          {f.categoryNames?.length ? f.categoryNames.join(', ') : (CONTROLLER[f.controller] ?? f.controller)}
+          {f.level ? ` · дыра ${LEVEL[f.level]}` : ''}
+          {f.doubt ? ' · проверяющий сомневается' : ''}
           {f.step ? ` · ${STEP_LABELS[f.step] ?? f.step}` : ''}
         </span>
       </header>
       <p className="viewer-question">{f.viewerQuestion}</p>
       <blockquote>{f.quote}</blockquote>
+      {f.whyNoticed && <p className="muted">Почему заметят: {f.whyNoticed}</p>}
       <p className="fixes">
         Как исправить: {f.fixes.join(' / ')}
         {f.verdict && <span className="muted"> · Судья: {f.verdict}</span>}
       </p>
+      {f.agentRule && <p className="muted">Правило для агента: {f.agentRule}</p>}
       {f.status === 'open' && f.check === 'pipeline.incomplete' ? (
         <p className="muted">Закроется, когда шаг будет выполнен заново до конца.</p>
       ) : f.status === 'open' && facts.length === 0 && !canAddFact ? (

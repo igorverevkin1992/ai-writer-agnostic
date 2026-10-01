@@ -1,4 +1,5 @@
 import { genreKit, type GenreKit, type Kb } from '@aiw/kb';
+import type { ReviewSummary } from '../checks/llm/reviewSummary.ts';
 import type { Db } from '../db/client.ts';
 import { ProjectMemory } from '../memory/store.ts';
 import { getProject } from '../pipeline/project.ts';
@@ -22,6 +23,8 @@ export interface ProjectBundle {
   cards: EpisodeCard[];
   scripts: Script[];
   findings: ReturnType<ProjectMemory['findingsOf']>;
+  /** Closing parts of the latest audits (verdict, tables), by step. */
+  reviews: { bible?: ReviewSummary; season_plan?: ReviewSummary };
   steps: ReturnType<Pipeline['states']>;
 }
 
@@ -39,6 +42,10 @@ export function loadBundle(db: Db, kb: Kb, projectId: string): ProjectBundle {
     cards: memory.cards(),
     scripts: memory.scripts(),
     findings: memory.findingsOf(),
+    reviews: {
+      bible: memory.latestArtifact('review:bible') as ReviewSummary | undefined,
+      season_plan: memory.latestArtifact('review:season_plan') as ReviewSummary | undefined,
+    },
     steps: new Pipeline(db, projectId).states(),
   };
 }

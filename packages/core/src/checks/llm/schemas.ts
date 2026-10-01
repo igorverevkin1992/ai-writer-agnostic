@@ -69,3 +69,12 @@ export const EvalMatches = z.object({
   ),
 });
 export type EvalMatches = z.infer<typeof EvalMatches>;
+
+/** The closing part of a review: verdict, the most dangerous places, questions for a lawyer. */
+export const ReviewSummaryDraft = z.object({
+  /** 5–7 sentences: is the season ready, what blocks it. */
+  verdict: NonEmpty,
+  dangers: z.array(z.object({ where: NonEmpty, why: NonEmpty })).min(1).max(3),
+  legal: z.array(NonEmpty).default([]),
+});
+export type ReviewSummaryDraft = z.infer<typeof ReviewSummaryDraft>;

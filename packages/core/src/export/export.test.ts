@@ -53,6 +53,42 @@ describe('export', () => {
     expect(xml).toContain('ЛИЗА: Кто вы?');
   });
 
+  it('Word «Разбор дыр»: holes by level in the reference layout, verdict and code tables', async () => {
+    const m = new ProjectMemory(db, pid);
+    m.saveFindings(
+      [
+        {
+          id: 'r1', controller: 'logic', severity: 'major', level: 'medium', category: ['А', 'З'], episodes: '3, 10', doubt: true,
+          quote: 'цитата', viewerQuestion: 'Зритель спросит: почему не полиция?', whyNoticed: 'Первая мысль зрителя',
+          fixes: ['Один', 'Два'], agentRule: 'Проверять мотив на момент хода', status: 'open',
+        },
+      ],
+      'season_plan',
+    );
+    m.saveArtifact('review:season_plan', {
+      tables: { knowledge: [], guns: [], ages: [] },
+      summary: { verdict: 'Сезон почти готов.', dangers: [{ where: 'Серия 3', why: 'Полиция' }], legal: ['Рейтинг 18+'] },
+      providers: ['google'],
+    });
+    const f = await exportProject(db, kb, pid, 'review');
+    expect(f.filename).toBe('muzh-zhenilsya-na-mne-radi-krovi-razbor.docx');
+    const JSZip = (await import('jszip')).default;
+    const xml = await (await JSZip.loadAsync(f.body)).file('word/document.xml')!.async('string');
+    for (const t of ['Разбор дыр', 'Сезон почти готов.', 'Средние (1)', 'А, З', 'средняя, сомневаюсь', 'Первая мысль зрителя', 'Проверять мотив на момент хода', 'Рейтинг 18+', 'Правило для агента']) {
+      expect(xml).toContain(t);
+    }
+    // Saved tables are kept as they were; without them code builds the tables from the bible.
+    expect(xml).toContain('Посадок в библии нет.');
+  });
+
+  it('«Разбор дыр» before any audit: tables from the bible, no verdict yet', async () => {
+    const f = await exportProject(db, kb, pid, 'review');
+    const JSZip = (await import('jszip')).default;
+    const xml = await (await JSZip.loadAsync(f.body)).file('word/document.xml')!.async('string');
+    expect(xml).toContain('Заключения модели нет');
+    expect(xml).toContain(golden.bible.guns[0]!.object);
+  });
+
   it('Excel: season, cards, findings and video prompts sheets', async () => {
     const f = await exportProject(db, kb, pid, 'xlsx');
     const wb = new ExcelJS.Workbook();
