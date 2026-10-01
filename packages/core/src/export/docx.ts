@@ -22,14 +22,15 @@ export async function buildDocx(b: ProjectBundle): Promise<Buffer> {
   if (b.logline) body.push(h('Логлайн', HeadingLevel.HEADING_1), p(b.logline.text_35w), p(`Реклама: ${b.logline.ad_15w}`));
   if (b.bible) {
     body.push(h('Библия', HeadingLevel.HEADING_1));
-    for (const line of bibleText(b.bible).split('\n')) {
+    for (const line of bibleText(b.bible, b.kit.genre.terms).split('\n')) {
       if (!line.trim()) continue;
       body.push(/^[А-ЯЁ ]+$/u.test(line) ? h(line.charAt(0) + line.slice(1).toLowerCase(), HeadingLevel.HEADING_2) : p(line));
     }
   }
   if (b.plan) {
     body.push(h('План сезона', HeadingLevel.HEADING_1));
-    const head = ['Серия', 'Название', 'Событие', 'Героиня', 'Опорные точки', 'Крючок'];
+    const hero = b.kit.genre.terms.hero.nom;
+    const head = ['Серия', 'Название', 'Событие', hero.charAt(0).toUpperCase() + hero.slice(1), 'Опорные точки', 'Крючок'];
     body.push(
       new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },

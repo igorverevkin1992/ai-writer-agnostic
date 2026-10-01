@@ -1,3 +1,4 @@
+import { DEFAULT_TERMS, type GenreTerms } from '@aiw/kb';
 import type { Bible } from '../../schemas/bible.ts';
 import type { EpisodeOutline, SeasonPlan } from '../../schemas/season.ts';
 import { knowledgeIndex } from '../code/knowledge.ts';
@@ -11,9 +12,9 @@ export interface AuditBlock {
 }
 
 /** Human-readable bible for the auditor. Quotes must be copied from this text. */
-export function bibleText(b: Bible): string {
+export function bibleText(b: Bible, terms: GenreTerms = DEFAULT_TERMS): string {
   const lines: string[] = [];
-  lines.push('ПРЕДАТЕЛЬСТВО', `${b.betrayal.who}: ${b.betrayal.what}. Почему: ${b.betrayal.why}. Год: ${b.betrayal.year}.`);
+  lines.push(terms.wound.toUpperCase(), `${b.betrayal.who}: ${b.betrayal.what}. Почему: ${b.betrayal.why}. Год: ${b.betrayal.year}.`);
   lines.push('', 'ПРАВИЛА МИРА');
   for (const r of b.world_rules) lines.push(`${r.rule}. Причина: ${r.why}. Цена: ${r.cost}. Нельзя: ${r.cannot}. Эффект: ${r.practical_effect}.`);
   lines.push('', 'ПЕРСОНАЖИ');
@@ -28,7 +29,7 @@ export function bibleText(b: Bible): string {
     );
   }
   lines.push('', 'ТАЙНА');
-  for (const s of b.secrets) lines.push(`Слой ${s.layer} (серия ${s.revealed_ep}): ${s.truth}. Цель мести: ${s.goal_from} → ${s.goal_to}.`);
+  for (const s of b.secrets) lines.push(`Слой ${s.layer} (серия ${s.revealed_ep}): ${s.truth}. Цель ${terms.hero.gen}: ${s.goal_from} → ${s.goal_to}.`);
   lines.push('', 'ХРОНОЛОГИЯ');
   for (const e of [...b.timeline.events].sort((x, y) => x.year - y.year)) {
     const ages = Object.entries(e.ages).map(([n, a]) => `${n} — ${a}`).join(', ');
@@ -37,30 +38,31 @@ export function bibleText(b: Bible): string {
   return lines.join('\n');
 }
 
-export function episodeLine(e: EpisodeOutline): string {
+export function episodeLine(e: EpisodeOutline, terms: GenreTerms = DEFAULT_TERMS): string {
+  const hero = terms.hero;
   const flags = [
     e.strike_by_villain && 'удар злодеев',
-    e.strike_by_heroine && 'удар героини',
+    e.strike_by_heroine && `удар ${hero.gen}`,
     e.takedown_rank && `снят злодей ${e.takedown_rank}`,
     e.reveals_secret && 'раскрытие тайны',
-    e.threat_to_heroine && 'угроза героине',
+    e.threat_to_heroine && `угроза ${hero.dat}`,
     e.kaif_lines.length > 0 && `кайф: ${e.kaif_lines.join(', ')}`,
   ].filter(Boolean);
   return (
-    `Серия ${e.ep}. «${e.title}». ${e.event}. Героиня: ${e.heroine_action}. Крючок: ${e.cliffhanger}.` +
+    `Серия ${e.ep}. «${e.title}». ${e.event}. ${hero.nom.charAt(0).toUpperCase() + hero.nom.slice(1)}: ${e.heroine_action}. Крючок: ${e.cliffhanger}.` +
     (flags.length ? ` [${flags.join(', ')}]` : '')
   );
 }
 
 /** The plan split into blocks of `size` episodes. */
-export function planBlocks(plan: SeasonPlan, size: number): AuditBlock[] {
+export function planBlocks(plan: SeasonPlan, size: number, terms: GenreTerms = DEFAULT_TERMS): AuditBlock[] {
   const eps = [...plan.episodes].sort((a, b) => a.ep - b.ep);
   const out: AuditBlock[] = [];
   for (let i = 0; i < eps.length; i += size) {
     const chunk = eps.slice(i, i + size);
     const a = chunk[0]!.ep;
     const b = chunk.at(-1)!.ep;
-    out.push({ label: `план, серии ${a}–${b}`, text: chunk.map(episodeLine).join('\n'), episodes: [a, b] });
+    out.push({ label: `план, серии ${a}–${b}`, text: chunk.map((e) => episodeLine(e, terms)).join('\n'), episodes: [a, b] });
   }
   // The whole season in one block is simply «the season plan».
   if (out.length === 1) out[0]!.label = 'план сезона';

@@ -38,7 +38,7 @@ export function controllerCriteria(kb: Kb, kit: GenreKit, c: ScriptController, o
     case 'structure': {
       const r = kit.frame.rhythm;
       return list([
-        outline ? `По плану сезона эта серия: ${episodeLine(outline)}` : 'Плана серии нет.',
+        outline ? `По плану сезона эта серия: ${episodeLine(outline, kit.genre.terms)}` : 'Плана серии нет.',
         `Одно событие, один новый вопрос, ${r.emotions_per_episode.join('–')} эмоциональные точки.`,
         'Первые 5 секунд продолжают крючок прошлой серии, последние 5–10 — клиффхэнгер.',
         'Экспозиция — через конфликт, а не через пересказ.',

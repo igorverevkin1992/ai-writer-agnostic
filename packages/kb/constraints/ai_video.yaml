@@ -1,0 +1,18 @@
+# Производственные рамки сериала, снятого ИИ-видео. Источник: исследование продюсера (октябрь 2026), часть 4.
+# Числа локаций и героев — предложение Claude Code, ждут решения продюсера: в ИИ-видео локация дешёвая,
+# но каждая новая — риск дрейфа лиц, костюмов и света между сериями.
+limits:
+  main_locations: 2              # деревня и лес — два мира рядом
+  max_locations: 15
+  max_regular_characters: 8
+  max_speakers_per_scene: 3      # не больше 3 человеческих лиц в кадре
+  practical_effects_only: false  # чудовища и превращения делает ИИ
+  crowds_allowed: false          # толпа — огни в окнах, тени, голоса
+script_metrics:
+  line_chars_per_minute: [200, 300]
+  max_line_words: 12
+  max_overlay_words: 7
+  duration_tolerance: 0.15
+metro:
+  reveal_readable_s: 2
+  frame: [face, action, object]

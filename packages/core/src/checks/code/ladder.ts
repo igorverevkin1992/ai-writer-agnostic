@@ -1,4 +1,4 @@
-import { episodeRange, type SeasonFrame } from '@aiw/kb';
+import { DEFAULT_TERMS, episodeRange, type GenreTerms, type SeasonFrame } from '@aiw/kb';
 import type { Bible, Villain } from '../../schemas/bible.ts';
 import type { Finding } from '../../schemas/finding.ts';
 import type { SeasonPlan } from '../../schemas/season.ts';
@@ -23,9 +23,11 @@ export function checkVillainLadder(
   plan: SeasonPlan,
   frame: SeasonFrame,
   params: LadderParams = {},
+  terms: GenreTerms = DEFAULT_TERMS,
 ): Finding[] {
   const v = frame.villains;
   if (!v) return [];
+  const hero = terms.hero;
   const out: Finding[] = [];
   const add = (f: Omit<FindingInput, 'controller' | 'holeType'> & { holeType?: number }) =>
     out.push(makeFinding({ controller: 'structure', holeType: 10, ...f }));
@@ -151,7 +153,7 @@ export function checkVillainLadder(
           check: 'villain_ladder.key_to_next',
           severity: 'major',
           quote: `${x.name}: ключ к следующему — «${x.key_to_next}»`,
-          question: `что даёт героине победа над ${x.name}?`,
+          question: `что даёт ${hero.dat} победа над ${x.name}?`,
           fixes: ['Дать победе ключ к следующему злодею: улику, союзника или доступ'],
         });
       }
@@ -171,9 +173,20 @@ export function checkVillainLadder(
       add({
         check: 'villain_ladder.key_to_next',
         severity: 'major',
-        quote: `${x.name}: связь с раной героини не указана`,
+        quote: `${x.name}: связь с раной ${hero.gen} не указана`,
         question: `почему главный враг — именно ${x.name}?`,
-        fixes: ['Связать финального босса с главной раной героини'],
+        fixes: [`Связать финального босса с главной раной ${hero.gen}`],
+      });
+    }
+
+    if (v.punishments.length && !v.punishments.includes(x.punishment.type)) {
+      add({
+        check: 'villain_ladder.punishment',
+        severity: 'major',
+        episode: x.takedown_ep,
+        quote: `${x.name}: уходит из истории так: «${x.punishment.type}»`,
+        question: `так ли в этом жанре побеждают ${x.name}?`,
+        fixes: [`Выбрать один из способов жанра: ${v.punishments.join(', ')}`],
       });
     }
 
@@ -212,7 +225,7 @@ export function checkVillainLadder(
           episode: b.takedown_ep,
           quote: `${a.name} и ${b.name}: оба наказания «${a.punishment.type}»`,
           question: 'опять то же наказание?',
-          fixes: ['Сменить тип наказания: позор, закон, статус, бегство, потеря союзников'],
+          fixes: [v.punishments.length ? `Сменить способ: ${v.punishments.join(', ')}` : 'Сменить тип наказания: позор, закон, статус, бегство, потеря союзников'],
         });
       }
     }
@@ -223,7 +236,7 @@ export function checkVillainLadder(
       add({
         check: 'villain_ladder.turned_ally',
         severity: 'major',
-        quote: `Переходят на сторону героини: ${turned.map((x) => `${x.name} (ранг ${x.rank})`).join(', ')}`,
+        quote: `Переходят на сторону ${hero.gen}: ${turned.map((x) => `${x.name} (ранг ${x.rank})`).join(', ')}`,
         question: 'почему враги так легко становятся друзьями?',
         fixes: [`Переход — не больше ${v.max_turned_allies}, только ранги ${v.turned_ally_ranks.join(', ')}`],
       });
@@ -237,7 +250,7 @@ export function checkVillainLadder(
         severity: 'major',
         quote: `Снятий через стравливание злодеев: ${infighting}`,
         question: 'злодеи — это сеть или очередь?',
-        fixes: ['Снять хотя бы одного злодея через то, что героиня стравила его с другими'],
+        fixes: [`Снять хотя бы одного злодея через то, что ${hero.nom} стравил(а) его с другими`],
       });
     }
   }

@@ -112,7 +112,8 @@ export async function runReviewSummary(
   const tables = reviewTables(target.bible);
   const rank = (f: Finding) => (f.level ? LEVEL_ORDER.indexOf(f.level) : f.severity === 'blocker' ? 0 : f.severity === 'major' ? 1 : 3);
   const top = [...findings].sort((a, b) => rank(a) - rank(b)).slice(0, MAX_FINDINGS_IN_SUMMARY);
-  const text = target.plan ? planBlocks(target.plan, target.plan.episodes.length)[0]!.text : bibleText(target.bible);
+  const terms = deps.kit.genre.terms;
+  const text = target.plan ? planBlocks(target.plan, target.plan.episodes.length, terms)[0]!.text : bibleText(target.bible, terms);
   const system = renderPrompt(deps.kb, `${deps.criticRole ?? 'critic_of_architect'}/review_summary`, {
     target: target.plan ? 'план сезона' : 'библия',
     text,

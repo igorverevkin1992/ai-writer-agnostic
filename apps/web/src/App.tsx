@@ -107,7 +107,7 @@ function Home() {
         </label>
         <label>
           Идея
-          <textarea rows={5} value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="Опишите идею своими словами: героиня, предательство, тайна" />
+          <textarea rows={5} value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="Опишите идею своими словами: главный герой или героиня, рана, тайна" />
         </label>
         {error && <p className="error">{error}</p>}
         <button className="primary" disabled={busy || !title.trim() || !idea.trim()} onClick={create}>

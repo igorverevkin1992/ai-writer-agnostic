@@ -53,6 +53,8 @@ function MoodStrip({ episodes, free, label }: { episodes: Doc[]; free: number; l
   );
 }
 
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 export function SeasonScreen({ data }: { data: Overview }) {
   const plan = data.plan;
   if (!plan) return <p className="muted panel">Плана сезона пока нет: он появится после шага «План сезона».</p>;
@@ -70,7 +72,7 @@ export function SeasonScreen({ data }: { data: Overview }) {
             <tr>
               <th>Серия</th>
               <th>Событие</th>
-              <th>Героиня</th>
+              <th>{cap(data.genre.terms.hero.nom)}</th>
               <th>Опорная точка</th>
               <th>Настроение</th>
               {lines.length > 0 && <th>Кайф линий</th>}

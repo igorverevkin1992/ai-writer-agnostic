@@ -1,4 +1,4 @@
-import { episodeRange, type SeasonFrame } from '@aiw/kb';
+import { DEFAULT_TERMS, episodeRange, type GenreTerms, type SeasonFrame } from '@aiw/kb';
 import type { Bible } from '../../schemas/bible.ts';
 import type { Finding } from '../../schemas/finding.ts';
 import type { SeasonPlan } from '../../schemas/season.ts';
@@ -22,10 +22,20 @@ export function checkBetrayalTiming(bible: Bible, maxSecond: number): Finding[] 
   ];
 }
 
-/** The episode at the given anchor (paywall hook) partly reveals the secret and threatens the heroine. */
-export function checkPaywallHook(plan: SeasonPlan, anchor: string): Finding[] {
+/** What the paywall episode must hold: a partial reveal of the secret and/or a threat to the protagonist. */
+export type PaywallNeed = 'reveal' | 'threat';
+
+/** The episode at the given anchor (paywall hook) partly reveals the secret and threatens the protagonist. */
+export function checkPaywallHook(
+  plan: SeasonPlan,
+  anchor: string,
+  needs: PaywallNeed[] = ['reveal', 'threat'],
+  terms: GenreTerms = DEFAULT_TERMS,
+): Finding[] {
+  const noReveal = (e: SeasonPlan['episodes'][number]) => needs.includes('reveal') && !e.reveals_secret;
+  const noThreat = (e: SeasonPlan['episodes'][number]) => needs.includes('threat') && !e.threat_to_heroine;
   return plan.episodes
-    .filter((e) => e.anchors.includes(anchor) && !(e.reveals_secret && e.threat_to_heroine))
+    .filter((e) => e.anchors.includes(anchor) && (noReveal(e) || noThreat(e)))
     .map((e) =>
       makeFinding({
         check: 'paywall_hook.content',
@@ -36,7 +46,7 @@ export function checkPaywallHook(plan: SeasonPlan, anchor: string): Finding[] {
         quote: e.cliffhanger,
         question: 'зачем мне платить за следующую серию?',
         fixes: [
-          `В ${e.ep}-й серии: ${[!e.reveals_secret && 'частичное раскрытие тайны', !e.threat_to_heroine && 'угроза героине'].filter(Boolean).join(' и ')}`,
+          `В ${e.ep}-й серии: ${[noReveal(e) && 'частичное раскрытие тайны', noThreat(e) && `угроза ${terms.hero.dat}`].filter(Boolean).join(' и ')}`,
         ],
       }),
     );
@@ -48,8 +58,9 @@ export interface SecretTurnParams {
   near: string[];
 }
 
-/** The secret changes the goal of revenge at least `min` times, near the given anchors. */
-export function checkSecretTurns(bible: Bible, frame: SeasonFrame, p: SecretTurnParams): Finding[] {
+/** The secret changes the protagonist's goal at least `min` times, near the given anchors. */
+export function checkSecretTurns(bible: Bible, frame: SeasonFrame, p: SecretTurnParams, terms: GenreTerms = DEFAULT_TERMS): Finding[] {
+  const goal = `цель ${terms.hero.gen}`;
   const norm = (s: string) => s.trim().toLowerCase();
   const turns = bible.secrets.filter((s) => norm(s.goal_from) !== norm(s.goal_to));
   const out: Finding[] = [];
@@ -60,9 +71,9 @@ export function checkSecretTurns(bible: Bible, frame: SeasonFrame, p: SecretTurn
         controller: 'structure',
         severity: 'major',
         holeType: 10,
-        quote: `Смен цели мести: ${turns.length}`,
+        quote: `Смен цели ${terms.hero.gen}: ${turns.length}`,
         question: 'тайна что-то меняет или просто добавляет фактов?',
-        fixes: [`Не меньше ${p.min} слоёв тайны, меняющих цель мести`],
+        fixes: [`Не меньше ${p.min} слоёв тайны, меняющих ${goal}`],
       }),
     );
   }
@@ -80,9 +91,9 @@ export function checkSecretTurns(bible: Bible, frame: SeasonFrame, p: SecretTurn
           severity: 'major',
           holeType: 10,
           episode: min,
-          quote: `Около «${anchor}» (серии ${lo}–${hi}) цель мести не меняется`,
-          question: `что меняется для героини в районе ${min}-й серии?`,
-          fixes: [`Раскрыть слой тайны, меняющий цель мести, в сериях ${lo}–${hi}`],
+          quote: `Около «${anchor}» (серии ${lo}–${hi}) ${goal} не меняется`,
+          question: `что меняется для ${terms.hero.gen} в районе ${min}-й серии?`,
+          fixes: [`Раскрыть слой тайны, меняющий ${goal}, в сериях ${lo}–${hi}`],
         }),
       );
     }

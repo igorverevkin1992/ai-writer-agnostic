@@ -149,7 +149,7 @@ export function buildApp({ kb, db, config, llm, demo = false, runsInBackground =
     return {
       project,
       demo,
-      genre: { id: kit.genre.id, title: kit.genre.title, episodes: kit.frame.episodes, free: kit.frame.free, anchors: kit.frame.anchors, anchorLabels: kit.frame.anchor_labels, lines: kit.frame.lines, pass: kit.checklist.pass, total: kit.checklist.total },
+      genre: { id: kit.genre.id, title: kit.genre.title, episodes: kit.frame.episodes, free: kit.frame.free, anchors: kit.frame.anchors, anchorLabels: kit.frame.anchor_labels, lines: kit.frame.lines, terms: kit.genre.terms, pass: kit.checklist.pass, total: kit.checklist.total },
       steps: new Pipeline(db, project.id).states(),
       next: nextTask(db, kb, project.id),
       idea: (memory.latestArtifact('idea') as { text: string } | undefined)?.text ?? null,

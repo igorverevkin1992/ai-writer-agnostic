@@ -9,7 +9,7 @@ import { checkKnowledge } from './knowledge.ts';
 import { checkBetrayerRank, checkVillainLadder, type LadderParams } from './ladder.ts';
 import { checkGuns, checkLegalMarkers, checkLimits, checkScriptMetrics, collectTexts } from './production.ts';
 import { checkRhythm } from './rhythm.ts';
-import { checkBetrayalTiming, checkPaywallHook, checkSecretTurns, type SecretTurnParams } from './story.ts';
+import { checkBetrayalTiming, checkPaywallHook, checkSecretTurns, type PaywallNeed, type SecretTurnParams } from './story.ts';
 import { checkTimeline } from './timeline.ts';
 import { checkWorldRules } from './world.ts';
 
@@ -45,11 +45,11 @@ const strs = (p: Params, key: string): string[] =>
 /** Every code check a genre rule may reference in check.run[].fn. */
 export const CODE_CHECKS: Record<string, CodeCheck> = {
   season_frame: { always: true, codes: ['count', 'anchor'], run: ({ plan, kit }) => plan && checkSeasonFrame(plan, kit.frame) },
-  rhythm: { always: true, codes: ['response', 'suffering', 'hook_repeat', 'emotions', 'line_gap'], run: ({ plan, kit }) => plan && checkRhythm(plan, kit.frame) },
+  rhythm: { always: true, codes: ['response', 'suffering', 'hook_repeat', 'emotions', 'line_gap'], run: ({ plan, kit }) => plan && checkRhythm(plan, kit.frame, kit.genre.terms) },
   villain_ladder: {
     always: true, codes: ['count', 'rank', 'role', 'on_screen', 'introduced', 'takedown', 'takedown_plan', 'key_to_next', 'counterstrike', 'public_legal', 'order', 'punishment', 'turned_ally', 'infighting'],
     run: ({ bible, plan, kit }, p) =>
-      bible && plan && checkVillainLadder(bible, plan, kit.frame, { ranks: nums(p, 'ranks'), min_infighting: num(p, 'min_infighting') } satisfies LadderParams),
+      bible && plan && checkVillainLadder(bible, plan, kit.frame, { ranks: nums(p, 'ranks'), min_infighting: num(p, 'min_infighting') } satisfies LadderParams, kit.genre.terms),
   },
   timeline: { always: true, codes: ['birth', 'born_after', 'dead_before', 'age', 'unknown_ref', 'order'], run: ({ bible }) => bible && checkTimeline(bible) },
   knowledge: {
@@ -79,10 +79,13 @@ export const CODE_CHECKS: Record<string, CodeCheck> = {
   betrayer_rank: { always: false, codes: ['rank'], run: ({ bible }, p) => bible && checkBetrayerRank(bible, nums(p, 'ranks') ?? []) },
   paywall_hook: {
     always: false, codes: ['content'],
-    run: ({ plan }, p) => {
+    run: ({ plan, kit }, p) => {
       // The anchor id comes from the genre rule: code does not know the frame's anchor names.
       if (typeof p.anchor !== 'string') throw new UnknownCheckError('Проверке «paywall_hook» нужен параметр anchor — id опорной точки из каркаса');
-      return plan && checkPaywallHook(plan, p.anchor);
+      const needs = strs(p, 'needs');
+      const bad = needs.filter((n) => n !== 'reveal' && n !== 'threat');
+      if (bad.length) throw new UnknownCheckError(`Проверка «paywall_hook»: needs — только reveal и threat, а не ${bad.join(', ')}`);
+      return plan && checkPaywallHook(plan, p.anchor, needs.length ? (needs as PaywallNeed[]) : undefined, kit.genre.terms);
     },
   },
   world_rules: {
@@ -92,7 +95,7 @@ export const CODE_CHECKS: Record<string, CodeCheck> = {
   secret_turns: {
     always: false, codes: ['count', 'near'],
     run: ({ bible, kit }, p) =>
-      bible && checkSecretTurns(bible, kit.frame, { min: num(p, 'min') ?? 1, near: strs(p, 'near') } satisfies SecretTurnParams),
+      bible && checkSecretTurns(bible, kit.frame, { min: num(p, 'min') ?? 1, near: strs(p, 'near') } satisfies SecretTurnParams, kit.genre.terms),
   },
 };
 

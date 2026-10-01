@@ -1,5 +1,7 @@
 import type { Doc, Overview } from '../api.ts';
 
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 export function BibleScreen({ data }: { data: Overview }) {
   const b = data.bible;
   if (!b) return <p className="muted panel">Библии пока нет: она появится после шага «Библия».</p>;
@@ -13,9 +15,9 @@ export function BibleScreen({ data }: { data: Overview }) {
         </article>
       )}
       <article className="panel">
-        <h2>Предательство</h2>
+        <h2>{data.genre.terms.wound}</h2>
         <p>
-          <b>{b.betrayal.who}</b>: {b.betrayal.what}. Почему: {b.betrayal.why}. Героиня видит это на {b.betrayal.ep1_second}-й секунде 1-й серии.
+          <b>{b.betrayal.who}</b>: {b.betrayal.what}. Почему: {b.betrayal.why}. {cap(data.genre.terms.hero.nom)} видит это на {b.betrayal.ep1_second}-й секунде 1-й серии.
         </p>
       </article>
       <article className="panel">
@@ -93,7 +95,7 @@ export function BibleScreen({ data }: { data: Overview }) {
         <ol>
           {(b.secrets as Doc[]).map((s) => (
             <li key={s.layer}>
-              {s.revealed_ep}-я серия: {s.truth}. <span className="muted">Цель мести: {s.goal_from} → {s.goal_to}</span>
+              {s.revealed_ep}-я серия: {s.truth}. <span className="muted">Цель {data.genre.terms.hero.gen}: {s.goal_from} → {s.goal_to}</span>
             </li>
           ))}
         </ol>

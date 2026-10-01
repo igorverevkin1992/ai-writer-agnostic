@@ -15,6 +15,8 @@ function blockLine(b: Doc): string {
 }
 
 /** Card, script, up to three findings, and polishing of a selected fragment. */
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 export function EpisodeScreen({ data, refresh }: { data: Overview; refresh: () => Promise<void> }) {
   const pid = data.project.id;
   const [cards, setCards] = useState<Doc[]>([]);
@@ -117,7 +119,7 @@ export function EpisodeScreen({ data, refresh }: { data: Overview; refresh: () =
               <dd>{card.hook_0_5s}</dd>
               <dt>Событие</dt>
               <dd>{card.event}</dd>
-              <dt>Героиня</dt>
+              <dt>{cap(data.genre.terms.hero.nom)}</dt>
               <dd>{card.heroine_action}</dd>
               <dt>Реплика-удар</dt>
               <dd>{card.punchline}</dd>

@@ -1,4 +1,4 @@
-import { episodeRange, type SeasonFrame } from '@aiw/kb';
+import { DEFAULT_TERMS, episodeRange, type GenreTerms, type SeasonFrame } from '@aiw/kb';
 import type { Finding } from '../../schemas/finding.ts';
 import type { EpisodeOutline, SeasonPlan } from '../../schemas/season.ts';
 import { formatEpisodes, makeFinding } from './finding.ts';
@@ -16,7 +16,8 @@ function runs(eps: EpisodeOutline[], key: (e: EpisodeOutline) => string | null):
 }
 
 /** Rhythm: strike → answer, suffering runs, hook variety, emotional beats per episode. */
-export function checkRhythm(plan: SeasonPlan, frame: SeasonFrame): Finding[] {
+export function checkRhythm(plan: SeasonPlan, frame: SeasonFrame, terms: GenreTerms = DEFAULT_TERMS): Finding[] {
+  const hero = terms.hero;
   const out: Finding[] = [];
   const r = frame.rhythm;
   const eps = [...plan.episodes].sort((a, b) => a.ep - b.ep);
@@ -34,8 +35,8 @@ export function checkRhythm(plan: SeasonPlan, frame: SeasonFrame): Finding[] {
           holeType: 3,
           episode: e.ep,
           quote: e.event,
-          question: `почему героиня не отвечает на удар ${e.ep}-й серии?`,
-          fixes: [`Дать героине ответный ход в сериях ${e.ep + 1}–${e.ep + r.response_within}`],
+          question: `почему ${hero.nom} не отвечает на удар ${e.ep}-й серии?`,
+          fixes: [`Дать ${hero.dat} ответный ход в сериях ${e.ep + 1}–${e.ep + r.response_within}`],
         }),
       );
     }

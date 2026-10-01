@@ -6,6 +6,8 @@ const MAX_CELL = 32_767;
 
 const MOOD: Record<string, string> = { suffering: 'страдание', kaif: 'кайф', neutral: 'нейтрально' };
 
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 /** Excel workbook: season table, cards, findings, video prompts. */
 export async function buildXlsx(b: ProjectBundle): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
@@ -23,11 +25,11 @@ export async function buildXlsx(b: ProjectBundle): Promise<Buffer> {
     { header: 'Название', key: 'title', width: 22 },
     { header: 'Событие', key: 'event', width: 60 },
     { header: 'Вопрос', key: 'question', width: 30 },
-    { header: 'Героиня', key: 'action', width: 30 },
+    { header: cap(b.kit.genre.terms.hero.nom), key: 'action', width: 30 },
     { header: 'Опорные точки', key: 'anchors', width: 18 },
     { header: 'Настроение', key: 'mood', width: 14 },
     { header: 'Удар злодеев', key: 'v', width: 12 },
-    { header: 'Удар героини', key: 'h', width: 12 },
+    { header: `Удар ${b.kit.genre.terms.hero.gen}`, key: 'h', width: 12 },
     { header: 'Снят злодей', key: 'td', width: 12 },
     { header: 'Крючок', key: 'hook', width: 18 },
     { header: 'Клиффхэнгер', key: 'cliff', width: 40 },

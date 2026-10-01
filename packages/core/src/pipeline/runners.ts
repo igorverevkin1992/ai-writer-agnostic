@@ -208,7 +208,12 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
       request: {
         task: 'logline',
         cacheablePrefix: [ctx.kbText],
-        system: renderPrompt(ctx.kb, 'architect/logline', { concept: json(concept), schema: schemaText(Logline) }),
+        system: renderPrompt(ctx.kb, 'architect/logline', {
+          concept: json(concept),
+          hero: ctx.kit.genre.terms.hero.nom,
+          wound: ctx.kit.genre.terms.wound.toLowerCase(),
+          schema: schemaText(Logline),
+        }),
         messages: [{ role: 'user', content: 'Сделай логлайн. Только JSON.' }],
       },
     });
@@ -269,7 +274,8 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
           system: renderPrompt(ctx.kb, 'architect/episode_cards', {
             from: eps[0]!,
             to: eps.at(-1)!,
-            outlines: outlines.map(episodeLine).join('\n'),
+            outlines: outlines.map((e) => episodeLine(e, ctx.kit.genre.terms)).join('\n'),
+            hero: ctx.kit.genre.terms.hero.nom,
             duration: f.duration_s.target,
             duration_range: `${f.duration_s.min}–${f.duration_s.max} с`,
             max_line_words: p.script_metrics.max_line_words,
@@ -421,7 +427,8 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
             episodes: f.episodes,
             from,
             to,
-            written: episodes.length ? episodes.map(episodeLine).join('\n') : 'Это начало сезона.',
+            written: episodes.length ? episodes.map((e) => episodeLine(e, ctx.kit.genre.terms)).join('\n') : 'Это начало сезона.',
+            hero: ctx.kit.genre.terms.hero.nom,
             anchor_ids: Object.keys(f.anchors).join(', '),
             kaif_lines: Object.keys(f.lines).length ? Object.entries(f.lines).map(([id, name]) => `${id} (${name})`).join(', ') : 'в этом жанре линий нет, оставь пустым',
             villain_roles: Object.values(f.villains?.roles ?? {}).join(', ') || 'в жанре нет лестницы злодеев',

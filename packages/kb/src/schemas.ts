@@ -60,6 +60,12 @@ export const RulesFile = z.strictObject({
 });
 export type RulesFile = z.infer<typeof RulesFile>;
 
+/**
+ * Ways a villain leaves the story. Revenge: shame, law, status, flight, allies, turned_ally.
+ * Myth and fairy tale: defeated (beaten in a trial), bargain (a deal or ransom), laid_to_rest (appeased, released).
+ */
+export const PUNISHMENT_TYPES = ['shame', 'law', 'status', 'flight', 'allies', 'turned_ally', 'defeated', 'bargain', 'laid_to_rest'] as const;
+
 /** A map keyed by villain rank ("1".."count"). Completeness is checked against count in the loader. */
 const byRank = <T extends z.ZodType>(value: T) =>
   z.record(z.string().regex(/^[1-9]\d*$/, 'Ранг злодея — целое число от 1'), value);
@@ -92,6 +98,8 @@ export const SeasonFrame = z.strictObject({
       public_and_legal: z.array(z.int().min(1)),
       /** Neighbouring villains must be punished differently (shame, law, status…). Off when every punishment is by law. */
       varied_punishments: z.boolean().default(true),
+      /** How villains of this genre may be taken down (punishment.type); empty — any. */
+      punishments: z.array(z.enum(PUNISHMENT_TYPES)).default([]),
       })
       .optional(),
     rhythm: z.strictObject({
@@ -240,6 +248,8 @@ export const Case = z.strictObject({
   summary: Text,
   beats: z.array(z.strictObject({ ep: z.int().min(1), text: Text })).default([]),
   lessons: z.array(Text).default([]),
+  /** Genres this case is an example for; empty — every genre. */
+  genres: z.array(Text).default([]),
 });
 export type Case = z.infer<typeof Case>;
 
@@ -256,6 +266,18 @@ export const Guide = z.strictObject({
 });
 export type Guide = z.infer<typeof Guide>;
 
+/** Word forms of the protagonist: code and prompts speak of «героиня» or «герой» as the genre says. */
+export const HeroTerms = z.strictObject({ nom: Text, gen: Text, dat: Text });
+
+/** Genre words code puts into findings, prompts and documents. */
+export const GenreTerms = z.strictObject({
+  hero: HeroTerms,
+  /** What the bible's original wrong (bible.betrayal) is called: «Предательство», «Рана». */
+  wound: Text,
+});
+export type GenreTerms = z.infer<typeof GenreTerms>;
+export const DEFAULT_TERMS: GenreTerms = { hero: { nom: 'героиня', gen: 'героини', dat: 'героине' }, wound: 'Предательство' };
+
 /** Genre pack: which knowledge base files apply to projects of this genre and format. */
 export const Genre = z.strictObject({
   id: z.string().regex(/^[a-z0-9_]+$/, 'id — латиница, цифры и _'),
@@ -268,5 +290,6 @@ export const Genre = z.strictObject({
   constraints: z.strictObject({ legal: Text, production: Text }),
   /** Optional guides/<id>.yaml with craft notes for this genre. */
   guide: Text.optional(),
+  terms: GenreTerms.default(DEFAULT_TERMS),
 });
 export type Genre = z.infer<typeof Genre>;

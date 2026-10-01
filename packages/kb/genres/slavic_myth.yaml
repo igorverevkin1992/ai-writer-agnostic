@@ -1,0 +1,17 @@
+# Жанровый пакет: тёмное славянское фэнтези-миф.
+# Источник: исследование продюсера «Пакет „Фэнтези-миф“ для ИИ-агента вертикальных сериалов», октябрь 2026.
+# Сериал снимается ИИ-видео, а не живьём: производственные рамки — constraints/ai_video.yaml.
+id: slavic_myth
+title: Тёмное славянское фэнтези-миф
+rules: slavic_myth           # rules/slavic_myth.yaml
+frame: myth60                # frames/myth60.yaml
+checklist: myth27            # checklist/myth27.yaml
+personas: myth_viewers       # personas/myth_viewers.yaml
+constraints:
+  legal: ru_legal_myth       # constraints/ru_legal_myth.yaml
+  production: ai_video       # constraints/ai_video.yaml
+guide: slavic_myth           # guides/slavic_myth.yaml — биты, фольклор, крючки, съёмка ИИ
+# Главный персонаж жанра — искатель; в исследовании это отец. Рана — его собственная вина в прошлом.
+terms:
+  hero: {nom: герой, gen: героя, dat: герою}
+  wound: Рана

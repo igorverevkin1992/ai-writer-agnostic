@@ -6,7 +6,7 @@ export function renderMarkdown(b: ProjectBundle): string {
   const out: string[] = [`# ${b.project.title}`, '', `Жанр: ${b.kit.genre.title}.`];
   if (b.logline) out.push('', '## Логлайн', '', b.logline.text_35w, '', `Реклама: ${b.logline.ad_15w}`);
   if (b.concept) out.push('', '## Концепция', '', `**${b.concept.title}.** ${b.concept.premise}`, '', `Формула: ${b.concept.genre_formula}`);
-  if (b.bible) out.push('', '## Библия', '', '```', bibleText(b.bible), '```');
+  if (b.bible) out.push('', '## Библия', '', '```', bibleText(b.bible, b.kit.genre.terms), '```');
   if (b.plan) {
     out.push('', '## План сезона', '', '| Серия | Название | Событие | Опорные точки | Настроение | Крючок |', '|---|---|---|---|---|---|');
     for (const e of b.plan.episodes) {
@@ -21,6 +21,6 @@ export function renderMarkdown(b: ProjectBundle): string {
     out.push('', '## Сценарии', '');
     for (const s of b.scripts) out.push('```', renderScript(s), '```', '');
   }
-  if (b.plan && !b.scripts.length && !b.cards.length) out.push('', ...b.plan.episodes.map(episodeLine));
+  if (b.plan && !b.scripts.length && !b.cards.length) out.push('', ...b.plan.episodes.map((e) => episodeLine(e, b.kit.genre.terms)));
   return `${out.join('\n')}\n`;
 }

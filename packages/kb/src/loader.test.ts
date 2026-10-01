@@ -109,7 +109,7 @@ describe('other series, other genres', () => {
     const dir = kbCopy();
     addRomance(dir);
     const kb = loadKb(dir);
-    expect(Object.keys(kb.genres).sort()).toEqual(['revenge_thriller', 'romance30', 'romantasy_revenge']);
+    expect(Object.keys(kb.genres).sort()).toEqual(['revenge_thriller', 'romance30', 'romantasy_revenge', 'slavic_myth']);
     const romance = genreKit(kb, 'romance30');
     expect(romance.frame.episodes).toBe(30);
     expect(romance.frame.villains).toBeUndefined();

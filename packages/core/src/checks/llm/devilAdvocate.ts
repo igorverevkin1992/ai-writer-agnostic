@@ -138,8 +138,8 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
   const facts = factsText(target.bible) || 'Фактов пока нет.';
   const review = deps.kb.review;
   let blocks: AuditBlock[] = target.plan
-    ? planBlocks(target.plan, opts.blockSize ?? target.plan.episodes.length)
-    : [{ label: 'библия', text: bibleText(target.bible) }];
+    ? planBlocks(target.plan, opts.blockSize ?? target.plan.episodes.length, deps.kit.genre.terms)
+    : [{ label: 'библия', text: bibleText(target.bible, deps.kit.genre.terms) }];
   if (opts.episodes && target.plan) {
     blocks = blocks.filter((b) => opts.episodes!.some((ep) => b.episodes && ep >= b.episodes[0] && ep <= b.episodes[1]));
   }

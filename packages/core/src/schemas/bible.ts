@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PUNISHMENT_TYPES } from '@aiw/kb';
 import { EpisodeNumber, NonEmpty } from './common.ts';
 
 const Year = z.int().min(1900).max(2100);
@@ -24,7 +25,7 @@ export const Character = z.object({
 });
 export type Character = z.infer<typeof Character>;
 
-export const PunishmentType = z.enum(['shame', 'law', 'status', 'flight', 'allies', 'turned_ally']);
+export const PunishmentType = z.enum(PUNISHMENT_TYPES);
 
 export const Villain = z
   .object({

@@ -91,6 +91,6 @@ export function knowledgeBlock(kb: Kb, kit: GenreKit): string {
     '## Методики',
     list(Object.values(kb.methods).map((m) => `${m.name} (${m.author}): ${m.summary}`)),
     '## Кейсы',
-    list(kb.cases.filter((c) => !c.stub).map((c) => `${c.id}: ${c.title} — ${c.summary}`)),
+    list(kb.cases.filter((c) => !c.stub && (!c.genres.length || c.genres.includes(kit.genre.id))).map((c) => `${c.id}: ${c.title} — ${c.summary}`)),
   ].join('\n');
 }
