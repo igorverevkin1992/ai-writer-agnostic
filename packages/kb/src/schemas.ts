@@ -90,6 +90,8 @@ export const SeasonFrame = z.strictObject({
       max_turned_allies: z.int().min(0),
       turned_ally_ranks: z.array(z.int().min(1)),
       public_and_legal: z.array(z.int().min(1)),
+      /** Neighbouring villains must be punished differently (shame, law, status…). Off when every punishment is by law. */
+      varied_punishments: z.boolean().default(true),
       })
       .optional(),
     rhythm: z.strictObject({

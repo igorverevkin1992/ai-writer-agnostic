@@ -17,15 +17,30 @@ import type { LlmClient } from '../providers/llm.ts';
 import type { Finding } from '../schemas/finding.ts';
 import { withHole, type SeededHole } from './seed.ts';
 
+/** Review categories А–П (docs/hole_review_prompt.md). */
+export const ReviewCategory = z.enum(['А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ж', 'З', 'И', 'К', 'Л', 'М', 'Н', 'О', 'П']);
+
 export const ProducerHole = z.object({
   id: z.string().min(1),
-  holeType: z.int().min(1).max(11),
+  /** Hole type 1–11 of the catalog, or review categories А–П, or both. */
+  holeType: z.int().min(1).max(11).optional(),
+  category: z.array(ReviewCategory).default([]),
   episode: z.int().min(1).optional(),
+  /** All episodes the hole touches, as written in the review, e.g. "3, 10, 18–19". */
+  episodes: z.string().optional(),
+  severity: z.enum(['critical', 'high', 'medium', 'low']).optional(),
+  /** The reviewer was not sure it is a hole. */
+  doubt: z.boolean().default(false),
   description: z.string().min(1),
+  why_noticed: z.string().optional(),
+  fixes: z.string().optional(),
+  /** The general principle behind the hole: a check for the agent. */
+  agent_rule: z.string().optional(),
 });
 export type ProducerHole = z.infer<typeof ProducerHole>;
 
 export const ProducerHolesFile = z.object({
+  source: z.string().optional(),
   holes: z.array(ProducerHole),
   /** The producer's own checklist score of the golden project. */
   checklist_score: z.int().min(0).optional(),
@@ -152,7 +167,7 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
         request: {
           task: 'eval_match',
           system: renderPrompt(kb, 'critic_of_writer/eval_match', {
-            holes: holes.map((h) => `${h.id} | тип ${h.holeType} | серия ${h.episode ?? '—'} | ${h.description}`).join('\n') || 'Список продюсера не передан.',
+            holes: holes.map((h) => `${h.id} | ${h.holeType ? `тип ${h.holeType}` : `категория ${h.category.join(', ') || '—'}`} | серии ${h.episodes ?? h.episode ?? '—'} | ${h.description}`).join('\n') || 'Список продюсера не передан.',
             findings: report.findings.map((f) => `${f.id} | тип ${f.holeType} | серия ${f.episode ?? '—'} | «${f.quote}» | ${f.viewerQuestion}`).join('\n'),
             schema: schemaText(EvalMatches),
           }),

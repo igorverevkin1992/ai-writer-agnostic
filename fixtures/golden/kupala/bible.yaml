@@ -1,0 +1,101 @@
+# Библия «Муж утопил меня в Купальскую ночь» — точно по концепту продюсера (concept.md), со всеми
+# его дырами: на ней агента сверяют с эталонным разбором (holes.yaml). Не исправлять.
+# Формат библии требует год рождения не раньше 1900: у Яромира («живёт веками») стоит 1900 условно.
+world_rules:
+  - rule: Сорок дней
+    why: Кто утонул в Купальскую ночь и был вытащен до рассвета, возвращается, но только на сорок дней
+    cost: Если тот, чья воля её утопила, не признается вслух, на рассвете сорокового дня вода заберёт её навсегда
+    cannot: Спастись местью, побегом или убийством злодея — спасает только признание вслух
+    who_knows: [Уля, Тамара, Яромир]
+    practical_effect: Счётчик дней в углу кадра; до рассвета сорокового дня под водой она не задыхается
+  - rule: Вода показывает правду
+    why: Утопленница видит то, что знает вода
+    cost: Ложь в отражении — бесплатно; взгляд в воду озера в прошлое стоит одного дня из сорока
+    cannot: Проверить ложь без отражения; проверить ложь Яромира; доказать что-либо суду
+    who_knows: [Уля, Тамара, Яромир]
+    practical_effect: У лжеца в отражении лицо утопленника — чёрные глаза, серая кожа, тина на шее; прошлое в воде — без звука, обрывками, в синем цвете
+  - rule: Огонь и вода гасят друг друга
+    why: Огонь — это Яромир, вода — навь
+    cost: Вода убивает Яромира не сразу — секунда ожог, минута смерть; живёт он, пока горит очаг в доме Марфы на острове
+    cannot: Его огонь не сжигает утопленницу — в ней холод нави
+    who_knows: [Яромир]
+    practical_effect: Он злится — мигает свет, искрит проводка; рядом с ним вспыхивает огонь в камине
+characters:
+  - {name: Уля, birth_year: 1999, look: "Ульяна Берестова, флорист; руки всегда холодные, волосы не сохнут, мокрые следы", ghost: "На её глазах утонула мама, она ничего не смогла сделать", lie: "Если я буду тихой и удобной, меня будут любить и не бросят", truth: "Кто молчит — уходит под воду", want: "Добиться признания до сороковин и наказать тех, кто её утопил", need: "Перестать молчать, сказать правду вслух, позволить любить себя саму", arc_type: позитивная, mask: "Невестка «с потерей памяти»", hidden_power: "Видит ложь в отражениях и прошлое в воде", knows_at_start: [], speech: "Тихо, удобно; к концу — правду вслух", limits: ["Не умеет плавать и боится воды"]}
+  - {name: Яромир, birth_year: 1900, look: "Яромир Огарёв, выглядит на 35, живёт веками; в отражении золотые глаза, чешуя на шее, искры; руки в ожогах", ghost: "Веками губит тех, кого любит", lie: "Любить — значит сжечь. Безопаснее всё покупать", truth: "Отдать ей власть над своей жизнью вместо того, чтобы её купить", want: "Остров с домом Марфы", need: "Полюбить Улю саму, а не лицо Марфы", arc_type: позитивная, mask: "Энергетический магнат, холодный и властный", hidden_power: "Все сети и станции региона; огонь", knows_at_start: [f_plan_island, f_hearth], speech: "Коротко, властно", limits: ["Вода убивает его: секунда — ожог, минута — смерть"]}
+  - {name: Тамара, birth_year: 1967, look: "Тамара Воронова, свекровь; всегда в перчатках, никогда не плачет", ghost: "В 1985-м её утопил Андрей Воронов", lie: "Власть и молчание надёжнее правды", truth: "Кто сам молчит — остаётся наполовину в воде", want: "Остров для посёлка, потом — свою свободу", need: "—", arc_type: злодей, mask: "Хозяйка семьи и яхт-клуба", hidden_power: "Сама утопленница: видит ложь", knows_at_start: [f_plan_island, f_tamara_killed_nina, f_tamara_drowned_1985], speech: "Рядом с отражениями — только правда, подобранная, чтобы ранить", limits: ["Боится воды и не подходит к озеру"]}
+  - {name: Глеб, birth_year: 1986, look: "Глеб Воронов, муж; возглавляет стройку посёлка", ghost: "Рос под властью матери", lie: "Мама знает, как лучше", truth: "Мать сделала его крайним", want: "Остров, чтобы закрыть долги", need: "—", arc_type: злодей, mask: "Любящий муж", hidden_power: "Подпись на всех бумагах стройки", knows_at_start: [f_plan_island], speech: "Мягко, с паникой под кожей", limits: ["Боится тюрьмы и матери"]}
+  - {name: Кристина, birth_year: 1999, look: "Улина подруга из Москвы, любовница Глеба", ghost: "—", lie: "Хозяйкой становится та, кто дольше терпит", truth: "—", want: "Стать хозяйкой, а «старуху — в пансионат»", need: "—", arc_type: злодей, mask: "Лучшая подруга", hidden_power: "Близость к Уле", knows_at_start: [f_plan_island], speech: "Ласково, с ядом", limits: ["Беременна от Глеба"]}
+  - {name: Жанна, birth_year: 1996, look: "Администратор яхт-клуба", ghost: "—", lie: "Сильные защитят тех, кто им служит", truth: "Тамара бросает пешек", want: "Денег и адвоката за молчание", need: "—", arc_type: злодей, mask: "Услужливый администратор", hidden_power: "Доступ к бару и камерам", knows_at_start: [], speech: "Быстро, оправдываясь", limits: ["Под следствием с 3-й серии"]}
+  - {name: Лужин, birth_year: 1960, look: "Аркадий Лужин, семейный врач Вороновых", ghost: "Двадцать лет назад написал ложное заключение о смерти Нины", lie: "Бумага всё стерпит", truth: "Бумага его и выдаст", want: "Спасти себя", need: "—", arc_type: злодей, mask: "Заботливый врач", hidden_power: "Диагнозы и записи о «видениях»", knows_at_start: [f_tamara_killed_nina], speech: "Медицинскими терминами", limits: ["Сдаёт сообщников, чтобы спастись"]}
+  - {name: Климова, birth_year: 1988, look: "Следователь Ольга Климова, спокойная и дотошная", ghost: "—", lie: "—", truth: "Закон в этой истории работает", want: "Довести дело до конца", need: "—", arc_type: статичная, mask: "—", hidden_power: "Закон", knows_at_start: [], speech: "Спокойно, по делу", limits: ["Работает только по доказательствам"]}
+  - {name: Нина, birth_year: 1976, look: "Мама Ули; в прошлом — только во взглядах в воду", ghost: "—", lie: "—", truth: "—", want: "Не продавать остров", need: "—", arc_type: статичная, mask: "—", hidden_power: "—", knows_at_start: [f_tamara_drowned_1985], speech: "—", limits: ["Только во взглядах в прошлое и в последнем кадре"], regular: false}
+  - {name: Прасковья, birth_year: 1940, look: "Бабушка Ули; оставила дневник", ghost: "—", lie: "—", truth: "—", want: "Увезти внучку от воды", need: "—", arc_type: статичная, mask: "—", hidden_power: "Вытащила из озера молодую Тамару", knows_at_start: [f_tamara_drowned_1985], speech: "—", limits: ["Умерла три года назад"], regular: false}
+  - {name: Андрей, birth_year: 1964, look: "Андрей Воронов, отец Глеба", ghost: "—", lie: "—", truth: "—", want: "—", need: "—", arc_type: статичная, mask: "—", hidden_power: "—", knows_at_start: [f_tamara_drowned_1985], speech: "—", limits: ["Умер десять лет назад, официально — сердце"], regular: false}
+  - {name: Марфа, birth_year: 1902, look: "Прапрабабушка Ули на портрете в доме Яромира; лицо Ули", ghost: "—", lie: "—", truth: "—", want: "—", need: "—", arc_type: статичная, mask: "—", hidden_power: "Привязала жизнь Яромира к своему очагу", knows_at_start: [], speech: "—", limits: ["Только на портрете"], regular: false}
+villains:
+  - {name: Жанна, rank: 5, role: pawn, threat: "Свобода и репутация", motive: "Деньги и адвокат от Тамары", own_plan: "Подсыпала снотворное и всем говорит, что Уля пила", resources: "Бар яхт-клуба", weakness: "Тамара её бросила", on_screen_ep: 1, mask: "Администратор", first_strike_ep: 1, takedown_ep: 3, punishment: {type: law, public: true}, key_to_next: "В телефоне Жанны — переписка с Кристиной", ties: [{villain: Тамара, relation: исполняет её волю}], knows: []}
+  - {name: Кристина, rank: 4, role: executor, threat: "Жизнь", motive: "Стать хозяйкой вместо Ули", own_plan: "Столкнула Улю с причала", resources: "Доверие Ули и Глеб", weakness: "Беременность и ревность Тамары", on_screen_ep: 1, mask: "Лучшая подруга", first_strike_ep: 1, takedown_ep: 19, punishment: {type: law, public: true}, via_infighting: true, key_to_next: "«Спроси у Лужина, что он подписал двадцать лет назад»", ties: [{villain: Глеб, relation: любовница}], knows: [{fact: f_plan_island, since_ep: 1}]}
+  - {name: Лужин, rank: 3, role: guardian, threat: "Свобода и разум", motive: "Спасти себя", own_plan: "Добиться признания Ули недееспособной", resources: "Диагнозы, записи, справки", weakness: "Справка о смерти Нины", on_screen_ep: 2, mask: "Семейный врач", first_strike_ep: 4, takedown_ep: 40, punishment: {type: law, public: true}, key_to_next: "В его бумагах — платежи от Тамары", ties: [{villain: Тамара, relation: на её деньгах}], knows: [{fact: f_tamara_killed_nina, since_ep: 1}]}
+  - {name: Глеб, rank: 2, role: right_hand, threat: "Жизнь и остров", motive: "Остров, чтобы закрыть долги по стройке", own_plan: "Женился ради острова, заманил Улю на причал", resources: "Брак и подпись", weakness: "Боится тюрьмы и матери", on_screen_ep: 1, mask: "Любящий муж", first_strike_ep: 1, takedown_ep: 50, punishment: {type: law, public: false}, via_infighting: true, key_to_next: "Признание не снимает метку — значит, воля была не его", ties: [{villain: Тамара, relation: сын}, {villain: Кристина, relation: любовник}], knows: [{fact: f_plan_island, since_ep: 1}]}
+  - {name: Тамара, rank: 1, role: boss, threat: "Жизнь, память мамы, остров", link_to_ghost: "Утопила маму Ули Нину двадцать лет назад", motive: "Остров для посёлка; после мидпоинта — своя свобода", own_plan: "Ждать сорок дней, объявить Улю сумасшедшей", resources: "Семья, деньги, дар видеть ложь", weakness: "Знает правила, но не знает про семь минут", on_screen_ep: 1, mask: "Свекровь", first_strike_ep: 1, takedown_ep: 59, punishment: {type: law, public: true}, key_to_next: "Задел на второй сезон", ties: [{villain: Глеб, relation: мать}], knows: [{fact: f_hearth, since_ep: 56}]}
+betrayal:
+  who: Глеб
+  what: Женился на Уле ради острова, изменил с Кристиной и заманил её на причал, где её столкнули
+  why: Остров — Улина добрачная собственность; при её смерти без завещания муж — наследник
+  year: 2026
+  accomplices: [Тамара, Кристина, Жанна]
+  who_else_knew: [{name: Яромир, why_silent: "Ему нужен остров"}]
+  ep1_second: 60
+secrets:
+  - {layer: 1, truth: "Тамара знает правила и ждёт сорок дней", revealed_ep: 8, goal_from: "выжить и наказать мужа и подругу", goal_to: "выжить и наказать мужа и подругу", clues: ["Тамара на балконе", "«Ждём сорок дней»"]}
+  - {layer: 2, truth: "Брак спланировала Тамара ради острова", revealed_ep: 10, goal_from: "выжить и наказать мужа и подругу", goal_to: "наказать всю семью Вороновых", clues: ["переписка из облака Жанны", "машина Тамары в витрине"]}
+  - {layer: 3, truth: "Маму утопила Тамара", revealed_ep: 30, goal_from: "наказать всю семью Вороновых", goal_to: "добиться признания Тамары за маму и за себя", clues: ["огонёк второй лодки", "справка Лужина"]}
+  - {layer: 4, truth: "Тамара — утопленница 1985 года: знает правила и видит ложь", revealed_ep: 51, goal_from: "добиться признания Тамары за маму и за себя", goal_to: "добиться признания Тамары за маму и за себя", clues: ["перчатки", "крыло без зеркал", "улыбка в 9-й серии"]}
+guns:
+  - {id: g_timelapse, object: "Телефон на штативе с таймлапсом венков", planted_ep: 1, fired_ep: 3, metro_visible: true}
+  - {id: g_pill, object: "Таблетка в вазе", planted_ep: 4, fired_ep: 39, metro_visible: true}
+  - {id: g_ring, object: "Кольцо на портрете и на руке Ули", planted_ep: 5, fired_ep: 45, metro_visible: true}
+  - {id: g_keys, object: "Ключи с брелоком-лодочкой", planted_ep: 16, fired_ep: null, metro_visible: true}
+  - {id: g_luzhin_phone, object: "Телефон Лужина с приказом «сожги»", planted_ep: 28, fired_ep: null, metro_visible: true}
+  - {id: g_hearth_letter, object: "Письмо Яромира об очаге", planted_ep: 49, fired_ep: 56, metro_visible: true}
+  - {id: g_seven_minutes, object: "Строка о семи минутах рассвета", planted_ep: 53, fired_ep: 59, metro_visible: true}
+timeline:
+  present_year: 2026
+  events:
+    - {id: e_marfa_born, year: 1902, kind: birth, text: "Рождение Марфы", participants: [Марфа]}
+    - {id: e_marfa_dies, year: 1926, text: "Марфа сгорает от любви Яромира и привязывает его жизнь к очагу", participants: [Марфа, Яромир], after: [e_marfa_born]}
+    - {id: e_praskovya_born, year: 1940, kind: birth, text: "Рождение Прасковьи", participants: [Прасковья]}
+    - {id: e_flood, year: 1941, text: "Село уходит под воду; дом на холме становится островом", participants: [], after: [e_marfa_dies]}
+    - {id: e_luzhin_born, year: 1960, kind: birth, text: "Рождение Лужина", participants: [Лужин]}
+    - {id: e_andrey_born, year: 1964, kind: birth, text: "Рождение Андрея Воронова", participants: [Андрей]}
+    - {id: e_tamara_born, year: 1967, kind: birth, text: "Рождение Тамары", participants: [Тамара]}
+    - {id: e_tamara_drowned, year: 1985, text: "Андрей топит беременную Тамару в Купальскую ночь; Прасковья вытаскивает её до рассвета", participants: [Тамара, Андрей, Прасковья], ages: {Тамара: 18}, after: [e_tamara_born, e_andrey_born]}
+    - {id: e_gleb_born, year: 1986, kind: birth, text: "У Тамары и Андрея рождается Глеб", participants: [Глеб, Тамара], after: [e_tamara_drowned]}
+    - {id: e_nina_born, year: 1976, kind: birth, text: "Рождение Нины", participants: [Нина]}
+    - {id: e_klimova_born, year: 1988, kind: birth, text: "Рождение Климовой", participants: [Климова]}
+    - {id: e_zhanna_born, year: 1996, kind: birth, text: "Рождение Жанны", participants: [Жанна]}
+    - {id: e_ulya_born, year: 1999, kind: birth, text: "Рождение Ули", participants: [Уля]}
+    - {id: e_kristina_born, year: 1999, kind: birth, text: "Рождение Кристины", participants: [Кристина]}
+    - {id: e_nina_drowned, year: 2006, text: "Тамара переворачивает лодку Нины в Купальскую ночь; Лужин пишет заключение о смерти", participants: [Тамара, Нина, Уля, Лужин], ages: {Уля: 7}, after: [e_ulya_born, e_nina_born]}
+    - {id: e_andrey_died, year: 2016, text: "Андрей Воронов умирает, официально — сердце", participants: [Андрей], after: [e_gleb_born]}
+    - {id: e_praskovya_died, year: 2023, kind: death, text: "Прасковья умирает и оставляет в доме дневник", participants: [Прасковья], after: [e_nina_drowned]}
+    - {id: e_wedding, year: 2024, text: "Глеб «случайно» заходит в Улин магазин и женится на ней", participants: [Глеб, Уля, Тамара], ages: {Уля: 25, Глеб: 38}, after: [e_praskovya_died]}
+    - {id: e_kupala, year: 2026, text: "Купальская ночь: Улю топят", participants: [Уля, Глеб, Кристина, Жанна, Тамара, Яромир], ages: {Уля: 27}, after: [e_wedding]}
+locations: [причал, банкетный зал, зеркальный холл, бар, спальня Ули и Глеба, кабинет Тамары, дом Яромира, лодка, мамин дом на острове, мелководье]
+facts:
+  - {id: f_plan_island, text: "Брак спланировала Тамара ради острова"}
+  - {id: f_tamara_killed_nina, text: "Нину утопила Тамара"}
+  - {id: f_tamara_drowned_1985, text: "Тамара — утопленница 1985 года"}
+  - {id: f_hearth, text: "Жизнь Яромира — в очаге маминого дома"}
+  - {id: f_will, text: "Остров завещан фонду памяти затопленного села", since_ep: 11}
+  - {id: f_seven_minutes, text: "На острове солнце встаёт на семь минут позже"}
+knowledge:
+  - {who: Уля, fact: f_plan_island, since_ep: 10, how: "Переписка из облака Жанны"}
+  - {who: Уля, fact: f_will, since_ep: 11, how: "Сама пишет завещание"}
+  - {who: Уля, fact: f_tamara_killed_nina, since_ep: 30, how: "Три взгляда в воду"}
+  - {who: Уля, fact: f_hearth, since_ep: 49, how: "Письмо Яромира"}
+  - {who: Уля, fact: f_tamara_drowned_1985, since_ep: 51, how: "Взгляд в воду"}
+  - {who: Уля, fact: f_seven_minutes, since_ep: 53, how: "Дневник Прасковьи"}
+  - {who: Тамара, fact: f_will, since_ep: 12, how: "Тост Ули"}
+  - {who: Климова, fact: f_tamara_killed_nina, since_ep: 40, how: "Показания Лужина"}

@@ -1,6 +1,6 @@
 // Auditor evaluation on the golden set and seeded holes. Real API calls — run manually.
 // Usage: pnpm eval [--project=muzh_krov] [--genre=revenge_thriller] [--architect=heavy] [--budget=25] [--seeded=all|missed|none]
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import {
@@ -36,7 +36,10 @@ const date = new Date().toISOString().slice(0, 10);
 const projectId = `eval-${project}-${heavy ? 'heavy' : 'default'}-${Date.now()}`;
 db.insert(projects).values({ id: projectId, title: `Оценка ${project}`, genreId: kit.genre.id, budgetLimitUsd: budget }).run();
 
-const seededFile = parse(readFileSync(join(FIXTURES_DIR, 'seeded', `${project}.yaml`), 'utf8')) as { holes: SeededHole[] };
+// A golden project with its own holes (e.g. kupala) has no seeded set: only the producer's list counts.
+const seededPath = join(FIXTURES_DIR, 'seeded', `${project}.yaml`);
+const seededFile = existsSync(seededPath) ? (parse(readFileSync(seededPath, 'utf8')) as { holes: SeededHole[] }) : { holes: [] };
+if (!existsSync(seededPath)) console.log(`Нет fixtures/seeded/${project}.yaml: посеянные дыры не проверяются.`);
 const producer = loadProducerHoles(project);
 if (!producer) console.log(`Нет fixtures/golden/${project}/holes.yaml: метрика «найдено дыр продюсера» будет пустой.`);
 

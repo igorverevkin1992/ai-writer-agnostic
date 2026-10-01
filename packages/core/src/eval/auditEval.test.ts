@@ -7,7 +7,7 @@ import { loadGolden } from '../fixtures.ts';
 import { LlmClient } from '../providers/llm.ts';
 import { FakeProvider, testConfig } from '../providers/testing.ts';
 import type { LlmRequest } from '../providers/types.ts';
-import { renderEvalReport, runAuditEval } from './auditEval.ts';
+import { ProducerHolesFile, renderEvalReport, runAuditEval } from './auditEval.ts';
 import { seedHoles } from './seed.ts';
 
 const kb = loadKb();
@@ -60,7 +60,7 @@ describe('auditor evaluation', () => {
       golden,
       projectId: 'ev',
       seeded,
-      producer: { holes: [{ id: 'p1', holeType: 3, episode: 42, description: 'Почему не в полицию' }, { id: 'p2', holeType: 7, description: 'Возраст Лизы' }], checklist_score: 20 },
+      producer: ProducerHolesFile.parse({ holes: [{ id: 'p1', holeType: 3, episode: 42, description: 'Почему не в полицию' }, { id: 'p2', holeType: 7, description: 'Возраст Лизы' }], checklist_score: 20 }),
     });
     expect(report.findings).toHaveLength(1);
     expect(report.producerFound).toBe(1);

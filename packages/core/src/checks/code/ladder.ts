@@ -205,7 +205,7 @@ export function checkVillainLadder(
       }
       // Public-and-legal takedowns (e.g. ranks 2 and 1) are law by definition: only the others must differ.
       const exempt = v.public_and_legal.includes(a.rank) || v.public_and_legal.includes(b.rank);
-      if (!exempt && a.punishment.type === b.punishment.type) {
+      if (v.varied_punishments && !exempt && a.punishment.type === b.punishment.type) {
         add({
           check: 'villain_ladder.punishment',
           severity: 'major',

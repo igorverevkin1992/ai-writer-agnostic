@@ -18,9 +18,9 @@ export interface ChecklistScore {
 }
 
 /**
- * Scores the season checklist from code check results. Code can fail an item (its rule has
- * blocker or major findings, or any finding when the rule is also judged by a model);
- * it can pass an item only when the rule has no model part. The rest goes to the model-judge.
+ * Scores the season checklist from code check results. Code fails an item when its rule has
+ * blocker or major findings; it passes an item only when the rule has no model part.
+ * The rest (including items with only minor suspicions) goes to the model-judge.
  */
 export function scoreChecklist(checklist: Checklist, rules: RulesFile, result: CodeCheckResult): ChecklistScore {
   const byId = new Map(rules.rules.map((r) => [r.id, r]));
@@ -31,8 +31,9 @@ export function scoreChecklist(checklist: Checklist, rules: RulesFile, result: C
     if (rule && result.evaluatedRules.has(rule.id)) {
       const only = item.only;
       const found = (result.byRule[rule.id] ?? []).filter((f) => !only || only.some((o) => codeMatches(f.check, o)));
-      // A model-judged rule: even a suspicion (e.g. a legal marker) means the item is not done.
-      const bad = rule.check.llm ? found.length > 0 : found.some((f) => f.severity !== 'minor');
+      // Blocker or major findings fail the item. A model-judged rule is never passed by code:
+      // with only suspicions (e.g. a legal marker word) it goes to the judge.
+      const bad = found.some((f) => f.severity !== 'minor');
       status = bad ? 'fail' : rule.check.llm ? 'unknown' : 'ok';
     }
     return { id: item.id, text: item.text, points: item.points, rule: item.rule, status };

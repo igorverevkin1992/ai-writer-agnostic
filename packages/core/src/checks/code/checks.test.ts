@@ -333,10 +333,10 @@ describe('review fixes', () => {
     expect(score.score).toBe(8);
   });
 
-  it('«законный финал» fails on a vigilante marker instead of scoring by code', () => {
+  it('«законный финал» is never passed by code: a vigilante marker sends it to the judge', () => {
     ep(60).event = 'Героиня устраивает самосуд и своими руками наказывает мужа';
     const score = scoreChecklist(kit.checklist, kit.rules, runCodeChecks({ kit, ...p }));
-    expect(score.items.find((i) => i.id === 'C08')?.status).toBe('fail');
+    expect(score.items.find((i) => i.id === 'C08')?.status).toBe('unknown');
   });
 
   it('a legal marker matches «е» written for «ё»', () => {

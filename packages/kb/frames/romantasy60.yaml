@@ -91,6 +91,7 @@ season_frame:
     max_turned_allies: 1
     turned_ally_ranks: [3, 4, 5]
     public_and_legal: [2, 1]
+    varied_punishments: false     # в жанре каждый злодей наказан по закону (рамки продюсера)
   rhythm:
     response_within: 3            # удар → ответ за 1–3 серии
     max_suffering_run: 2          # страдание не больше 2 серий подряд
