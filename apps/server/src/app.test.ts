@@ -27,11 +27,12 @@ const logline = {
   ad_15w: 'Он женился ради её крови.',
 };
 const hole = {
-  holeType: 3,
-  severity: 'blocker',
+  level: 'critical',
   quote: 'Лиза сама возвращается в семью, чтобы спасти сестру',
   viewerQuestion: 'Зритель спросит: почему не в полицию?',
+  whyNoticed: 'Полиция — первое, о чём подумает зритель',
   fixes: ['Показать, почему полиция не поможет'],
+  agentRule: 'Каждое «почему не в полицию» закрывать в кадре',
 };
 
 function reply(req: { task?: string; system?: string }): string {
@@ -45,7 +46,7 @@ function reply(req: { task?: string; system?: string }): string {
     return JSON.stringify({ episodes: golden.plan.episodes.filter((e) => inPart(e.ep)), deviations: golden.plan.deviations.filter((d) => inPart(d.ep)) });
   }
   if (t === 'checklist_judge') return JSON.stringify(confirmChecklist(req.system ?? ''));
-  if (t.startsWith('devil_advocate:3:план, серии 41–50')) return JSON.stringify([hole]);
+  if (t.startsWith('devil_advocate:А:план сезона')) return JSON.stringify([hole]);
   if (t.startsWith('devil_advocate:') || t.startsWith('persona:')) return '[]';
   if (t.startsWith('respond:')) return JSON.stringify({ action: 'cite', fact_id: 'f_dasha_target', explanation: 'Даша' });
   if (t.startsWith('judge:')) return JSON.stringify({ closed: false, reason: 'Не видно в кадре' });

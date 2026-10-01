@@ -422,6 +422,12 @@ export class ProjectMemory {
         resolutionFactId: f.resolutionFactId ?? null,
         rule: f.rule ?? null,
         check: f.check ?? null,
+        category: f.category ?? null,
+        level: f.level ?? null,
+        episodes: f.episodes ?? null,
+        whyNoticed: f.whyNoticed ?? null,
+        agentRule: f.agentRule ?? null,
+        doubt: f.doubt ?? null,
       };
       const { step: _step, ...update } = row;
       void _step;

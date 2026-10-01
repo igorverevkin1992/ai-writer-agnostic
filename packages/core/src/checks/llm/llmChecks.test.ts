@@ -47,10 +47,10 @@ describe('review fixes: model checks', () => {
     plan.episodes[10]!.heroine_action = 'следит за мужем';
     plan.episodes[13]!.heroine_action = 'следит за мужем';
     answer = (req) =>
-      req.task === 'devil_advocate:5:план, серии 11–20'
-        ? [11, 14].map((episode) => ({ holeType: 5, severity: 'major', episode, quote: 'следит за мужем', viewerQuestion: 'Зритель спросит: как?', fixes: ['a'] }))
+      req.task === 'devil_advocate:Б:план сезона'
+        ? [11, 14].map((episode) => ({ level: 'medium', episode, quote: 'следит за мужем', viewerQuestion: 'Зритель спросит: как?', whyNoticed: 'видно', fixes: ['a'], agentRule: 'правило' }))
         : [];
-    const res = await runDevilAdvocate({ llm: client(), kb, kit }, { bible: golden.bible, plan, authorProvider: 'anthropic' }, { holeTypes: [5], personas: false });
+    const res = await runDevilAdvocate({ llm: client(), kb, kit }, { bible: golden.bible, plan, authorProvider: 'anthropic' }, { categories: ['Б'], personas: false });
     expect(res.findings.map((f) => f.episode).sort((a, b) => a! - b!)).toEqual([11, 14]);
   });
 
@@ -79,6 +79,21 @@ describe('review fixes: model checks', () => {
     expect(systems[0]).toContain('Д. Информация.');
     expect(systems[0]).toContain('Каждую улику вести по цепочке «у кого она сейчас»');
     expect(systems[0]).not.toContain('Б. Закон.');
+  });
+
+  it('one hole seen from two categories is one finding with both, in the review format', async () => {
+    const draft = {
+      level: 'high', episodes: '1, 8', quote: golden.plan.episodes[0]!.event, viewerQuestion: 'Зритель спросит: почему?',
+      whyNoticed: 'Это первая серия', fixes: ['Один', 'Два', 'Три'], agentRule: 'Проверять мотив на момент хода',
+    };
+    answer = (req) => (req.task === 'devil_advocate:А:план сезона' || req.task === 'devil_advocate:З:план сезона' ? [draft] : []);
+    const res = await runDevilAdvocate({ llm: client(), kb, kit }, { bible: golden.bible, plan: golden.plan, authorProvider: 'anthropic' }, { categories: ['А', 'З'], personas: false });
+    expect(res.calls).toBe(2);
+    expect(res.findings).toHaveLength(1);
+    expect(res.findings[0]).toMatchObject({
+      category: ['А', 'З'], level: 'high', severity: 'major', episode: 1, episodes: '1, 8',
+      whyNoticed: 'Это первая серия', agentRule: 'Проверять мотив на момент хода', fixes: ['Один', 'Два', 'Три'],
+    });
   });
 });
 

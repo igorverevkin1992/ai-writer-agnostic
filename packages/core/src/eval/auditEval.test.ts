@@ -18,20 +18,21 @@ let db: Db;
 let tasks: string[];
 
 const hole = {
-  holeType: 3,
-  severity: 'blocker',
+  level: 'critical',
   quote: 'Лиза сама возвращается в семью, чтобы спасти сестру',
   viewerQuestion: 'Зритель спросит: почему не в полицию?',
+  whyNoticed: 'Полиция — первое, о чём подумает зритель',
   fixes: ['Показать, почему полиция не поможет'],
+  agentRule: 'Каждое «почему не в полицию» закрывать в кадре',
 };
 
 function reply(req: LlmRequest): string {
   const task = req.task ?? '';
   tasks.push(task);
-  if (task.startsWith('devil_advocate:3:план, серии 41–50')) return JSON.stringify([hole]);
+  if (task.startsWith('devil_advocate:А:план сезона')) return JSON.stringify([hole]);
   if (task.startsWith('devil_advocate:') || task.startsWith('persona:')) return '[]';
   if (task === 'eval_match') {
-    const id = /(devil_advocate\S+) \| тип 3/u.exec(req.system ?? '')?.[1];
+    const id = /(review\.А\S+) \| тип 3/u.exec(req.system ?? '')?.[1];
     return JSON.stringify({ matches: [{ finding_id: id, hole_id: 'p1', real: true, disputed: false, reason: 'Та же дыра' }] });
   }
   if (task.startsWith('respond:')) return JSON.stringify({ action: 'cite', fact_id: 'f_dasha_target', explanation: 'Даша в опасности' });
@@ -77,12 +78,12 @@ describe('auditor evaluation', () => {
     expect(md).toContain('| Опорные точки на своих номерах | 12 из 12 (100%) | 100% ✓ | 100% |');
   });
 
-  it('audits seeded holes with a targeted pass: one hole type, one block', async () => {
+  it('audits seeded holes with a targeted pass: only the categories of the hole type', async () => {
     const [h] = seedHoles(golden, kit, 1).filter((x) => x.holeType === 11 && x.episode);
     await runAuditEval({ llm: client(), kb, kit, golden, projectId: 'ev', seeded: [h!] });
-    const seededPass = tasks.filter((t) => t.startsWith('devil_advocate:11:')).slice(-1)[0];
-    const block = Math.floor((h!.episode! - 1) / 10) * 10 + 1;
-    expect(seededPass).toBe(`devil_advocate:11:план, серии ${block}–${block + 9}`);
+    const after = tasks.slice(tasks.lastIndexOf('eval_match') + 1).filter((t) => t.startsWith('devil_advocate:'));
+    // Hole type 11 (character knowledge) is covered by category Д only.
+    expect(after).toEqual(['devil_advocate:Д:план сезона']);
   });
 
   it('stops on the budget limit and still returns a report', async () => {

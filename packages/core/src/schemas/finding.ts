@@ -4,6 +4,19 @@ import { EpisodeNumber, NonEmpty } from './common.ts';
 export const Controller = z.enum(['logic', 'genre', 'structure', 'consistency', 'production', 'metro', 'legal']);
 export const Severity = z.enum(['blocker', 'major', 'minor']);
 export const FindingStatus = z.enum(['open', 'resolved', 'dismissed']);
+/** Review categories А–П (packages/kb/review/review.yaml). */
+export const ReviewCategory = z.string().regex(/^[А-Я]$/u, 'Категория разбора — одна заглавная буква');
+/** Review level: critical breaks the season, high — the viewer stops believing, medium — an attentive viewer notices, low — a nitpick. */
+export const ReviewLevel = z.enum(['critical', 'high', 'medium', 'low']);
+export type ReviewLevel = z.infer<typeof ReviewLevel>;
+
+/** How a review level gates the pipeline. */
+export const LEVEL_SEVERITY: Record<ReviewLevel, z.infer<typeof Severity>> = {
+  critical: 'blocker',
+  high: 'major',
+  medium: 'major',
+  low: 'minor',
+};
 
 export const Finding = z
   .object({
@@ -15,8 +28,18 @@ export const Finding = z
     /** Mandatory: a finding without a quote is discarded. */
     quote: NonEmpty,
     viewerQuestion: NonEmpty,
-    fixes: z.array(NonEmpty).min(1).max(2),
+    fixes: z.array(NonEmpty).min(1).max(3),
     status: FindingStatus,
+    /** Review fields (the hole review format). */
+    category: z.array(ReviewCategory).optional(),
+    level: ReviewLevel.optional(),
+    /** All episodes the hole touches, e.g. "3, 10, 18–19". */
+    episodes: NonEmpty.optional(),
+    whyNoticed: NonEmpty.optional(),
+    /** The general principle behind the hole: a check for the agent. */
+    agentRule: NonEmpty.optional(),
+    /** The reviewer is not sure it is a hole. */
+    doubt: z.boolean().optional(),
     resolutionFactId: NonEmpty.optional(),
     /** Genre rule this finding breaks, e.g. "R08". */
     rule: NonEmpty.optional(),

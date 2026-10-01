@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { Fact, KnowledgeEntry } from '../../schemas/bible.ts';
 import { NonEmpty } from '../../schemas/common.ts';
-import { Severity } from '../../schemas/finding.ts';
+import { ReviewCategory, ReviewLevel, Severity } from '../../schemas/finding.ts';
 
 /** A finding as the auditor model writes it; code adds id, controller and status. */
 export const FindingDraft = z.object({
@@ -14,6 +14,27 @@ export const FindingDraft = z.object({
 });
 export type FindingDraft = z.infer<typeof FindingDraft>;
 export const FindingDrafts = z.array(FindingDraft);
+
+/**
+ * A hole as the reviewer writes it, in the format of the reference review: level, the place,
+ * why the viewer or producer notices, 2–3 fixes, the general rule for the agent.
+ */
+export const ReviewDraft = z.object({
+  level: ReviewLevel,
+  /** Other categories this hole also belongs to; the pass category is added by code. */
+  category: z.array(ReviewCategory).default([]),
+  episode: z.int().min(1).optional(),
+  /** All episodes the hole touches, e.g. "3, 10, 18–19". */
+  episodes: NonEmpty.optional(),
+  quote: NonEmpty,
+  viewerQuestion: NonEmpty,
+  whyNoticed: NonEmpty,
+  fixes: z.array(NonEmpty).min(1).max(3),
+  agentRule: NonEmpty,
+  doubt: z.boolean().default(false),
+});
+export type ReviewDraft = z.infer<typeof ReviewDraft>;
+export const ReviewDrafts = z.array(ReviewDraft);
 
 /** The author answers a finding only with a fact from the base or a new fact. */
 export const AuthorReply = z

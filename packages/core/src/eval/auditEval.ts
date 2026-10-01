@@ -14,11 +14,8 @@ import { renderPrompt, schemaText } from '../prompts/render.ts';
 import { ROLE_NAMES, type ProviderName, type RoleName } from '../providers/config.ts';
 import { BudgetExceededError } from '../providers/errors.ts';
 import type { LlmClient } from '../providers/llm.ts';
-import type { Finding } from '../schemas/finding.ts';
+import { ReviewCategory, ReviewLevel, type Finding } from '../schemas/finding.ts';
 import { withHole, type SeededHole } from './seed.ts';
-
-/** Review categories А–П (docs/hole_review_prompt.md). */
-export const ReviewCategory = z.enum(['А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ж', 'З', 'И', 'К', 'Л', 'М', 'Н', 'О', 'П']);
 
 export const ProducerHole = z.object({
   id: z.string().min(1),
@@ -28,7 +25,7 @@ export const ProducerHole = z.object({
   episode: z.int().min(1).optional(),
   /** All episodes the hole touches, as written in the review, e.g. "3, 10, 18–19". */
   episodes: z.string().optional(),
-  severity: z.enum(['critical', 'high', 'medium', 'low']).optional(),
+  severity: ReviewLevel.optional(),
   /** The reviewer was not sure it is a hole. */
   doubt: z.boolean().default(false),
   description: z.string().min(1),

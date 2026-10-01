@@ -14,7 +14,7 @@ export interface FindingInput {
   quote: string;
   /** What the viewer will ask, without the "Зритель спросит:" prefix. */
   question: string;
-  fixes: [string] | [string, string];
+  fixes: [string] | [string, string] | [string, string, string];
 }
 
 /** Stable short hash so that re-running checks yields the same finding ids. */

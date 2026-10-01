@@ -164,10 +164,10 @@ describe('Finding', () => {
   it('requires a quote', () => {
     expect(issuePaths(Finding.safeParse({ ...sampleFinding, quote: '' }))).toEqual(['quote']);
   });
-  it('allows one or two fixes', () => {
+  it('allows one to three fixes, as in the hole review', () => {
     expect(Finding.safeParse({ ...sampleFinding, fixes: [] }).success).toBe(false);
-    expect(Finding.safeParse({ ...sampleFinding, fixes: ['a', 'b'] }).success).toBe(true);
-    expect(Finding.safeParse({ ...sampleFinding, fixes: ['a', 'b', 'c'] }).success).toBe(false);
+    expect(Finding.safeParse({ ...sampleFinding, fixes: ['a', 'b', 'c'] }).success).toBe(true);
+    expect(Finding.safeParse({ ...sampleFinding, fixes: ['a', 'b', 'c', 'd'] }).success).toBe(false);
   });
   it('requires a fact reference to dismiss', () => {
     expect(issuePaths(Finding.safeParse({ ...sampleFinding, status: 'dismissed' }))).toEqual(['resolutionFactId']);

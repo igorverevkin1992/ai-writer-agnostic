@@ -28,7 +28,7 @@ const DemoScript = z.object({
   polish_line: z.string(),
   concepts: z.array(z.unknown()).length(3),
   logline: z.record(z.string(), z.unknown()),
-  audit: z.object({ hole_type: z.int(), block: z.string(), finding: z.unknown() }),
+  audit: z.object({ category: z.string(), block: z.string(), finding: z.unknown() }),
   respond: z.unknown(),
   judge: z.unknown(),
 });
@@ -150,7 +150,7 @@ function answer(g: Golden, task: string, req: LlmRequest): unknown {
     case 'extract_facts':
       return { facts: G.bible.facts, knowledge: [] };
     case 'devil_advocate':
-      return a === String(d.audit.hole_type) && b.includes(d.audit.block) ? [d.audit.finding] : [];
+      return a === d.audit.category && b.includes(d.audit.block) ? [d.audit.finding] : [];
     case 'persona':
       return [];
     case 'respond':

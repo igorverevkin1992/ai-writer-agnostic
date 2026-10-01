@@ -200,6 +200,13 @@ export const findings = sqliteTable(
     check: text('check'),
     /** Verdict of the cross-family judge, used in quality evaluation. */
     verdict: text('verdict'),
+    /** Hole review fields: categories А–П, level, episodes, why noticed, rule for the agent, doubt. */
+    category: json<string[]>('category'),
+    level: text('level'),
+    episodes: text('episodes'),
+    whyNoticed: text('why_noticed'),
+    agentRule: text('agent_rule'),
+    doubt: integer('doubt', { mode: 'boolean' }),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.projectId, t.id] })],

@@ -209,6 +209,8 @@ export const ReviewMethod = z.strictObject({
         /** Hole types of holes/catalog.yaml whose audit pass gets this category's rules. */
         hole_types: z.array(z.int().min(1).max(11)).min(1),
         rules: z.array(Text).min(1),
+        /** This category also gets the code-made «who was near this event?» questions. */
+        with_notice_questions: z.boolean().default(false),
       }),
     )
     .min(1),

@@ -62,6 +62,8 @@ export function planBlocks(plan: SeasonPlan, size: number): AuditBlock[] {
     const b = chunk.at(-1)!.ep;
     out.push({ label: `план, серии ${a}–${b}`, text: chunk.map(episodeLine).join('\n'), episodes: [a, b] });
   }
+  // The whole season in one block is simply «the season plan».
+  if (out.length === 1) out[0]!.label = 'план сезона';
   return out;
 }
 

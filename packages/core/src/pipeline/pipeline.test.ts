@@ -77,13 +77,14 @@ function llm(config = testConfig()) {
 }
 
 const dasha = {
-  holeType: 3,
-  severity: 'blocker',
+  level: 'critical',
   quote: 'Лиза сама возвращается в семью, чтобы спасти сестру',
   viewerQuestion: 'Зритель спросит: почему она не идёт в полицию?',
-  fixes: ['Показать, почему полиция не поможет'],
+  whyNoticed: 'Полиция — первое, о чём подумает зритель',
+  fixes: ['Показать, почему полиция не поможет', 'Дать Лизе план, ради которого она возвращается'],
+  agentRule: 'Каждое «почему не в полицию» закрывать в кадре',
 };
-const invented = { ...dasha, quote: 'Лиза улетает в Париж', severity: 'major' };
+const invented = { ...dasha, quote: 'Лиза улетает в Париж', level: 'high' };
 
 let projectId: string;
 const deps = () => ({ db, llm: llm(), kb, projectId });
@@ -129,52 +130,52 @@ describe('steps 1–4 end to end', () => {
   it('idea → concepts → logline → bible → season plan', async () => {
     await throughLogline();
 
-    script.auditBible = (t) => (t === '5' ? [{ ...dasha, holeType: 5, quote: 'Кровь забирают под видом лечения' }] : []);
+    script.auditBible = (t) => (t === 'В' ? [{ ...dasha, quote: 'Кровь забирают под видом лечения' }] : []);
     const bible = await runStep(deps(), 'bible');
     expect(bible.status).toBe('draft');
-    expect(bible.findings).toMatchObject([{ holeType: 5, status: 'resolved', resolutionFactId: 'f_dasha_target', controller: 'logic' }]);
+    expect(bible.findings).toMatchObject([{ holeType: 1, category: ['В'], level: 'critical', status: 'resolved', resolutionFactId: 'f_dasha_target', controller: 'logic' }]);
     approveStep(deps(), 'bible');
 
-    script.auditPlan = (t, label) => (t === '3' && label.includes('41–50') ? [dasha, invented] : []);
+    script.auditPlan = (t) => (t === 'А' ? [dasha, invented] : []);
     const plan = await runStep(deps(), 'season_plan');
     expect(plan.status).toBe('draft');
     expect(plan.checklist?.passed).toBe(true);
-    expect(plan.findings).toMatchObject([{ holeType: 3, episode: 42, status: 'resolved' }]);
+    expect(plan.findings).toMatchObject([{ holeType: 3, category: ['А'], episode: 42, status: 'resolved' }]);
     approveStep(deps(), 'season_plan');
 
     const states = new Pipeline(db, projectId).states().slice(0, 4).map((s) => s.status);
     expect(states).toEqual(['approved', 'approved', 'approved', 'approved']);
   });
 
-  it('audits the plan: 11 hole types × 6 blocks of 10 episodes + 5 personas', async () => {
+  it('audits the whole plan once per review category А–П + 5 personas', async () => {
     await throughLogline();
     await runStep(deps(), 'bible');
     approveStep(deps(), 'bible');
     calls = [];
     await runStep(deps(), 'season_plan');
-    expect(calls.filter((c) => c.startsWith('devil_advocate:'))).toHaveLength(66);
+    expect(calls.filter((c) => c.startsWith('devil_advocate:'))).toHaveLength(15);
     expect(calls.filter((c) => c.startsWith('persona:'))).toHaveLength(5);
-    expect(calls).toContain('devil_advocate:7:план, серии 51–60');
+    expect(calls).toContain('devil_advocate:Г:план сезона');
   });
 
   it('an unresolved blocker keeps the step in needs_fix and blocks approval', async () => {
     await throughLogline();
     await runStep(deps(), 'bible');
     approveStep(deps(), 'bible');
-    script.auditPlan = (t, label) => (t === '3' && label.includes('41–50') ? [dasha] : []);
+    script.auditPlan = (t) => (t === 'А' ? [dasha] : []);
     script.judgeClosed = false;
     const run = await runStep(deps(), 'season_plan');
     expect(run.status).toBe('needs_fix');
     expect(() => approveStep(deps(), 'season_plan')).toThrow('открытых блокирующих замечаний — 1');
     const stored = new ProjectMemory(db, projectId).findingsOf('season_plan', 'open');
-    expect(stored).toMatchObject([{ holeType: 3, verdict: 'Ответ виден в кадре', severity: 'blocker' }]);
+    expect(stored).toMatchObject([{ holeType: 3, verdict: 'Ответ виден в кадре', severity: 'blocker', level: 'critical', category: ['А'] }]);
   });
 
   it('a new fact that breaks character knowledge is rejected without asking the judge', async () => {
     await throughLogline();
     await runStep(deps(), 'bible');
     approveStep(deps(), 'bible');
-    script.auditPlan = (t, label) => (t === '3' && label.includes('41–50') ? [dasha] : []);
+    script.auditPlan = (t) => (t === 'А' ? [dasha] : []);
     script.respond = {
       action: 'new_fact',
       fact: { id: 'f_police', text: 'Полиция куплена семьёй', since_ep: 40 },
@@ -239,7 +240,7 @@ describe('review fixes: pipeline', () => {
   it('a run that fails after saving a new result leaves a blocker and asks to run again', async () => {
     await throughBible();
     script.auditPlan = (t) => {
-      if (t === '4') throw new Error('сеть упала');
+      if (t === 'Г') throw new Error('сеть упала');
       return [];
     };
     await expect(runStep(deps(), 'season_plan')).rejects.toThrow();
@@ -298,7 +299,7 @@ describe('review fixes: pipeline', () => {
 
   it('findings of the old version that the new run did not raise are closed', async () => {
     await throughBible();
-    script.auditPlan = (t, label) => (t === '3' && label.includes('41–50') ? [dasha] : []);
+    script.auditPlan = (t) => (t === 'А' ? [dasha] : []);
     script.judgeClosed = false;
     expect((await runStep(deps(), 'season_plan')).status).toBe('needs_fix');
     script.auditPlan = () => [];
@@ -310,7 +311,7 @@ describe('review fixes: pipeline', () => {
 
   it('a closed finding cannot be dismissed', async () => {
     await throughBible();
-    script.auditPlan = (t, label) => (t === '3' && label.includes('41–50') ? [dasha] : []);
+    script.auditPlan = (t) => (t === 'А' ? [dasha] : []);
     await runStep(deps(), 'season_plan');
     const done = new ProjectMemory(db, projectId).findingsOf('season_plan', 'resolved')[0]!;
     expect(() => dismissByProducer(db, projectId, done.id, 'f_dasha_target')).toThrow('Замечание уже закрыто');
