@@ -1,6 +1,9 @@
 import { genreKit, loadKb } from '@aiw/kb';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { loadGolden } from '../../fixtures.ts';
+import { parse } from 'yaml';
+import { FIXTURES_DIR, loadGolden } from '../../fixtures.ts';
 import { knowledgeBlock } from '../../prompts/render.ts';
 import { bibleText, episodeLine } from '../llm/texts.ts';
 import { scoreChecklist } from './checklist.ts';
@@ -83,5 +86,15 @@ describe('genre pack: dark Slavic fantasy myth', () => {
     );
     // Monsters are beaten inside their blocks and leave the story by the genre's ways.
     expect(codes.filter((c) => c.startsWith('villain_ladder.takedown') || c.startsWith('villain_ladder.punishment') || c.startsWith('limits'))).toEqual([]);
+  });
+
+  it('the script doctor\'s 58 fixes are data, and their lessons are review rules', () => {
+    const file = parse(readFileSync(join(FIXTURES_DIR, 'golden', 'tri_luny', 'fixes.yaml'), 'utf8')) as {
+      pairs: { id: number; before: string; after: string; why: string; holes: string[] }[];
+    };
+    expect(file.pairs.map((p) => p.id)).toEqual(Array.from({ length: 58 }, (_, i) => i + 1));
+    for (const p of file.pairs) expect(p.before && p.after && p.why).toBeTruthy();
+    const rules = kb.review.categories.flatMap((c) => c.rules);
+    expect(rules).toContain('Одна константа — одно число во всём документе: барьер, срок, возраст, число голосов называть одинаково везде');
   });
 });
