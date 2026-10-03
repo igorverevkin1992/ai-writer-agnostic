@@ -70,23 +70,23 @@ describe('genre pack: dark Slavic fantasy myth', () => {
     expect(knowledgeBlock(kb, genreKit(kb, 'romantasy_revenge'))).toContain('fated_forbidden_alpha');
   });
 
-  it('the reference «Три луны» keeps its holes: code finds where the concept parts with the genre', () => {
+  it('the genre follows «Три луны»: its frame and seven laws pass, only real holes stay', () => {
     const tri = loadGolden('tri_luny');
     const codes = runCodeChecks({ kit, bible: tri.bible, plan: tri.plan }).findings.map((f) => `${f.check}${f.episode ? `@${f.episode}` : ''}`);
-    expect(codes).toEqual(
-      expect.arrayContaining([
-        'world_rules.count',
-        'season_frame.anchor.rules_recount@4',
-        'season_frame.anchor.paywall_hook@8',
-        'season_frame.anchor.paywall_answer@9',
-        'season_frame.anchor.companion_cost@30',
-        'villain_ladder.counterstrike@8',
-        'villain_ladder.counterstrike@18',
-        'rhythm.hook_repeat@27',
-      ]),
-    );
-    // Monsters are beaten inside their blocks and leave the story by the genre's ways.
-    expect(codes.filter((c) => c.startsWith('villain_ladder.takedown') || c.startsWith('villain_ladder.punishment') || c.startsWith('limits'))).toEqual([]);
+    expect(codes).toEqual(expect.arrayContaining(['villain_ladder.counterstrike@8', 'villain_ladder.counterstrike@18', 'rhythm.hook_repeat@27']));
+    expect(codes.filter((c) => /^(season_frame|world_rules|villain_ladder\.(takedown|punishment)|limits)/u.test(c))).toEqual([]);
+  });
+
+  it('any number of world rules, if each is said in an episode and fires later', () => {
+    const tri = loadGolden('tri_luny');
+    const bible = structuredClone(tri.bible);
+    bible.world_rules[0]!.plays_eps = [];
+    bible.world_rules[1]!.plays_eps = [2];
+    const found = runCodeChecks({ kit, bible, plan: tri.plan }).findings.filter((f) => f.check === 'world_rules.unshown');
+    expect(found.map((f) => f.quote)).toEqual([
+      'Закон «Долг платит должник»: нет — серия, где он срабатывает',
+      'Закон «Ложь кормит лес, правда его останавливает»: срабатывает в 2-й, а произнесён только в 20-й',
+    ]);
   });
 
   it('the script doctor\'s 58 fixes are data, and their lessons are review rules', () => {

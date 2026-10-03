@@ -76,7 +76,7 @@ describe('server', () => {
     expect((await get('/api/genres')).json()).toEqual([
       expect.objectContaining({ id: 'revenge_thriller', episodes: 60, free: 8, villains: 5, rules: 18 }),
       expect.objectContaining({ id: 'romantasy_revenge', title: 'Женское ромэнтэзи с реваншем и наказанием подлеца', episodes: 60, villains: 5, rules: 18 }),
-      expect.objectContaining({ id: 'slavic_myth', title: 'Тёмное славянское фэнтези-миф', episodes: 60, free: 10, villains: 5, rules: 17 }),
+      expect.objectContaining({ id: 'slavic_myth', title: 'Тёмное славянское фэнтези-миф', episodes: 60, free: 8, villains: 5, rules: 17 }),
     ]);
   });
 

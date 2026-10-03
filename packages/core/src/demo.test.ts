@@ -67,8 +67,8 @@ describe('demo mode answers with the golden project of the genre', () => {
     expect(memory.currentBible()?.characters[0]?.name).toBe('Гордей');
     const open = memory.findingsOf('season_plan', 'open');
     expect(open.map((f) => f.quote)).toContain('Твой староста сам просил тебя назад не пускать');
-    // The reference keeps the producer's own choices: the paywall after episode 8.
-    expect(open.map((f) => f.check)).toContain('season_frame.anchor.paywall_hook');
+    // The genre follows the reference: its paywall after episode 8 is no hole.
+    expect(open.map((f) => f.check)).not.toContain('season_frame.anchor.paywall_hook');
     expect(memory.latestArtifact('review:season_plan')).toMatchObject({ summary: { dangers: [{ where: expect.stringContaining('Василисе семь') }, {}] } });
   });
 });

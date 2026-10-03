@@ -8,9 +8,9 @@ items:
   - {id: C01, text: "Образ мира в первых 3 секундах серии", points: 1, rule: R02}
   - {id: C02, text: "Одна смена (одно событие) за серию", points: 1, rule: R10}
   - {id: C03, text: "Конец серии — вопрос", points: 1, rule: R10}
-  - {id: C04, text: "10-я серия кончается вопросом", points: 1, rule: R05, only: [paywall_hook.content, season_frame.anchor.paywall_hook]}
-  - {id: C05, text: "Ответ на вопрос 10-й — в 11–12-й", points: 1, rule: R05, only: [season_frame.anchor.paywall_answer]}
-  - {id: C06, text: "5-я серия пересчитывает правила", points: 1, rule: R03, only: [season_frame.anchor.rules_recount]}
+  - {id: C04, text: "8-я серия кончается вопросом, который нельзя угадать", points: 1, rule: R05, only: [paywall_hook.content, season_frame.anchor.paywall_hook]}
+  - {id: C05, text: "Каждая из 9–11-й даёт то, чего бесплатно не было", points: 1, rule: R05, only: [season_frame.anchor.paywall_answer]}
+  - {id: C06, text: "4-я серия называет правила: срок и цена", points: 1, rule: R03, only: [season_frame.anchor.rules_recount]}
   - {id: C07, text: "Мидпоинт в 30-й", points: 1, rule: R06, only: [season_frame.anchor.midpoint]}
   - {id: C08, text: "Пинч 1 около 22-й", points: 1, rule: R06, only: [season_frame.anchor.pinch1]}
   - {id: C09, text: "Пинч 2 около 37-й", points: 1, rule: R06, only: [season_frame.anchor.pinch2]}

@@ -85,6 +85,10 @@ export const WorldRule = z.object({
   cannot: NonEmpty,
   who_knows: z.array(NonEmpty).default([]),
   practical_effect: NonEmpty,
+  /** Episodes where the viewer hears the rule said. */
+  heard_eps: z.array(EpisodeNumber).default([]),
+  /** Episodes where the rule fires with a visible consequence. */
+  plays_eps: z.array(EpisodeNumber).default([]),
 });
 export type WorldRule = z.infer<typeof WorldRule>;
 

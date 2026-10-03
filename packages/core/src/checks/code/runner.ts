@@ -89,8 +89,9 @@ export const CODE_CHECKS: Record<string, CodeCheck> = {
     },
   },
   world_rules: {
-    always: false, codes: ['count'],
-    run: ({ bible }, p) => bible && checkWorldRules(bible, { min: num(p, 'min') ?? 1, max: num(p, 'max') ?? Infinity }),
+    always: false, codes: ['count', 'unshown'],
+    run: ({ bible }, p) =>
+      bible && checkWorldRules(bible, { min: num(p, 'min') ?? 1, max: num(p, 'max') ?? Infinity, requireEpisodes: p.require_episodes === true }),
   },
   secret_turns: {
     always: false, codes: ['count', 'near'],

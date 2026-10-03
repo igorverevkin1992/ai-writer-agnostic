@@ -16,7 +16,10 @@ export function bibleText(b: Bible, terms: GenreTerms = DEFAULT_TERMS): string {
   const lines: string[] = [];
   lines.push(terms.wound.toUpperCase(), `${b.betrayal.who}: ${b.betrayal.what}. Почему: ${b.betrayal.why}. Год: ${b.betrayal.year}.`);
   lines.push('', 'ПРАВИЛА МИРА');
-  for (const r of b.world_rules) lines.push(`${r.rule}. Причина: ${r.why}. Цена: ${r.cost}. Нельзя: ${r.cannot}. Эффект: ${r.practical_effect}.`);
+  for (const r of b.world_rules) {
+    const eps = [r.heard_eps.length && `Звучит в сериях ${r.heard_eps.join(', ')}`, r.plays_eps.length && `срабатывает в ${r.plays_eps.join(', ')}`].filter(Boolean);
+    lines.push(`${r.rule}. Причина: ${r.why}. Цена: ${r.cost}. Нельзя: ${r.cannot}. Эффект: ${r.practical_effect}.${eps.length ? ` ${eps.join('; ')}.` : ''}`);
+  }
   lines.push('', 'ПЕРСОНАЖИ');
   for (const c of b.characters) {
     lines.push(`${c.name} (${c.birth_year} г. р.${c.regular ? '' : ', эпизодический'}): ${c.look}. Призрак: ${c.ghost}. Хочет: ${c.want}. Маска: ${c.mask}. Сила: ${c.hidden_power}.`);
