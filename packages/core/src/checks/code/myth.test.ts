@@ -10,6 +10,7 @@ import { scoreChecklist } from './checklist.ts';
 import { checkVillainLadder } from './ladder.ts';
 import { checkRhythm } from './rhythm.ts';
 import { runCodeChecks } from './runner.ts';
+import { loadProducerHoles } from '../../eval/auditEval.ts';
 import { checkPaywallHook } from './story.ts';
 
 const kb = loadKb();
@@ -96,5 +97,19 @@ describe('genre pack: dark Slavic fantasy myth', () => {
     for (const p of file.pairs) expect(p.before && p.after && p.why).toBeTruthy();
     const rules = kb.review.categories.flatMap((c) => c.rules);
     expect(rules).toContain('Одна константа — одно число во всём документе: барьер, срок, возраст, число голосов называть одинаково везде');
+  });
+
+  it('version 1 of «Три луны» and the script doctor\'s review make an eval set', () => {
+    const v1 = loadGolden('tri_luny_v1');
+    expect(v1.plan.episodes).toHaveLength(60);
+    // A map row over several episodes: one event, one cliffhanger at its end — as the concept has it.
+    expect(v1.plan.episodes.filter((e) => e.ep >= 13 && e.ep <= 21).map((e) => e.cliffhanger).filter((c) => c !== '—')).toHaveLength(1);
+    const holes = loadProducerHoles('tri_luny_v1')!;
+    expect(holes.holes).toHaveLength(85);
+    expect(new Set(holes.holes.map((h) => h.id)).size).toBe(85);
+    expect(holes.holes.find((h) => h.id === 'v1_П1')?.category).toEqual(['Н']);
+    // Code alone already finds some of the doctor's holes in version 1.
+    const codes = new Set(runCodeChecks({ kit, bible: v1.bible, plan: v1.plan }).findings.map((f) => f.check));
+    for (const c of ['villain_ladder.on_screen', 'villain_ladder.punishment', 'guns.not_fired', 'rhythm.hook_repeat', 'rhythm.suffering']) expect(codes).toContain(c);
   });
 });

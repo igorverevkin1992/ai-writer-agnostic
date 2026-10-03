@@ -1,0 +1,77 @@
+# Библия «Три луны», версия 1 — точно по концепции версии 1 (concept.md), со всеми её дырами:
+# на ней агента сверяют с разбором скрипт-доктора (review_doctor.md, holes.yaml). Не исправлять.
+# Действие — Русь X–XI века «без точной даты»: годы условные, 1100 — год сезона.
+# Годы рождения существ (Баюн, Леший) условные. В концепции нет ни фактов, ни того, кто что знает:
+# их Claude Code выписал из текста как есть, с пробелами («Любава узнала» — от кого, не сказано).
+world_rules:
+  - {rule: Дитя за дитя, why: Лес мстит за своё дитя, cost: "Убил дитя леса — лес возьмёт твоё, в том же возрасте", cannot: Откупиться не дитём, who_knows: [Баюн, Леший], practical_effect: Основа сюжета}
+  - {rule: Долг не стареет, why: Лес помнит неоплаченное, cost: "Пока не заплачено, лес берёт по куску каждый год", cannot: Переждать долг, who_knows: [Баюн, Леший, Пахом], practical_effect: Почему лес у плетня деревни}
+  - {rule: Три луны, why: Срок, за который лес делает взятого своим, cost: "Через три луны в лесу человек становится лесным навсегда", cannot: Вернуть взятого после срока, who_knows: [Баюн, Леший], practical_effect: "Срок сезона, виден по луне: полная в 12, 36, 55"}
+  - {rule: Имя в лесу, why: Имя — нить памяти, cost: "Назвал имя близкого — лес забирает память о тебе", cannot: Позвать дочь по имени, who_knows: [Баюн], practical_effect: Серия 22}
+  - {rule: Железо зовёт, why: Нечисть чует убийцу своих, cost: "Убил нечисть — вся нечисть вокруг знает, где ты", cannot: Пройти незамеченным после боя железом, who_knows: [Баюн], practical_effect: Почему лес идёт на деревню в финале}
+  - {rule: За проход в Навь платят даром, why: Яга — страж границы, cost: "Яга берёт то, что человек умеет лучше всего", cannot: Пройти даром, who_knows: [Баюн], practical_effect: Серии 37–48}
+  - {rule: Лес слышит правду, why: Правда и ложь — пища леса, cost: "Признание вслух останавливает лес, ложь его кормит", cannot: Остановить лес без признания, who_knows: [Баюн, Леший], practical_effect: Финал}
+characters:
+  - {name: Гордей, birth_year: 1062, look: "Дружинник, 38 лет; иссечённый каплевидный щит с красным полем, шрам через бровь, седая прядь", ghost: "Перед уходом на войну убил «зверя» за плату старосты. Это был сын лешего. Он не знает", lie: "Сила решает всё", truth: "За всё платят", want: "Дойти домой и вернуть дочь", need: "Заплатить долг", arc_type: положительная, mask: "Воин, вернувшийся с войны", hidden_power: "До войны — охотник на зверя и нечисть", knows_at_start: [], speech: "Коротко, по-воински", limits: ["Кота видит только он"]}
+  - {name: Василиса, birth_year: 1093, look: "Дочь, 7 лет; красная лента в косе; с каждым блоком глаза зеленеют", ghost: "В лесу забывает дом; лес к ней добр — в этом ужас", lie: "—", truth: "—", want: "Чтобы отец пришёл", need: "—", arc_type: плоская, mask: "—", hidden_power: "—", knows_at_start: [], speech: "—", limits: ["Знает отца по рассказам матери"]}
+  - {name: Любава, birth_year: 1067, look: "Жена, 33 года; белый платок, свеча в окне каждую ночь", ghost: "Десять лет держала дом и дочь одна", lie: "Молчание бережёт мужа", truth: "Правда останавливает лес", want: "Дождаться и сохранить семью", need: "Сказать правду", arc_type: "от молчания к правде", mask: "Жена, которая ждёт", hidden_power: "—", knows_at_start: [f_leshonok], speech: "—", limits: []}
+  - {name: Баюн, birth_year: 900, look: "Чёрный кот с белым ухом, без человеческой мимики", ghost: "Был стражем границы и пропустил лешонка к людям", lie: "—", truth: "—", want: "Вернуться в лес, откуда его изгнали", need: "—", arc_type: "плоская: совесть и юмор", mask: "Кот", hidden_power: "Говорит, язвит, знает лес", knows_at_start: [f_debt, f_leshonok, f_bayun_let], speech: "Язвит", limits: []}
+  - {name: Нежата, birth_year: 1081, look: "Молодой дружинник, 19 лет; кольчуга не по росту, топор за поясом", ghost: "Ему некуда идти: его село сожгли", lie: "Сила решает всё", truth: "За всё платят", want: "Стать таким, как Гордей", need: "—", arc_type: "отрицательная → спасённая", mask: "—", hidden_power: "Топор", knows_at_start: [], speech: "—", limits: []}
+  - {name: Леший, birth_year: 800, look: "Никогда не виден целиком: рост с сосну, кора вместо лица, зелёные огни глаз, нет тени", ghost: "Сам отпустил сына к людям и не уберёг", lie: "—", truth: "—", want: "Платы по закону", need: "—", arc_type: "зеркало Гордея", mask: "Не злодей, а судья и отец", hidden_power: "Весь лес", knows_at_start: [f_debt, f_leshonok], speech: "—", limits: []}
+  - {name: Пахом, birth_year: 1040, look: "Староста, 60 лет; бобровая шапка, посох", ghost: "Знал, кого нанимает убить", lie: "Деревня выживет любой ценой", truth: "—", want: "Чтобы деревня выжила любой ценой", need: "—", arc_type: "человек страшнее нечисти", mask: "Глава деревни", hidden_power: "Власть старосты", knows_at_start: [f_leshonok, f_pakhom_knew], speech: "—", limits: []}
+villains:
+  - {name: Кикимора, rank: 5, role: deceiver, threat: "Тело", motive: "Болотная деревня отдаёт ей чужаков", own_plan: "Заманить на гать ложной Василисой", resources: "Туман, нити, шёпот, болотная деревня", weakness: "Огонь", on_screen_ep: 6, mask: "Ложная Василиса", first_strike_ep: 5, takedown_ep: 8, punishment: {type: defeated, public: false}, key_to_next: "След-ветка и шёпот: «Ты убил его сына»"}
+  - {name: Водяной, rank: 4, role: bargainer, threat: "Оружие", motive: "Разбойники кормят его путниками", own_plan: "Требовать откуп за переправу", resources: "Река", weakness: "Откуп", on_screen_ep: 13, mask: "Глаза под плотом", first_strike_ep: 13, takedown_ep: 21, punishment: {type: bargain, public: false}, key_to_next: "Имя лешонка и где он похоронен"}
+  - {name: Навьи, rank: 3, role: communal_guilt, threat: "Правда", motive: "Выжившие не хоронили мёртвых, чтобы те стерегли добро", own_plan: "Не отпускать без платы", resources: "Ночь; железо их не берёт", weakness: "Огонь и имя", on_screen_ep: 25, mask: "Мёртвые среди головешек", first_strike_ep: 25, takedown_ep: 36, punishment: {type: bargain, public: false}, key_to_next: "«Деревня знала». Полная правда"}
+  - {name: Яга, rank: 2, role: gatekeeper, threat: "Дар", motive: "Проход в Навь платится даром", own_plan: "Три испытания вместо битвы", resources: "Избушка, печь", weakness: "Пропускает того, кто прошёл испытания", on_screen_ep: 37, mask: "Страж Нави", first_strike_ep: 38, takedown_ep: 48, punishment: {type: bargain, public: false}, key_to_next: "Путь к лешему и закон «лес слышит правду»"}
+  - {name: Леший, rank: 1, role: world_power, threat: "Душа", link_to_ghost: "Гордей убил его сына", motive: "Платы по закону", own_plan: "Взять дитя за дитя; осада деревни", resources: "Весь лес, корни, навьи", weakness: "Огонь; признание вслух", on_screen_ep: 56, mask: "Леший выше изб", first_strike_ep: 49, takedown_ep: 58, punishment: {type: bargain, public: true}, key_to_next: "—"}
+betrayal:
+  who: Гордей
+  what: Перед уходом на войну убил «зверя» за плату старосты; зверь оказался сыном лешего, детёнышем. Гордей не знает
+  why: На плату снарядился и назавтра ушёл в дружину
+  year: 1090
+  accomplices: [Пахом]
+  who_else_knew:
+    - {name: Пахом, why_silent: "Убить было проще, чем договариваться с лесом"}
+    - {name: Любава, why_silent: "Молчала, чтобы деревня не выдала мужа лесу"}
+  ep1_second: 100
+secrets:
+  - {layer: 1, truth: "Дочь забрал леший", revealed_ep: 2, goal_from: "дойти домой", goal_to: "дойти домой и вернуть дочь", clues: ["кот: «Её уже нет»"]}
+  - {layer: 2, truth: "Гордей убил сына лешего", revealed_ep: 8, goal_from: "дойти домой и вернуть дочь", goal_to: "дойти домой и вернуть дочь", clues: ["шёпот кикиморы"]}
+  - {layer: 3, truth: "Деревня знала", revealed_ep: 29, goal_from: "дойти домой и вернуть дочь", goal_to: "дойти домой и вернуть дочь", clues: ["мёртвые из родной деревни"]}
+  - {layer: 4, truth: "Староста знал, кого нанимает убить; Любава знала и молчала", revealed_ep: 30, goal_from: "отбить дочь", goal_to: "заплатить долг", clues: []}
+guns:
+  - {id: g_bird, object: "Деревянная птица — подарок дочери, которую он никогда не видел", planted_ep: 1, fired_ep: 60, metro_visible: true}
+  - {id: g_charm, object: "Оберег Любавы", planted_ep: 7, fired_ep: 7, metro_visible: true}
+  - {id: g_shield, object: "Каплевидный щит с зарубками", planted_ep: 4, fired_ep: 31, metro_visible: true}
+  - {id: g_ribbon, object: "Красная лента Василисы", planted_ep: 5, fired_ep: null, metro_visible: true}
+  - {id: g_salt, object: "Соль по кругу", planted_ep: 1, fired_ep: null, metro_visible: true}
+  - {id: g_wormwood, object: "Полынь", planted_ep: 1, fired_ep: null, metro_visible: true}
+  - {id: g_inside_out, object: "Вывернутая одежда", planted_ep: 1, fired_ep: null, metro_visible: true}
+  - {id: g_blood, object: "Кровь воина — каждая капля день жизни", planted_ep: 1, fired_ep: null, metro_visible: false}
+  - {id: g_bread_salt, object: "Хлеб-соль на пне", planted_ep: 1, fired_ep: null, metro_visible: true}
+  - {id: g_grave, object: "Где похоронен лешонок", planted_ep: 21, fired_ep: null, metro_visible: false}
+timeline:
+  present_year: 1100
+  events:
+    - {id: e_pakhom_born, year: 1040, kind: birth, text: "Рождение Пахома", participants: [Пахом]}
+    - {id: e_gordey_born, year: 1062, kind: birth, text: "Рождение Гордея", participants: [Гордей]}
+    - {id: e_lyubava_born, year: 1067, kind: birth, text: "Рождение Любавы", participants: [Любава]}
+    - {id: e_nezhata_born, year: 1081, kind: birth, text: "Рождение Нежаты", participants: [Нежата]}
+    - {id: e_bayun_let, year: 1090, text: "Баюн, страж границы, пропускает лешонка к людям", participants: [Баюн]}
+    - {id: e_kill, year: 1090, text: "В деревне пропадает скот; староста нанимает Гордея убить зверя; Гордей убивает сына лешего и назавтра уходит в дружину. Любава беременна", participants: [Гордей, Пахом, Любава], after: [e_bayun_let, e_gordey_born, e_lyubava_born]}
+    - {id: e_fields, year: 1090, text: "Леший приходит за убийцей; староста говорит, что тот не вернётся, и откупается полем за полем", participants: [Пахом, Леший], after: [e_kill]}
+    - {id: e_lyubava_learns, year: 1091, text: "Любава узнаёт правду о лешонке", participants: [Любава], after: [e_kill]}
+    - {id: e_vasilisa_born, year: 1093, kind: birth, text: "Рождение Василисы", participants: [Василиса], after: [e_kill]}
+    - {id: e_taken, year: 1100, text: "Василисе исполняется семь — столько, сколько было лешонку; леший берёт плату сам", participants: [Василиса, Леший], ages: {Василиса: 7}, after: [e_vasilisa_born]}
+    - {id: e_last_battle, year: 1100, text: "Последняя битва войны: строй ломается, дружина гибнет; Гордей и Нежата выживают", participants: [Гордей, Нежата], ages: {Гордей: 38, Нежата: 19}, after: [e_kill]}
+locations: [поле битвы, пепелище, болотная деревня, гать, переправа с плотом, река, омут, сожжённый погост, холм, избушка Яги, Навь, родная деревня, капище, часовня на погосте]
+facts:
+  - {id: f_debt, text: "Лес взял Василису в уплату за сына лешего"}
+  - {id: f_leshonok, text: "«Зверь», которого убил Гордей, — сын лешего"}
+  - {id: f_pakhom_knew, text: "Староста знал, кого нанимает убить"}
+  - {id: f_bayun_let, text: "Баюн пропустил лешонка к людям"}
+knowledge:
+  - {who: Гордей, fact: f_debt, since_ep: 2, how: "Баюн рассказывает"}
+  - {who: Гордей, fact: f_leshonok, since_ep: 9, how: "Ответ на «Чьего сына?»"}
+  - {who: Гордей, fact: f_pakhom_knew, since_ep: 30, how: "Полная правда"}
