@@ -1,0 +1,1216 @@
+# План сезона «Три луны» — точно по концепту продюсера (concept.md, версия 2), со всеми его дырами.
+# Не исправлять. Событие, обрыв и тип обрыва — из карты сезона концепта дословно; название, вопрос,
+# эмоции, действие героя и разметка (настроение, удары, опорные точки) — Claude Code по тексту серий.
+# Опорные точки стоят там, где их ставит концепт (барьер — в 8-й, ответ — в 9-й), даже если каркас жанра говорит иначе.
+episodes:
+- ep: 1
+  title: Стяг
+  event: Последняя битва — победа страшной ценой. Стяг падает, Гордей поднимает его один. Тишина. Двое живых. Из-под кольчуги — оберег и деревянная птица. «Домой»
+  question: Что значит «её уже нет»?
+  emotions:
+  - ярость боя
+  - тишина победы
+  - холод
+  heroine_action: 'Поднимает стяг, выносит Нежату, достаёт оберег и птицу: «Домой»'
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - talisman
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Откровение
+  cliffhanger: 'На поле среди мёртвых чёрный кот: «Домой не спеши. Её уже нет»'
+  acts_on: []
+- ep: 2
+  title: Твой долг
+  event: 'Переправа через реку домой. Кот: дочь взял лес за долг. «Какой долг?» — «Твой». Гордей не верит, но идёт. Брошенные сёла, обереги на дверях. Стычка с мародёрами'
+  question: С кем говорит Гордей?
+  emotions:
+  - неверие
+  - тревога
+  heroine_action: Не верит коту, но идёт домой; отбивается от мародёров
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Узнавание
+  cliffhanger: 'Нежата: «С кем ты говоришь?» Кота видит только Гордей'
+  acts_on: []
+- ep: 3
+  title: Хлеб-соль
+  event: 'Гордей требует доказательств. Кот: «Спроси лес». Хлеб-соль на пне у межевого столба. Л: свеча в окне, пустая постель, лес за частоколом на шаг ближе столба'
+  question: Чей был зверь?
+  emotions:
+  - страх
+  - тоска
+  heroine_action: Требует доказательств и кладёт хлеб-соль на пень
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - ghost
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Эхо
+  cliffhanger: 'Голос леса: «Чей был зверь?»'
+  acts_on: []
+- ep: 4
+  title: Три луны
+  event: 'Правила кота: срок — до рассвета после третьего полнолуния; что лес возьмёт до срока — не отдаст; имя не называть; железо зовёт; лес не ходит за реку; долг платит должник или его кровь. Первая
+    зарубка. Нежата: «Я тебе жизнь должен. Отдам»'
+  question: Как вернуть ту, что тебя не знает?
+  emotions:
+  - отчаяние
+  - решимость
+  heroine_action: Слушает правила кота и делает первую зарубку
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - rules_recount
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Срок
+  cliffhanger: 'Кот: «Она забудет тебя первым. Тебя она и так не знает»'
+  acts_on: []
+- ep: 5
+  title: Болотная деревня
+  event: Болотная деревня. Соль по кругу, ни одного мужчины. Слишком тёплый приём. Нежата хочет остаться на ночь; Гордей уступает
+  question: Куда ведут факелы?
+  emotions:
+  - настороженность
+  - тревога
+  heroine_action: Уступает Нежате и остаётся на ночь
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: Разворот
+  cliffhanger: 'На рассвете дверь открывается: вся деревня с факелами. «Проводим. Короткой дорогой»'
+  acts_on: []
+- ep: 6
+  title: Гать
+  event: Гать в тумане. Провожатые исчезают. Шёпот. Нежата теряется. Впереди на гати — девочка с красной лентой
+  question: Это она?
+  emotions:
+  - надежда
+  - страх
+  heroine_action: Идёт по гати на зов девочки
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - crossing
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced:
+  - 5
+  hook_type: Узнавание
+  cliffhanger: 'Девочка: «Папа?»'
+  acts_on: []
+- ep: 7
+  title: Не железом
+  event: 'Он идёт к ней — она оборачивается, лица нет. Бой с невидимым: ложные образы, трясина. Гордей бьёт железом, кот кричит «не железом», шёпот множится с каждым ударом. Оберег на груди сгорает'
+  question: Удержит ли он Нежату?
+  emotions:
+  - ужас
+  - ярость
+  heroine_action: Бьёт невидимое железом; теряет оберег
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: Вторжение
+  cliffhanger: Нежата по пояс в трясине, его держат руки из нитей
+  acts_on: []
+- ep: 8
+  title: Замах
+  event: 'Гордей бросает меч, поджигает сухой камыш и гать. Вытаскивает Нежату. Кикимора отступает в туман. Вслед шёпот: «Ты убил его сына»'
+  question: Кого он убил?
+  emotions:
+  - решимость
+  - шок
+  heroine_action: Бросает меч, поджигает гать и вытаскивает Нежату
+  mood: kaif
+  kaif_lines: []
+  anchors:
+  - paywall_hook
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  takedown_rank: 5
+  villains_introduced: []
+  hook_type: Откровение
+  cliffhanger: 'Чёрный кадр — вспышка памяти: темнота, зелёные глаза, замах. Обрыв на замахе. Платный барьер'
+  acts_on: []
+- ep: 9
+  title: Мешок с платой
+  event: 'Память целиком, как он её помнит: ночь, зверь с корову, удар, мешок с платой в руке. Кот: «Лешего. Ты смотрел на него?» Гордей не отвечает'
+  question: Уйдут ли они от свидетелей?
+  emotions:
+  - стыд
+  - страх
+  heroine_action: Вспоминает удар и молчит на вопрос кота
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - paywall_answer
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: Вторжение
+  cliffhanger: 'На краю болота — деревня с луками: «Свидетели не уходят»'
+  acts_on: []
+- ep: 10
+  title: Птица на пне
+  event: 'Прорыв без боя: дым, телега, туман. Нежата рвётся драться: «Ты воин или нет?» Гордей держит его. Сухая земля'
+  question: Чья это птица?
+  emotions:
+  - облегчение
+  - изумление
+  heroine_action: Уводит своих без боя и держит Нежату
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Узнавание
+  cliffhanger: На пне — деревянная птица. Не его. Но его руки
+  acts_on: []
+- ep: 11
+  title: Колыбельная
+  event: 'Птица № 1 — вырезана до ухода. Она здесь была. Кот: «Лес ведёт её домой. К себе». В: лес стелет постель из мха, руки из корней рядом, она не боится. Поёт мамину песню'
+  question: Почему песня кончается другими словами?
+  emotions:
+  - нежность
+  - тревога
+  heroine_action: 'Узнаёт свою птицу и понимает: дочь была здесь'
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced:
+  - 1
+  hook_type: Превращение
+  cliffhanger: Последняя строка песни — с другими словами
+  acts_on: []
+- ep: 12
+  title: Первое полнолуние
+  event: 'Первое полнолуние. Ряд зарубок. С холма — единственная переправа: частокол, чужие люди с оружием'
+  question: Чьи глаза под плотом?
+  emotions:
+  - тревога
+  - решимость
+  heroine_action: Считает зарубки и выходит к переправе
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced:
+  - 4
+  hook_type: Взгляд
+  cliffhanger: Из воды под плотом смотрят глаза
+  acts_on: []
+- ep: 13
+  title: Плата переправы
+  event: 'Правила переправы: платят все. Обход — двадцать дней. Атаман предлагает отработать. Ночью с плота сталкивают путника — вода берёт'
+  question: Кого отдадут завтра?
+  emotions:
+  - ужас
+  - гнев
+  heroine_action: Узнаёт цену переправы и соглашается отработать
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: Откровение
+  cliffhanger: 'Атаман: «Это и есть плата. Завтра — один из вас»'
+  acts_on: []
+- ep: 14
+  title: Атаман узнаёт
+  event: 'Нежата: «Перебьём». Гордей согласен — ложь в действии. План. Атаман узнаёт его'
+  question: Почему староста не хотел его возвращения?
+  emotions:
+  - гнев
+  - подозрение
+  heroine_action: Готовит с Нежатой план перебить разбойников
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Откровение
+  cliffhanger: «Гордей из Заречья? Твой староста сам просил тебя назад не пускать»
+  acts_on:
+  - who: Атаман
+    fact: f_pakhom_asked
+- ep: 15
+  title: Бой на берегу
+  event: 'Ночной бой на берегу у плота: факелы, силуэты, три плана. Люди падают в воду, не гибнут в кадре. Плот их. Быстрая победа'
+  question: Что встаёт из реки?
+  emotions:
+  - азарт
+  - ужас
+  heroine_action: Берёт плот быстрым ночным боем
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Вторжение
+  cliffhanger: Вода поднимается. Из реки встаёт хозяин
+  acts_on: []
+- ep: 16
+  title: Утопленники
+  event: 'Плот ломается. Под водой стоят утопленники и держат брёвна. Нежату тащит. Кот на плече Нежаты, который его не видит. Голос из воды: «Переправа платится»'
+  question: Что он отдаст?
+  emotions:
+  - страх
+  - бессилие
+  heroine_action: Держит плот и Нежату
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: Выбор
+  cliffhanger: «Что отдашь?» Гордей смотрит на меч
+  acts_on: []
+- ep: 17
+  title: Торг
+  event: 'Торг. Гордей предлагает добычу разбойников. Водяной смеётся: «Чужим платят трусы». Предлагает щит — нет. «Железо, которым ты бил»'
+  question: Выплывет ли Нежата?
+  emotions:
+  - унижение
+  - отчаяние
+  heroine_action: Торгуется с водяным
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: Вторжение
+  cliffhanger: Нежата уходит под воду с головой
+  acts_on: []
+- ep: 18
+  title: Меч в воду
+  event: 'Меч в воду. Нежату выбрасывает на берег. Водяной «из уважения» даёт сверх платы: имя лешонка и «лежит он под первым полем твоей деревни»'
+  question: Можно ли увидеть дочь?
+  emotions:
+  - потеря
+  - надежда
+  heroine_action: Отдаёт меч водяному
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  takedown_rank: 4
+  villains_introduced: []
+  hook_type: Откровение
+  cliffhanger: «Хочешь увидеть её? Смотри в тихую воду. Только молча»
+  acts_on: []
+- ep: 19
+  title: Ты теперь кто
+  event: 'Дальний берег. Нежата: «Ты отдал меч. Ты теперь кто?» — «Отец». Л: староста ведёт деревню отдавать лесу последнее поле. Любава: «Это его поле». Староста: «Молчала десять лет — молчи»'
+  question: Куда идёт Любава ночью?
+  emotions:
+  - гордость
+  - тревога
+  heroine_action: 'Отвечает Нежате: «Отец»'
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Выбор
+  cliffhanger: Ночью Любава с хлебом и солью выходит за частокол
+  acts_on: []
+- ep: 20
+  title: Правда лесу
+  event: 'Любава у пня. Лес: «Где должник?» Она: «Идёт». Корни отступают на шаг — правда останавливает. В: Василиса вплетает красную ленту в берёзу — дарит лесу'
+  question: Кого Василиса зовёт дедом?
+  emotions:
+  - надежда
+  - тревога
+  heroine_action: 'Гордея в серии нет: правду лесу говорит Любава'
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Превращение
+  cliffhanger: 'Она зовёт кого-то в тени: «Дед!»'
+  acts_on:
+  - who: Любава
+    fact: f_debt
+- ep: 21
+  title: Тихая вода
+  event: 'Дорога вдоль реки. Омут. Гордей смотрит в тихую воду. Видит: мох, маленькая рука, коса без ленты. Впервые в жизни — дочь'
+  question: Слышит ли она его?
+  emotions:
+  - нежность
+  - боль
+  heroine_action: Молча смотрит в омут и впервые видит дочь
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Взгляд
+  cliffhanger: Она поднимает голову, будто слышит
+  acts_on: []
+- ep: 22
+  title: Имя
+  event: 'Пинч 1. Он не выдерживает — зовёт по имени. Кот рядом и не успевает. Вода темнеет. В отражении — два зелёных огня вместо глаз. Кот: «Ты назвал. Теперь она не знает, что у неё есть отец»'
+  question: Кто ты?
+  emotions:
+  - отчаяние
+  - вина
+  heroine_action: Зовёт дочь по имени и нарушает закон
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - pinch1
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Нарушение закона
+  cliffhanger: 'Голос из воды, детский: «Кто ты?»'
+  acts_on: []
+- ep: 23
+  title: Пепелище
+  event: 'Гордей рвётся в лес напрямую. Кот: «Войдёшь — станешь лесным раньше неё. Лес отдаёт только у твоей межи». Нежата оттаскивает. Единственная дорога — через сожжённое торговое село'
+  question: Кто в дыму?
+  emotions:
+  - ярость
+  - тревога
+  heroine_action: Рвётся в лес напрямую; поворачивает к сожжённому селу
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced:
+  - 3
+  hook_type: Вторжение
+  cliffhanger: Дым над пепелищем идёт против ветра. В нём фигуры
+  acts_on: []
+- ep: 24
+  title: Погреб
+  event: Выжившие в погребе. Мёртвых не хоронили — пусть стерегут склад. «Похоронишь — кто добро стеречь будет?» Нежата спит, Гордей накрывает его кожухом
+  question: Он здесь чужой?
+  emotions:
+  - отвращение
+  - страх
+  heroine_action: Накрывает Нежату кожухом и готовится к ночи
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: Вторжение
+  cliffhanger: 'Старуха: «Своих они не трогают. А ты — чужой?» Сумерки. Они встают'
+  acts_on: []
+- ep: 25
+  title: Ночь первая
+  event: Ночь первая. Гордей берёт топор Нежаты — железо проходит сквозь. Третий раз сила не работает. Полынь жжёт кожу Нежате, но держит. Отход к огню
+  question: Кто этот мертвец из его деревни?
+  emotions:
+  - бессилие
+  - ужас
+  heroine_action: Бьёт топором — железо проходит сквозь; отходит к огню
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Откровение
+  cliffhanger: Среди серых силуэтов — один в рубахе с вышивкой его деревни
+  acts_on: []
+- ep: 26
+  title: Сосед
+  event: 'Мёртвые из его деревни: бежали от леса в первый год, сгорели здесь. Говорят только с тем, кто назовёт по имени. Гордей называет соседа'
+  question: Что знала деревня?
+  emotions:
+  - шок
+  - стыд
+  heroine_action: Называет соседа по имени
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Откровение
+  cliffhanger: 'Сосед: «Деревня знала». Чёрный кадр'
+  acts_on: []
+- ep: 27
+  title: Имена
+  event: 'День. Гордей требует от выживших похоронить мёртвых. Отказ. Нежата: «Сожжём всё». Гордей: нет, им нужны имена. Кот знает имена всех, кого пропустил через межу'
+  question: Кого ещё пропустил кот?
+  emotions:
+  - гнев
+  - сочувствие
+  heroine_action: Требует похоронить мёртвых и отказывается жечь
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Откровение
+  cliffhanger: 'Кот: «Я сидел на столбе. Я пропустил лешонка к людям. Я тоже плачу»'
+  acts_on: []
+- ep: 28
+  title: Ночь вторая
+  event: 'Ночь вторая. Баюн называет мёртвых одного за другим. Каждый названный ложится. Нежата видит: имена идут из пустоты. Сосед не ложится — ждёт правды'
+  question: Смотрел ли он?
+  emotions:
+  - надежда
+  - страх
+  heroine_action: Слушает, как кот называет мёртвых
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Эхо
+  cliffhanger: 'Сосед: «Ты смотрел на него, когда убил?»'
+  acts_on: []
+- ep: 29
+  title: Деревня знала
+  event: 'Гордей: «Нет». Сосед рассказывает: одну овцу взял, играл с ней; староста видел днём и заплатил вдвое, чтобы не смотрел; леший приходил за Гордеем на следующую ночь'
+  question: Что знала жена?
+  emotions:
+  - стыд
+  - предательство
+  heroine_action: 'Признаётся соседу: «Нет»'
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Откровение
+  cliffhanger: «И жена твоя знала. С первого года»
+  acts_on: []
+- ep: 30
+  title: Зверем был я
+  event: 'Мидпойнт. Последнее имя — и голос кота кончается. Гордей один у огня. Та же память, что в 9, но теперь он видит: маленький, зелёные глаза, и свой взгляд, который не повернулся к телу. Цель меняется:
+    не отбить, а заплатить'
+  question: Как заплатить такой долг?
+  emotions:
+  - ужас
+  - прозрение
+  heroine_action: 'Видит правду и меняет цель: не отбить, а заплатить'
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - midpoint
+  - companion_cost
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Откровение
+  cliffhanger: «Зверем был я»
+  acts_on:
+  - who: Гордей
+    fact: f_leshonok
+- ep: 31
+  title: Щит в огонь
+  event: 'Мёртвые его деревни не отпускают: хотят домой, в свою землю. Нежата: «Прорвёмся». Гордей: «Нет. Заплатим». Снимает щит — красное поле, цвет их деревни'
+  question: Отпустит ли это мёртвых?
+  emotions:
+  - скорбь
+  - решимость
+  heroine_action: Сжигает свой щит
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Цена
+  cliffhanger: Щит с зарубками ложится в огонь
+  acts_on: []
+- ep: 32
+  title: Двадцать девять
+  event: Щит горит — мёртвые видят свой цвет и ложатся с клятвой «я приду за вами». Счёт дней сгорел. Тишина
+  question: Кто теперь считает дни?
+  emotions:
+  - облегчение
+  - тепло
+  heroine_action: Отдаёт мёртвым щит — они ложатся
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  takedown_rank: 3
+  villains_introduced: []
+  hook_type: Узнавание
+  cliffhanger: 'Нежата режет зарубку на топорище: «Двадцать девять было»'
+  acts_on: []
+- ep: 33
+  title: Вывернутый кожух
+  event: 'Утро. Выжившие с факелами перегородили дорогу: «Кто знает про наших — не выходит». Проход без удара: Гордей выворачивает кожух — не от людей, от леса за ними. Люди пугаются и расступаются. На
+    берёзе у дороги — красная лента'
+  question: Чей след ждёт впереди?
+  emotions:
+  - хитрость
+  - тревога
+  heroine_action: Проходит сквозь людей без удара
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Взгляд
+  cliffhanger: На инее впереди — след лапы-корня. Он ждёт
+  acts_on: []
+- ep: 34
+  title: С собой
+  event: 'Три дня до дома. Нежата: «Ты отдал меч, щит, кота. Ты говоришь с пустотой. С чем ты идёшь к лесу?» — «С собой». В: Василиса спрашивает лес'
+  question: Помнит ли она отца?
+  emotions:
+  - горечь
+  - тоска
+  heroine_action: 'Отвечает Нежате: идёт к лесу «с собой»'
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Узнавание
+  cliffhanger: «А у меня был отец?» И не ждёт ответа, бежит играть
+  acts_on: []
+- ep: 35
+  title: Свеча гаснет
+  event: 'Сзади в тумане — серые силуэты: навьи с погоста идут по следу железа. Кот молча идёт впереди. Гордей выбирает дорогу сам. Л: корни пробивают пол избы'
+  question: Удержит ли Любава дом?
+  emotions:
+  - тревога
+  - упорство
+  heroine_action: Выбирает дорогу сам, без кота
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: Вторжение
+  cliffhanger: Свеча гаснет без ветра. Любава зажигает снова
+  acts_on: []
+- ep: 36
+  title: Второе полнолуние
+  event: Второе полнолуние. Нежата считает зарубки. С гребня — край леса ближе, чем вчера
+  question: Успеет ли он?
+  emotions:
+  - страх
+  - решимость
+  heroine_action: Идёт к дому, пока лес идёт к деревне
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Срок
+  cliffhanger: Деревья на горизонте движутся — туда, где дым его деревни
+  acts_on: []
+- ep: 37
+  title: Избушка
+  event: 'Пинч 2. С холма: лес у частокола его деревни впереди, навьи за спиной, между — перевал и избушка на курьих ногах. Кот показывает хвостом'
+  question: Что возьмёт Яга?
+  emotions:
+  - тревога
+  - предчувствие
+  heroine_action: Выходит к избушке
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - pinch2
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced:
+  - 2
+  hook_type: Взгляд
+  cliffhanger: Избушка поворачивается к нему
+  acts_on: []
+- ep: 38
+  title: Плата лучшим
+  event: 'Порог. Голос из избушки: «Живым пахнет». Закон: проход через Навь платится тем, что умеешь лучше всего. Нежата: «Не платить. Взять». Яга ему: «С тебя взять нечего»'
+  question: Что сделает Нежата?
+  emotions:
+  - страх
+  - гнев
+  heroine_action: Слушает закон Яги
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - descent
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: Выбор
+  cliffhanger: Нежата с топором идёт на избушку
+  acts_on: []
+- ep: 39
+  title: Накормить врага
+  event: 'Бой, который нельзя выиграть: избушка отбрасывает Нежату как щенка. Гордей не дерётся — идёт к двери с последним хлебом. Испытание 1: накормить врага'
+  question: Что за огонь в печи?
+  emotions:
+  - смирение
+  - изумление
+  heroine_action: 'Не дерётся: идёт к двери с последним хлебом'
+  mood: kaif
+  kaif_lines: []
+  anchors:
+  - descent
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Вторжение
+  cliffhanger: Дверь открывается. Огонь в печи зеленеет
+  acts_on: []
+- ep: 40
+  title: Назови грех
+  event: 'Яга — голос и костяная рука в окне: «Обычно я кормлю. Тебе — наоборот». Испытание 2 объявлено: назови свой грех вслух'
+  question: Почему огонь погас?
+  emotions:
+  - стыд
+  - страх
+  heroine_action: 'Называет грех неправдой: «Я убил зверя»'
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - descent
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Нарушение закона
+  cliffhanger: 'Гордей: «Я убил зверя». Огонь в печи гаснет'
+  acts_on: []
+- ep: 41
+  title: Не то
+  event: '«Не то». Вторая попытка — он не может сказать «ребёнка». Откат: «Я воин. Я убивал много. Лес мне не судья». Нежата слышит. Яга: «Ты не смотрел тогда и не смотришь сейчас». Дверь закрывается'
+  question: Чем он заплатит?
+  emotions:
+  - гордыня
+  - отчаяние
+  heroine_action: 'Не может сказать «ребёнка»: «Лес мне не судья»'
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - descent
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Цена
+  cliffhanger: 'Яга: «Тогда плати рукой»'
+  acts_on: []
+- ep: 42
+  title: Рука в коре
+  event: 'Он согласен. Правая рука покрывается корой — сила уходит. Нежата: «Ты отдал руку, а не слово?!» Испытание 3: ложись в печь'
+  question: Что внутри печи?
+  emotions:
+  - боль
+  - решимость
+  heroine_action: Платит рукой и ложится в печь
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - descent
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Выбор
+  cliffhanger: Печь открыта. Внутри — не огонь, а лес
+  acts_on: []
+- ep: 43
+  title: Перепекание
+  event: Перепекание. Темнота, голоса мёртвых, зелёные глаза лешонка — на этот раз он смотрит. Колыбельная Любавы — с правильными словами
+  question: Её глаза?
+  emotions:
+  - прозрение
+  - нежность
+  heroine_action: В печи смотрит на лешонка
+  mood: kaif
+  kaif_lines: []
+  anchors:
+  - descent
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Превращение
+  cliffhanger: 'Он видит изнутри леса: два зелёных огня смотрят на него. Её'
+  acts_on: []
+- ep: 44
+  title: Навь
+  event: 'Навь, изнанка леса: корни — дороги. Он видит, как поля его деревни уходят под корни одно за другим — десять полей, десять лет'
+  question: Что леший сделает с пришедшим?
+  emotions:
+  - горе
+  - трепет
+  heroine_action: Видит, как поля уходят под корни
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - descent
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Взгляд
+  cliffhanger: 'Голос лешего, впервые: «Каждый год он врал — я брал поле. Ты пришёл сам. Хорошо»'
+  acts_on: []
+- ep: 45
+  title: Могила
+  event: 'Леший — старик в кожухе наизнанку, без тени, то на пне, то над соснами. Ведёт к могиле под первым полем. Одно слово: «Посмотри». Гордей: «Я вернулся. Бери меня»'
+  question: Где сказать правду?
+  emotions:
+  - скорбь
+  - решимость
+  heroine_action: 'Отдаёт себя: «Бери меня»'
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - descent
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Срок
+  cliffhanger: 'Леший: «Здесь не слышат. Скажешь там, где долг сделан, при тех, кто платил. До рассвета после третьей луны. Или она моя»'
+  acts_on:
+  - who: Леший
+    fact: f_grave
+- ep: 46
+  title: Венок
+  event: Василиса в лесу. Лес плетёт ей венок. Она смеётся — единственный смех в сезоне. На имя «Василиса» не оборачивается. Лес зовёт её другим именем
+  question: Что это за новое имя?
+  emotions:
+  - радость
+  - тревога
+  heroine_action: 'Гордея в серии нет: Василиса откликается на чужое имя'
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - descent
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Превращение
+  cliffhanger: Она откликается на новое имя
+  acts_on: []
+- ep: 47
+  title: Колодец
+  event: 'Дорога корней ведёт вверх. Нежата и кот проходят следом — Яга пропускает «за компанию». Свет сверху: круглый, как колодец'
+  question: Чьё лицо в ведре?
+  emotions:
+  - надежда
+  - тревога
+  heroine_action: Поднимается по корням к свету
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - descent
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  takedown_rank: 2
+  villains_introduced: []
+  hook_type: Взгляд
+  cliffhanger: В ведре над колодцем — чужое лицо без отражения. Его. Женский крик
+  acts_on: []
+- ep: 48
+  title: Вот должник
+  event: Выход из колодца-журавля в свою деревню. Частокол, лес у плетня, последнее поле уже под корнями. Люди с вилами. Староста с посохом
+  question: Выдадут ли его лесу?
+  emotions:
+  - шок
+  - гнев
+  heroine_action: Выходит из колодца в свою деревню
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - descent
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: Разворот
+  cliffhanger: 'Староста: «Вот должник. Отдадим — и лес уйдёт»'
+  acts_on:
+  - who: Пахом
+    fact: f_leshonok
+- ep: 49
+  title: Кот у ворот
+  event: 'Любава встаёт между ним и деревней. Руки, платок, ни слова. Староста: «Железом лес не отобьёшь. Ты уже пробовал — вот что вышло. Последнее поле отдали — больше нет». Гордей: «Он прав. Я должник»
+    — и идёт к воротам'
+  question: Что видит Любава?
+  emotions:
+  - нежность
+  - решимость
+  heroine_action: Признаёт себя должником и идёт к воротам
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - climax_rite
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Узнавание
+  cliffhanger: Кот молча ложится поперёк ворот. И его видит Любава
+  acts_on: []
+- ep: 50
+  title: Я знала
+  event: 'Она видит кота — значит, тоже должник. Гордей понимает: у ворот не слышат, надо к могиле под полем, а поле в лесу. «Мне надо дойти до поля»'
+  question: Что сделает он с её правдой?
+  emotions:
+  - шок
+  - боль
+  heroine_action: 'Понимает: надо к могиле под полем'
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - climax_rite
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Откровение
+  cliffhanger: 'Любава, в лицо: «Я знала. Десять лет»'
+  acts_on:
+  - who: Гордей
+    fact: f_grave
+- ep: 51
+  title: Оба платим
+  event: 'Двое в избе. Не ссора — расчёт: «Ты молчала, чтобы меня не выдали. Я не смотрел, чтобы взять плату. Оба платим». Она отдаёт ему птицу № 1 — ту, что из чащи'
+  question: Устоит ли частокол?
+  emotions:
+  - примирение
+  - страх
+  heroine_action: 'Говорит с Любавой без ссоры: «Оба платим»'
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - climax_rite
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Нарушение закона
+  cliffhanger: 'Староста у плетня с хлебом врёт лесу: «Должник умер в пути». Частокол трещит'
+  acts_on: []
+- ep: 52
+  title: Огнём и строем
+  event: 'Ложь накормила лес — осада началась раньше срока. Гордей без руки строит людей: ряд факелов в темноте выстраивается в линию. «Железом не отобьёмся. Огнём и строем». Нежата — его правая рука'
+  question: Что сделает лес с посохом?
+  emotions:
+  - решимость
+  - надежда
+  heroine_action: Без руки строит людей рядом факелов
+  mood: kaif
+  kaif_lines: []
+  anchors:
+  - climax_rite
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Цена
+  cliffhanger: Корень вырывает посох из рук старосты
+  acts_on: []
+- ep: 53
+  title: Соль кончается
+  event: 'Подготовка к ночи: соль по кругу — кончается на половине частокола; полынь; стоги сухой травы под стеной. В: Василиса смотрит из леса на огни: «Красиво». Не узнаёт дом'
+  question: Кто идёт с дороги?
+  emotions:
+  - тревога
+  - надежда
+  heroine_action: Готовит стену к ночи
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - climax_rite
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Вторжение
+  cliffhanger: Сумерки. С дороги идут серые силуэты — мёртвые его деревни, которым он обещал
+  acts_on: []
+- ep: 54
+  title: Дедова ночь
+  event: 'Дедова ночь. Любава ставит стол для мёртвых — они садятся, они не враги, они свидетели. Кикиморины нити ползут по частоколу — первая «победа» вернулась. Голос лешего из леса: «Должник. Выбирай»'
+  question: Стена или поле?
+  emotions:
+  - трепет
+  - напряжение
+  heroine_action: Принимает мёртвых за стол как свидетелей
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - climax_rite
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Выбор
+  cliffhanger: «Держи стену — или иди к полю. На двоих тебя нет»
+  acts_on: []
+- ep: 55
+  title: Третья луна
+  event: 'Третье полнолуние всходит. Корни ломают частокол, навьи с погоста идут в пролом. Стена огня держит. Староста: «Выйди к нему, и он уйдёт». Любава: «У ворот он не слышит»'
+  question: Что он сделает снаружи?
+  emotions:
+  - ужас
+  - решимость
+  heroine_action: Отдаёт стену Нежате и выходит в пролом
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - climax_rite
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: Выбор
+  cliffhanger: 'Гордей Нежате: «Ты теперь стена». И выходит в пролом — наружу'
+  acts_on: []
+- ep: 56
+  title: Сквозь лес
+  event: Главная битва. Нежата держит пролом — отдаёт долг жизни собой, не топором. Гордей с факелом и без оружия идёт сквозь лес к полю. Лес расступается перед огнём и смыкается за спиной
+  question: Кто встанет у могилы?
+  emotions:
+  - отвага
+  - трепет
+  heroine_action: С факелом и без оружия идёт сквозь лес к полю
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - climax_rite
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: Вторжение
+  cliffhanger: На поле, между ним и могилой, — старик в кожухе наизнанку. И весь лес стоит за ним
+  acts_on: []
+- ep: 57
+  title: Добей
+  event: 'Не дуэль — дорога. Гордей поджигает стог между ними; лес отступает от огня, старик падает на колени без силы леса. Нежата со стены бросает топор: «Добей!» Староста: «Добей, пока не встал!» Кот
+    молчит. Частокол за спиной ломается'
+  question: Добьёт?
+  emotions:
+  - ярость
+  - сомнение
+  heroine_action: Поджигает стог; заносит топор над лежащим
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - climax_rite
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Выбор
+  cliffhanger: Топор в левой руке над лежащим. Добьёт?
+  acts_on: []
+- ep: 58
+  title: Зверем был я
+  event: 'Кладёт топор. Корявой рукой кладёт хлеб и соль на могилу. Смотрит. Говорит так, что слышно у частокола и за столом мёртвых: «Я убил ребёнка. Я не посмотрел, потому что хотел плату. Зверем был
+    я». Корни замирают. Тишина'
+  question: Кто платил тебе?
+  emotions:
+  - катарсис
+  - тишина
+  heroine_action: Кладёт топор, хлеб и соль и говорит правду при всех
+  mood: kaif
+  kaif_lines: []
+  anchors:
+  - climax_rite
+  - public_revelation
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  takedown_rank: 1
+  villains_introduced: []
+  hook_type: Откровение
+  cliffhanger: 'Леший, не вставая: «А кто платил тебе?»'
+  acts_on:
+  - who: Гордей
+    fact: f_leshonok
+- ep: 59
+  title: На столбе
+  event: 'Любава выводит старосту за ворота: «Теперь ты». Он говорит. Корни уходят с полей. Леший: «Долг платит должник». Гордей: «Бери меня». Леший берёт его за корявую руку. Кот — впервые за 30 серий:
+    «Теперь ты сидишь на столбе. А я — домой». Гордей уходит в деревья'
+  question: Кто выходит из деревьев?
+  emotions:
+  - горе
+  - освобождение
+  heroine_action: Отдаёт себя лешему и уходит в деревья
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - redemption
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Потеря
+  cliffhanger: Из деревьев выходит маленькая фигура. Без ленты
+  acts_on:
+  - who: Любава
+    fact: f_pakhom_hired
+- ep: 60
+  title: До Дедов
+  event: 'Рассвет. Василиса никого не узнаёт, не боится. Любава кладёт перед ней две птицы. На меже стоит фигура с лентой в корявой руке. Гордей поёт колыбельную, плохо. Она подхватывает — с правильными
+    словами. Узнаёт не лицо — руку и песню. Первый снег. Лес засыпает. Кадры по две секунды: посох лежит у крайней избы; Нежата чинит частокол; кот на лавке, и его видят все. Любава ставит на стол лишнюю
+    ложку — до следующей Дедовой ночи'
+  question: Что будет через десять лет?
+  emotions:
+  - нежность
+  - светлая печаль
+  heroine_action: Поёт дочери колыбельную на меже
+  mood: kaif
+  kaif_lines: []
+  anchors:
+  - redemption
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: Эхо
+  cliffhanger: 'В лезвии топора — её глаза, зелёные. Она поворачивается к лесу: «Мам, он говорит — до Дедов»'
+  acts_on: []
+deviations: []

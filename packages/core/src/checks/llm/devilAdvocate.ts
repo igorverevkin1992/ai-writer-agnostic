@@ -116,10 +116,11 @@ function personaFinding(d: FindingDraft, block: AuditBlock, check: string): Find
   });
 }
 
-/** Which review categories to pass. */
-function pickCategories(review: ReviewMethod, opts: AuditOptions): Category[] {
+/** Which review categories to pass: those of this genre, narrowed by the options. */
+function pickCategories(review: ReviewMethod, genreId: string, opts: AuditOptions): Category[] {
   return review.categories.filter(
     (c) =>
+      (!c.genres.length || c.genres.includes(genreId)) &&
       (!opts.categories || opts.categories.includes(c.id)) &&
       (!opts.holeTypes || c.hole_types.some((t) => opts.holeTypes!.includes(t))),
   );
@@ -172,7 +173,7 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
   const severities = Object.entries(review.severities)
     .map(([level, text]) => `- ${level}: ${text}`)
     .join('\n');
-  for (const category of pickCategories(review, opts)) {
+  for (const category of pickCategories(review, deps.kit.genre.id, opts)) {
     const holes = deps.kb.holes.holes.filter((h) => category.hole_types.includes(h.id));
     const questions = [
       ...holes.flatMap((h) => h.questions),
@@ -184,13 +185,14 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
         : [];
       const system = renderPrompt(deps.kb, `${role}/devil_advocate`, {
         category: `${category.id}. ${category.name}`,
+        hero: deps.kit.genre.terms.hero.nom,
         check: category.check,
         hole_questions: questions.map((q) => `- ${q}`).join('\n') || '- (нет)',
         extra_questions: notice.length ? `\nВопросы по конкретным событиям:\n${notice.map((q) => `- ${q}`).join('\n')}\n` : '',
         six_questions: review.six_questions.map((q, i) => `${i + 1}. ${q}`).join('\n'),
         review_rules: category.rules.map((r) => `- ${r}`).join('\n'),
         patterns: review.patterns.map((p) => `- ${p}`).join('\n'),
-        categories: review.categories.map((c) => `${c.id} — ${c.name}`).join('; '),
+        categories: pickCategories(review, deps.kit.genre.id, {}).map((c) => `${c.id} — ${c.name}`).join('; '),
         severities,
         target: block.label,
         text: block.text,

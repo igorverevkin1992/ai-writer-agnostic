@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { PUNISHMENT_TYPES } from '@aiw/kb';
 import { EpisodeNumber, NonEmpty } from './common.ts';
 
-const Year = z.int().min(1900).max(2100);
+/** Any era: myth and fairy tale take place long ago. */
+const Year = z.int().min(1).max(2100);
 
 /** Character template ("hero" in SPEC.md), used for every regular character. */
 export const Character = z.object({

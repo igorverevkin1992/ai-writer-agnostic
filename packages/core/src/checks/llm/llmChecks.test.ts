@@ -54,6 +54,19 @@ describe('review fixes: model checks', () => {
     expect(res.findings.map((f) => f.episode).sort((a, b) => a! - b!)).toEqual([11, 14]);
   });
 
+  it('a genre without a love line skips that review category and names its own protagonist', async () => {
+    const systems: string[] = [];
+    answer = (req) => {
+      systems.push(req.system ?? '');
+      return [];
+    };
+    const myth = genreKit(kb, 'slavic_myth');
+    const res = await runDevilAdvocate({ llm: client(), kb, kit: myth }, { bible: golden.bible, plan: golden.plan, authorProvider: 'anthropic' }, { personas: false });
+    expect(res.calls).toBe(14);
+    expect(systems.some((s) => s.includes('Любовная линия'))).toBe(false);
+    expect(systems[0]).toContain('Главный персонаж этого сериала — герой');
+  });
+
   it('the genre guide adds its own questions for the devil advocate', async () => {
     const systems: string[] = [];
     answer = (req) => {

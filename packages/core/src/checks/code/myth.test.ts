@@ -65,4 +65,23 @@ describe('genre pack: dark Slavic fantasy myth', () => {
     expect(text).not.toContain('fated_forbidden_alpha');
     expect(knowledgeBlock(kb, genreKit(kb, 'romantasy_revenge'))).toContain('fated_forbidden_alpha');
   });
+
+  it('the reference «Три луны» keeps its holes: code finds where the concept parts with the genre', () => {
+    const tri = loadGolden('tri_luny');
+    const codes = runCodeChecks({ kit, bible: tri.bible, plan: tri.plan }).findings.map((f) => `${f.check}${f.episode ? `@${f.episode}` : ''}`);
+    expect(codes).toEqual(
+      expect.arrayContaining([
+        'world_rules.count',
+        'season_frame.anchor.rules_recount@4',
+        'season_frame.anchor.paywall_hook@8',
+        'season_frame.anchor.paywall_answer@9',
+        'season_frame.anchor.companion_cost@30',
+        'villain_ladder.counterstrike@8',
+        'villain_ladder.counterstrike@18',
+        'rhythm.hook_repeat@27',
+      ]),
+    );
+    // Monsters are beaten inside their blocks and leave the story by the genre's ways.
+    expect(codes.filter((c) => c.startsWith('villain_ladder.takedown') || c.startsWith('villain_ladder.punishment') || c.startsWith('limits'))).toEqual([]);
+  });
 });

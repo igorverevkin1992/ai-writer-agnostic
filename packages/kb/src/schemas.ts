@@ -219,6 +219,8 @@ export const ReviewMethod = z.strictObject({
         rules: z.array(Text).min(1),
         /** This category also gets the code-made «who was near this event?» questions. */
         with_notice_questions: z.boolean().default(false),
+        /** Genres this category applies to; empty — every genre. */
+        genres: z.array(Text).default([]),
       }),
     )
     .min(1),

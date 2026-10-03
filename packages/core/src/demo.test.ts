@@ -60,4 +60,15 @@ describe('demo mode answers with the golden project of the genre', () => {
     expect(memory.currentBible()?.characters[0]?.name).toBe('Лиза');
     expect(memory.findingsOf('season_plan', 'open').map((f) => f.quote)).toEqual(['Лиза сама возвращается в семью, чтобы спасти сестру']);
   });
+
+  it('myth: «Три луны» with its hero, and the planted hole among the code findings', async () => {
+    const { memory } = await throughPlan('slavic_myth');
+    expect((memory.latestArtifact('concept') as { title: string }[])[0]?.title).toBe('Три луны');
+    expect(memory.currentBible()?.characters[0]?.name).toBe('Гордей');
+    const open = memory.findingsOf('season_plan', 'open');
+    expect(open.map((f) => f.quote)).toContain('Твой староста сам просил тебя назад не пускать');
+    // The reference keeps the producer's own choices: the paywall after episode 8.
+    expect(open.map((f) => f.check)).toContain('season_frame.anchor.paywall_hook');
+    expect(memory.latestArtifact('review:season_plan')).toMatchObject({ summary: { dangers: [{ where: expect.stringContaining('Василисе семь') }, {}] } });
+  });
 });
