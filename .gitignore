@@ -10,3 +10,6 @@ coverage/
 .vite/
 *.log
 .DS_Store
+
+# Source materials of the producer (lecture transcripts, books): read locally, never published.
+docs/methods/inbox/
