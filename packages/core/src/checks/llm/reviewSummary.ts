@@ -128,7 +128,7 @@ export async function runReviewSummary(
       authorProvider: target.authorProvider,
       request: {
         task: 'review_summary',
-        cacheablePrefix: [knowledgeBlock(deps.kb, deps.kit)],
+        cacheablePrefix: [knowledgeBlock(deps.kb, deps.kit, { step: 'review' })],
         system,
         messages: [{ role: 'user', content: 'Напиши заключение разбора. Ответ — только JSON.' }],
       },

@@ -53,7 +53,7 @@ describe('loadKb on the real knowledge base', () => {
 
   it('loads shared sections', () => {
     expect(kb.holes.holes).toHaveLength(11);
-    expect(Object.keys(kb.methods).sort()).toEqual(['harmon', 'mowery', 'truby', 'weiland']);
+    expect(Object.keys(kb.methods).sort()).toEqual(['harmon', 'mowery', 'rabkin', 'truby', 'weiland']);
     expect(kb.prompts['architect/concept']).toContain('JSON');
   });
 

@@ -1,4 +1,4 @@
-import { episodeRange, type GenreKit, type Kb } from '@aiw/kb';
+import { episodeRange, type GenreKit, type Kb, type MethodStep } from '@aiw/kb';
 import { z } from 'zod';
 
 export class PromptError extends Error {
@@ -30,11 +30,24 @@ export function schemaText(schema: z.ZodType): string {
 
 const list = (items: string[]) => items.map((s) => `- ${s}`).join('\n');
 
+export interface KnowledgeOptions {
+  /** Pipeline step the block is built for: method principles are narrowed to it. */
+  step?: MethodStep;
+}
+
+/** Method principles for a step: those addressed to it and those addressed to every step. */
+export function methodsBlock(kb: Kb, step?: MethodStep): string[] {
+  return Object.values(kb.methods).flatMap((m) => {
+    const principles = m.principles.filter((p) => !step || !p.for.length || p.for.includes(step));
+    return [`### ${m.name} (${m.author})`, m.summary, ...principles.map((p) => `- ${p.id}. ${p.text}`)];
+  });
+}
+
 /**
  * The knowledge base block for a genre: rules, season frame, checklist, glossary, methods.
- * Stable across calls, so it goes into the cacheable prefix.
+ * Stable across calls of one step, so it goes into the cacheable prefix.
  */
-export function knowledgeBlock(kb: Kb, kit: GenreKit): string {
+export function knowledgeBlock(kb: Kb, kit: GenreKit, opts: KnowledgeOptions = {}): string {
   const f = kit.frame;
   const anchors = Object.entries(f.anchors).map(([id, spec]) => {
     const { min, max } = episodeRange(spec);
@@ -89,7 +102,7 @@ export function knowledgeBlock(kb: Kb, kit: GenreKit): string {
     '## Словарь',
     list(kb.glossary.terms.map((t) => `${t.term} — ${t.definition}`)),
     '## Методики',
-    list(Object.values(kb.methods).map((m) => `${m.name} (${m.author}): ${m.summary}`)),
+    ...methodsBlock(kb, opts.step),
     '## Кейсы',
     list(kb.cases.filter((c) => !c.stub && (!c.genres.length || c.genres.includes(kit.genre.id))).map((c) => `${c.id}: ${c.title} — ${c.summary}`)),
   ].join('\n');

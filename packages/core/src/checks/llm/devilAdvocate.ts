@@ -135,7 +135,7 @@ function pickCategories(review: ReviewMethod, genreId: string, opts: AuditOption
  */
 export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opts: AuditOptions = {}): Promise<AuditResult> {
   const role = deps.criticRole ?? 'critic_of_architect';
-  const kbText = knowledgeBlock(deps.kb, deps.kit);
+  const kbText = knowledgeBlock(deps.kb, deps.kit, { step: 'review' });
   const facts = factsText(target.bible) || 'Фактов пока нет.';
   const review = deps.kb.review;
   let blocks: AuditBlock[] = target.plan

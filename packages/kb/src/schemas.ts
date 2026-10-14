@@ -137,13 +137,26 @@ export const Checklist = z.strictObject({
 });
 export type Checklist = z.infer<typeof Checklist>;
 
+/** Pipeline steps a method principle may be addressed to (`for` in methods/*.yaml). */
+export const METHOD_STEPS = ['concept', 'logline', 'bible', 'season_plan', 'episode_cards', 'scripts', 'review'] as const;
+export type MethodStep = (typeof METHOD_STEPS)[number];
+
 export const Method = z.strictObject({
   id: Text,
   name: Text,
   author: Text,
   stub: Stub,
+  /** Where the principles were taken from: the producer's notes, a book. */
+  source: Text.optional(),
   summary: Text,
-  principles: z.array(z.strictObject({ id: Text, text: Text })),
+  principles: z.array(
+    z.strictObject({
+      id: Text,
+      text: Text,
+      /** Steps whose prompts get this principle; empty — every step. */
+      for: z.array(z.enum(METHOD_STEPS)).default([]),
+    }),
+  ),
 });
 export type Method = z.infer<typeof Method>;
 

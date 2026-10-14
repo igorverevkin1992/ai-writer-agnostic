@@ -1,4 +1,4 @@
-import { genreKit, type GenreKit, type Kb } from '@aiw/kb';
+import { genreKit, METHOD_STEPS, type GenreKit, type Kb, type MethodStep } from '@aiw/kb';
 import { z } from 'zod';
 import { makeFinding } from '../checks/code/finding.ts';
 import { checkKnowledge } from '../checks/code/knowledge.ts';
@@ -67,7 +67,7 @@ interface Ctx extends StepDeps {
   kbText: string;
 }
 
-function context(deps: StepDeps): Ctx {
+function context(deps: StepDeps, step: StepId): Ctx {
   const project = getProject(deps.db, deps.projectId);
   if (!project.genreId) throw new PipelineError('У проекта не выбран жанр');
   const kit = genreKit(deps.kb, project.genreId);
@@ -76,7 +76,7 @@ function context(deps: StepDeps): Ctx {
     kit,
     memory: new ProjectMemory(deps.db, deps.projectId),
     pipeline: new Pipeline(deps.db, deps.projectId),
-    kbText: knowledgeBlock(deps.kb, kit),
+    kbText: knowledgeBlock(deps.kb, kit, { step: (METHOD_STEPS as readonly string[]).includes(step) ? (step as MethodStep) : undefined }),
   };
 }
 
@@ -90,7 +90,7 @@ const json = (x: unknown) => JSON.stringify(x, null, 1);
 /** Runs one pipeline step: model call, code checks, audit, status. */
 export async function runStep(deps: StepDeps, step: StepId, opts: RunOptions = {}): Promise<StepRun> {
   if (!RUNNABLE_STEPS.includes(step)) throw new PipelineError(`Шаг ${step} появится на следующих вехах`);
-  const ctx = context(deps);
+  const ctx = context(deps, step);
   const mark = ctx.pipeline.begin(step);
   try {
     const run = await RUNNERS[step]!(ctx, opts);
