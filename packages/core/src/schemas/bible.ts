@@ -23,6 +23,8 @@ export const Character = z.object({
   limits: z.array(NonEmpty).default([]),
   /** Regular (постоянный) or episodic character. Production limits count regular ones. */
   regular: z.boolean().default(true),
+  /** The protagonist whose arc the season follows. Without the flag, the first character is. */
+  hero: z.boolean().default(false),
 });
 export type Character = z.infer<typeof Character>;
 
@@ -142,7 +144,26 @@ export const KnowledgeEntry = z.object({
 });
 export type KnowledgeEntry = z.infer<typeof KnowledgeEntry>;
 
+/** What can be won or lost in the season, on three levels (Mowery). */
+export const STAKE_KINDS = ['external', 'internal', 'philosophical'] as const;
+export type StakeKind = (typeof STAKE_KINDS)[number];
+export const Stake = z.object({
+  text: NonEmpty,
+  /** Episode where the viewer learns whether the stake is won or lost. */
+  closed_ep: EpisodeNumber,
+});
+export type Stake = z.infer<typeof Stake>;
+export const Stakes = z.object({ external: Stake, internal: Stake, philosophical: Stake });
+export type Stakes = z.infer<typeof Stakes>;
+
+/** The protagonist of a bible: the flagged character, else the first one. */
+export function heroOf(bible: Pick<Bible, 'characters'>): Character {
+  return bible.characters.find((c) => c.hero) ?? bible.characters[0]!;
+}
+
 export const Bible = z.object({
+  /** Optional in a draft; the `stakes` code check asks for them where the genre does. */
+  stakes: Stakes.optional(),
   world_rules: z.array(WorldRule),
   characters: z.array(Character).min(1),
   /** How many villains a season needs is a genre rule (frame), checked by code, not here. */

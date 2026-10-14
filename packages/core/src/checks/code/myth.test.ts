@@ -73,7 +73,7 @@ describe('genre pack: dark Slavic fantasy myth', () => {
   it('the genre follows «Три луны»: its frame and seven laws pass, only real holes stay', () => {
     const tri = loadGolden('tri_luny');
     const codes = runCodeChecks({ kit, bible: tri.bible, plan: tri.plan }).findings.map((f) => `${f.check}${f.episode ? `@${f.episode}` : ''}`);
-    expect(codes).toEqual(expect.arrayContaining(['villain_ladder.counterstrike@8', 'villain_ladder.counterstrike@18', 'rhythm.hook_repeat@27']));
+    expect(codes).toEqual(expect.arrayContaining(['villain_ladder.counterstrike@8', 'villain_ladder.counterstrike@18', 'rhythm.hook_repeat@26']));
     expect(codes.filter((c) => /^(season_frame|world_rules|villain_ladder\.(takedown|punishment)|limits)/u.test(c))).toEqual([]);
   });
 

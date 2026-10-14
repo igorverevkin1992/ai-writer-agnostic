@@ -96,7 +96,7 @@ season_frame:
   rhythm:
     response_within: 3            # удар → ответ за 1–3 серии
     max_suffering_run: 2          # страдание не больше 2 серий подряд
-    max_same_hook_run: 2
+    max_same_hook_run: 1          # два обрыва подряд — разных типов
     emotions_per_episode: [2, 3]
     max_without_line: 3           # не больше 3 серий без кайфа мести и без кайфа любви
     line_gap_exempt: [love_breakup]  # исключение — падение (45–47), но и там нужна искра

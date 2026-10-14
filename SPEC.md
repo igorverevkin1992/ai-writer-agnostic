@@ -189,7 +189,7 @@ prices_usd_per_mtok:   # сверять раз в месяц
 
 ```
 packages/kb/
-  rules/revenge_thriller.yaml    # 18 правил жанра (R01–R18)
+  rules/revenge_thriller.yaml    # 22 правила жанра (R01–R22)
   frames/season60.yaml           # каркас сезона
   checklist/season20.yaml        # чек-лист на 20 баллов
   methods/weiland.yaml  truby.yaml  harmon.yaml  mowery.yaml  rabkin.yaml

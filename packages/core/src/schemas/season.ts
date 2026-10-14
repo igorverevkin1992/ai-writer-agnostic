@@ -3,6 +3,10 @@ import { ActsOn, EpisodeNumber, NonEmpty } from './common.ts';
 
 export const Mood = z.enum(['suffering', 'kaif', 'neutral']);
 
+/** Which belief the protagonist acts on in an episode: the Lie, the Truth, or a relapse into the Lie after the midpoint. */
+export const ArcBeat = z.enum(['lie', 'truth', 'relapse']);
+export type ArcBeat = z.infer<typeof ArcBeat>;
+
 /** One line of the season plan. Frame, rhythm and ladder are checked by code (M3). */
 export const EpisodeOutline = z.object({
   ep: EpisodeNumber,
@@ -31,6 +35,12 @@ export const EpisodeOutline = z.object({
   hook_type: NonEmpty,
   cliffhanger: NonEmpty,
   acts_on: z.array(ActsOn).default([]),
+  /** Set on episodes where the protagonist's arc moves: acts on the Lie, on the Truth, or relapses. */
+  arc: ArcBeat.optional(),
+  /** The protagonist gets what she was after in this episode. */
+  victory: z.boolean().default(false),
+  /** What a victory of this or the previous episode costs her. Empty when nothing is paid. */
+  cost: z.string().trim().default(''),
 });
 export type EpisodeOutline = z.infer<typeof EpisodeOutline>;
 

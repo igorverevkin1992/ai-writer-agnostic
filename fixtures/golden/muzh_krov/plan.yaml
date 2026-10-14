@@ -27,6 +27,7 @@ episodes:
   cliffhanger: Лиза улыбается мужу, сжимая бокал
   acts_on: []
 - ep: 2
+  arc: lie
   title: Фото 1966 года
   event: 'В архиве Лиза видит фото 1966 года: юная Анна с лицом свекрови. Врач берёт кровь «для страховки»'
   question: Как свекровь может быть на фото 1966 года?
@@ -45,6 +46,7 @@ episodes:
   cliffhanger: Игла входит в вену, Лиза смотрит на фото
   acts_on: []
 - ep: 3
+  victory: true
   title: Ловушка для Киры
   event: Кира крадёт телефон Лизы. Лиза подбрасывает ложное сообщение и ловит её при всей труппе. Прима выгоняет Киру
   question: Кто стоит за Кирой?
@@ -67,6 +69,7 @@ episodes:
   - who: Лиза
     fact: f_betrayal
 - ep: 4
+  cost: "Кира, уходя, становится врагом и предупреждает семью"
   title: Прошлая невеста
   event: 'Уходя, Кира говорит: «Спроси про его прошлую невесту». Бабушка молча бросает трубку, увидев фото'
   question: Что знает бабушка?
@@ -85,6 +88,7 @@ episodes:
   cliffhanger: Гудки в трубке
   acts_on: []
 - ep: 5
+  arc: lie
   title: Доверенность
   event: Герман просит подписать доверенность на квартиру Лизы «для ремонта»
   question: Зачем ему её квартира?
@@ -103,6 +107,7 @@ episodes:
   cliffhanger: Подпись на доверенности
   acts_on: []
 - ep: 6
+  arc: lie
   title: Диагноз
   event: Врач ставит Лизе «болезнь крови» и назначает лечение
   question: Больна ли она на самом деле?
@@ -117,7 +122,7 @@ episodes:
   reveals_secret: false
   threat_to_heroine: false
   villains_introduced: []
-  hook_type: угроза
+  hook_type: сделка
   cliffhanger: 'Врач: «Начнём завтра»'
   acts_on: []
 - ep: 7
@@ -173,7 +178,7 @@ episodes:
   reveals_secret: false
   threat_to_heroine: false
   villains_introduced: []
-  hook_type: угроза
+  hook_type: вопрос
   cliffhanger: Анна наклоняется к лицу Лизы
   acts_on:
   - who: Анна
@@ -216,6 +221,8 @@ episodes:
   cliffhanger: Дверь открывает здоровая женщина
   acts_on: []
 - ep: 12
+  victory: true
+  cost: "Соня звонит Герману: он знает, что Лиза ищет прошлое"
   title: Соня
   event: 'Соня рассказывает: «Как только я ушла отсюда, через два месяца всё прошло»'
   question: Что с ней делали?
@@ -290,6 +297,7 @@ episodes:
   cliffhanger: Фамилии жертв складываются в родословную
   acts_on: []
 - ep: 16
+  victory: true
   title: Звонок Сони
   event: 'Лиза подставляет Германа: Вера видит, что сын скрыл от неё звонок Сони'
   question: Что Вера сделает с сыном?
@@ -308,6 +316,7 @@ episodes:
   cliffhanger: Вера читает сообщения сына
   acts_on: []
 - ep: 17
+  cost: "Вера перестаёт доверять сыну и назначает Лизе новую процедуру"
   title: Недоверие
   event: Вера перестаёт доверять сыну и назначает Лизе новую процедуру
   question: Выдержит ли Лиза новую процедуру?
@@ -364,6 +373,7 @@ episodes:
   cliffhanger: Вера хлопает ладонью по столу врача
   acts_on: []
 - ep: 20
+  victory: true
   title: Арест врача
   event: Поддельные диагнозы — у следователя Пановой. Врача арестовывают
   question: Кто ещё знал?
@@ -383,6 +393,7 @@ episodes:
   cliffhanger: Врача уводят мимо Веры
   acts_on: []
 - ep: 21
+  cost: "Семья понимает, что невестка опасна: открытая война"
   title: Открытая война
   event: 'Семья понимает: невестка опасна'
   question: Что они сделают дальше?
@@ -492,6 +503,8 @@ episodes:
   cliffhanger: Подпись 1936 года
   acts_on: []
 - ep: 27
+  victory: true
+  cost: "Семья лишилась запасной жертвы и торопит цикл с Лизой"
   title: Спасение Даши
   event: Вера ведёт Дашу к новому врачу. Лиза с бабушкой увозят Дашу за минуту до процедуры
   question: Простит ли Вера?
@@ -548,6 +561,7 @@ episodes:
   cliffhanger: 'Вера: «Ночь столетия»'
   acts_on: []
 - ep: 30
+  arc: truth
   title: Правда Зои
   event: 'Лиза показывает Зое фото бабушки. Зоя раскрывает: цикл начал сам Герман, «угасание» назначено на ночь столетия'
   question: Кто её настоящий враг?
@@ -626,6 +640,7 @@ episodes:
   cliffhanger: Герман целует ей руку
   acts_on: []
 - ep: 34
+  arc: relapse
   title: Почти верит
   event: Лиза почти верит мужу
   question: Не ловушка ли это?
@@ -640,10 +655,11 @@ episodes:
   reveals_secret: false
   threat_to_heroine: false
   villains_introduced: []
-  hook_type: вопрос
+  hook_type: ловушка
   cliffhanger: Герман отвечает на звонок матери
   acts_on: []
 - ep: 35
+  victory: true
   title: Нотариус
   event: Через нотариуса Лиза отзывает доверенность. Квартира снова её
   question: Как ответит семья?
@@ -662,6 +678,7 @@ episodes:
   cliffhanger: Печать нотариуса
   acts_on: []
 - ep: 36
+  cost: "Семья в ярости из-за квартиры; Вера угрожает Лизе"
   title: Ярость семьи
   event: Семья в ярости из-за квартиры. Вера угрожает Лизе
   question: Что Вера сделает?
@@ -738,6 +755,7 @@ episodes:
   cliffhanger: Машина Анны уезжает ночью
   acts_on: []
 - ep: 40
+  victory: true
   title: Открытый сейф
   event: 'Без Анны открыт семейный сейф: 90 лет доверенностей и наследств'
   question: Кто ответит за 90 лет?
@@ -756,6 +774,7 @@ episodes:
   cliffhanger: Стопка доверенностей
   acts_on: []
 - ep: 41
+  cost: "Даша «заболевает»: семья бьёт по сестре"
   title: Даша заболевает
   event: Даша «заболевает»
   question: Успеет ли Лиза?
@@ -788,7 +807,7 @@ episodes:
   reveals_secret: false
   threat_to_heroine: false
   villains_introduced: []
-  hook_type: опасность близкому
+  hook_type: решение
   cliffhanger: Дверь квартиры закрывается за Лизой
   acts_on: []
 - ep: 43
@@ -843,7 +862,7 @@ episodes:
   reveals_secret: false
   threat_to_heroine: true
   villains_introduced: []
-  hook_type: угроза
+  hook_type: ловушка
   cliffhanger: Щелчок замка
   acts_on: []
 - ep: 46
@@ -866,6 +885,7 @@ episodes:
   cliffhanger: Зоя замечает записку
   acts_on: []
 - ep: 47
+  arc: truth
   title: Передача
   event: Через Зою Лиза передаёт следователю копии архива
   question: Поверит ли следователь?
@@ -919,12 +939,13 @@ episodes:
   reveals_secret: true
   threat_to_heroine: false
   villains_introduced: []
-  hook_type: раскрытие
+  hook_type: победа
   cliffhanger: Труппа смотрит на Веру
   acts_on:
   - who: Лиза
     fact: f_twins
 - ep: 50
+  victory: true
   title: Арест Веры
   event: Следователь приходит с документами о 90 годах подлога. Веру арестовывают, и она даёт показания против сына
   question: Что будет с Германом?
@@ -945,6 +966,7 @@ episodes:
   cliffhanger: 'Вера: «Это всё он»'
   acts_on: []
 - ep: 51
+  cost: "Герман остаётся один и сам ведёт «угасание» до конца"
   title: Герман один
   event: Герман остаётся один и сам берётся довести «угасание» до конца
   question: Сколько ей осталось?

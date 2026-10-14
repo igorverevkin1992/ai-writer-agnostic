@@ -368,6 +368,7 @@ holes:
           limits: &a2
             - Не причиняет вреда невиновным
           regular: true
+          hero: false
       - op: add
         path: /bible/characters/-
         value:
@@ -386,6 +387,7 @@ holes:
           speech: Тихо и точно
           limits: *a2
           regular: true
+          hero: false
       - op: add
         path: /bible/characters/-
         value:
@@ -404,3 +406,4 @@ holes:
           speech: Тихо и точно
           limits: *a2
           regular: true
+          hero: false

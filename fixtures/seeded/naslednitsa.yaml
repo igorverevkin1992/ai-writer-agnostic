@@ -341,3 +341,4 @@ holes:
           limits:
             - Не наказывает сама — только через закон
           regular: true
+          hero: false

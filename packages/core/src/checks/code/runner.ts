@@ -6,6 +6,7 @@ import type { SeasonPlan } from '../../schemas/season.ts';
 import type { Script } from '../../schemas/script.ts';
 import { checkSeasonFrame } from './frame.ts';
 import { checkKnowledge } from './knowledge.ts';
+import { checkHeroArc, checkPromise, checkStakes, checkVictoryCost, type HeroArcParams } from './method.ts';
 import { checkBetrayerRank, checkVillainLadder, type LadderParams } from './ladder.ts';
 import { checkGuns, checkLegalMarkers, checkLimits, checkScriptMetrics, collectTexts } from './production.ts';
 import { checkRhythm } from './rhythm.ts';
@@ -92,6 +93,25 @@ export const CODE_CHECKS: Record<string, CodeCheck> = {
     always: false, codes: ['count', 'unshown'],
     run: ({ bible }, p) =>
       bible && checkWorldRules(bible, { min: num(p, 'min') ?? 1, max: num(p, 'max') ?? Infinity, requireEpisodes: p.require_episodes === true }),
+  },
+  stakes: { always: false, codes: ['missing', 'closed_outside'], run: ({ bible, kit }) => bible && checkStakes(bible, kit.frame) },
+  hero_arc: {
+    always: false, codes: ['unmarked', 'lie_acts', 'no_relapse'],
+    run: ({ bible, plan, kit }, p) => {
+      if (typeof p.anchor !== 'string') throw new UnknownCheckError('Проверке «hero_arc» нужен параметр anchor — id опорной точки мидпоинта из каркаса');
+      const params: HeroArcParams = { anchor: p.anchor, minLieActs: num(p, 'min_lie_acts') ?? 3, relapse: p.relapse !== false };
+      return bible && plan && checkHeroArc(bible, plan, params, kit.frame, kit.genre.terms);
+    },
+  },
+  victory_cost: { always: false, codes: ['unmarked', 'free'], run: ({ plan, kit }, p) => plan && checkVictoryCost(plan, kit.frame, num(p, 'within') ?? 1, kit.genre.terms) },
+  promise: {
+    always: false, codes: ['absent'],
+    run: ({ plan, kit }, p) => {
+      const lines = strs(p, 'lines');
+      const anchors = strs(p, 'anchors');
+      if (!lines.length && !anchors.length) throw new UnknownCheckError('Проверке «promise» нужны lines или anchors — что жанр обещает зрителю');
+      return plan && checkPromise(plan, kit.frame, { ep: num(p, 'ep') ?? 1, lines, anchors });
+    },
   },
   secret_turns: {
     always: false, codes: ['count', 'near'],

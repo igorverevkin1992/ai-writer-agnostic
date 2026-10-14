@@ -231,7 +231,7 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
       request: {
         task: 'bible',
         cacheablePrefix: [ctx.kbText],
-        system: renderPrompt(ctx.kb, 'architect/bible', { concept: json(concept ?? {}), logline: json(logline), schema: schemaText(Bible) }),
+        system: renderPrompt(ctx.kb, 'architect/bible', { concept: json(concept ?? {}), logline: json(logline), hero: ctx.kit.genre.terms.hero.nom, schema: schemaText(Bible) }),
         messages: [{ role: 'user', content: 'Напиши библию. Только JSON.' }],
       },
     });

@@ -45,7 +45,7 @@ describe('loadKb on the real knowledge base', () => {
   it('loads the revenge thriller genre pack', () => {
     expect(kit.genre.title).toMatch(/триллер мести/);
     expect(kit.rules.rules.map((r) => r.id)).toEqual(
-      Array.from({ length: 18 }, (_, i) => `R${String(i + 1).padStart(2, '0')}`),
+      Array.from({ length: 22 }, (_, i) => `R${String(i + 1).padStart(2, '0')}`),
     );
     expect(kit.personas.personas).toHaveLength(5);
     expect(kit.checklist.items.reduce((n, i) => n + i.points, 0)).toBe(20);
