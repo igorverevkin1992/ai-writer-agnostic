@@ -192,7 +192,7 @@ packages/kb/
   rules/revenge_thriller.yaml    # 22 правила жанра (R01–R22)
   frames/season60.yaml           # каркас сезона
   checklist/season20.yaml        # чек-лист на 20 баллов
-  methods/weiland.yaml  truby.yaml  harmon.yaml  mowery.yaml  rabkin.yaml
+  methods/weiland.yaml  truby.yaml  harmon.yaml  mowery.yaml  rabkin.yaml  vertical.yaml
   glossary.yaml                  # кайф, страдание, поворот, разница в знании…
   constraints/ru_legal.yaml  production.yaml
   holes/catalog.yaml             # 11 типов дыр + вопросы

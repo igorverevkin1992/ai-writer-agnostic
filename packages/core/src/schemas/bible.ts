@@ -161,9 +161,61 @@ export function heroOf(bible: Pick<Bible, 'characters'>): Character {
   return bible.characters.find((c) => c.hero) ?? bible.characters[0]!;
 }
 
+/** The season question («ствол»): one question, its answer, and the single question left for the next season. */
+export const Trunk = z.object({
+  question: NonEmpty,
+  answer: NonEmpty,
+  /** The one thread the finale leaves open. */
+  next_question: NonEmpty,
+});
+export type Trunk = z.infer<typeof Trunk>;
+
+/** A nested question («матрёшка»): closing level n opens level n+1 in the same episode, scale strictly grows. */
+export const NestedQuestion = z.object({
+  level: z.int().min(1),
+  question: NonEmpty,
+  /** Scale rank: who → why → how many → who is behind → what it means for the hero. */
+  scale: z.int().min(1),
+  opened_ep: EpisodeNumber,
+  /** Empty while the question is still open (at most one at the end of the season). */
+  closed_ep: EpisodeNumber.optional(),
+});
+export type NestedQuestion = z.infer<typeof NestedQuestion>;
+
+/** The threat of a thriller: an archetype with a face or a recurring visual sign. */
+export const Threat = z.object({
+  archetype: NonEmpty,
+  /** Who or what it is; may be hidden from the hero for most of the season. */
+  identity: NonEmpty,
+  /** Recurring visual sign the viewer recognises without words. */
+  visual_sign: NonEmpty,
+  sign_shown_ep: EpisodeNumber,
+});
+export type Threat = z.infer<typeof Threat>;
+
+/** A clue toward a nested question (level) or the trunk (0). */
+export const Clue = z.object({
+  id: NonEmpty,
+  text: NonEmpty,
+  /** Question level it serves; 0 — the trunk. */
+  question: z.int().min(0),
+  /** Shown as an image without a comment. */
+  visual: z.boolean().default(false),
+  /** Points to a competing theory (two supporting clues to one contradicting). */
+  contradicts: z.boolean().default(false),
+  planted_ep: EpisodeNumber,
+  paid_ep: EpisodeNumber.optional(),
+});
+export type Clue = z.infer<typeof Clue>;
+
 export const Bible = z.object({
   /** Optional in a draft; the `stakes` code check asks for them where the genre does. */
   stakes: Stakes.optional(),
+  /** Thriller genres: the season question and the nested questions; checked by `matryoshka`. */
+  trunk: Trunk.optional(),
+  nested: z.array(NestedQuestion).default([]),
+  threat: Threat.optional(),
+  clues: z.array(Clue).default([]),
   world_rules: z.array(WorldRule),
   characters: z.array(Character).min(1),
   /** How many villains a season needs is a genre rule (frame), checked by code, not here. */

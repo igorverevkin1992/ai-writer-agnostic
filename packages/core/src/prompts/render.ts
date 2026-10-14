@@ -76,6 +76,7 @@ export function knowledgeBlock(kb: Kb, kit: GenreKit, opts: KnowledgeOptions = {
     `Серий: ${f.episodes}, бесплатных: ${f.free}, длительность ${f.duration_s.min}–${f.duration_s.max} с (цель ${f.duration_s.target} с). Допуск опорных точек: ±${f.tolerance} с объяснением.`,
     `Опорные точки (id: серия): ${anchors.join('; ')}.`,
     `Блоки: ${f.blocks.map(([a, b]) => `${a}–${b}`).join(', ')}.`,
+    ...(Object.keys(f.hook_types).length ? [`Типы обрывов (id: название): ${Object.entries(f.hook_types).map(([id, name]) => `${id}: ${name}`).join('; ')}.`] : []),
     `Ритм: ответ на удар за ${f.rhythm.response_within} серии; страдание не дольше ${f.rhythm.max_suffering_run} серий подряд; один тип крючка не больше ${f.rhythm.max_same_hook_run} серий подряд; ${f.rhythm.emotions_per_episode.join('–')} эмоциональные точки в серии.`,
     ...(Object.keys(f.lines).length
       ? [

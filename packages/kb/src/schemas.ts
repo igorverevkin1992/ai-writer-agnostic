@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { resolveFrameInputs } from './frameInputs.ts';
 
 z.config(z.locales.ru());
 
@@ -70,8 +71,13 @@ export const PUNISHMENT_TYPES = ['shame', 'law', 'status', 'flight', 'allies', '
 const byRank = <T extends z.ZodType>(value: T) =>
   z.record(z.string().regex(/^[1-9]\d*$/, 'Ранг злодея — целое число от 1'), value);
 
-export const SeasonFrame = z.strictObject({
+const SeasonFrameShape = z.strictObject({
   season_frame: z.strictObject({
+    /**
+     * Named parameters of the frame (e.g. paywall: 10). Anchors, blocks and free may be written
+     * as expressions over them and `L` (episodes); they are resolved before validation.
+     */
+    inputs: z.record(z.string().regex(/^[a-z_]+$/u, 'Имя параметра — латиница и _'), z.number()).default({}),
     episodes: z.int().min(1),
     free: z.int().min(0),
     duration_s: z.strictObject({ min: z.int().min(1), max: z.int().min(1), target: z.int().min(1) }),
@@ -114,9 +120,18 @@ export const SeasonFrame = z.strictObject({
     }),
     blocks: z.array(z.tuple([z.int().min(1), z.int().min(1)])).min(1),
     tolerance: z.int().min(0),
+    /** Optional vocabulary of cliffhanger types (id → name). When set, plans must use these ids. */
+    hook_types: z.record(z.string().regex(/^[a-z_]+$/u, 'id типа обрыва — латиница и _'), Text).default({}),
   }),
 });
-export type SeasonFrame = z.infer<typeof SeasonFrame>['season_frame'];
+export const SeasonFrame = z.preprocess((raw) => {
+  try {
+    return resolveFrameInputs(raw);
+  } catch (e) {
+    throw new z.ZodError([{ code: 'custom', path: ['season_frame'], message: e instanceof Error ? e.message : String(e), input: raw }]);
+  }
+}, SeasonFrameShape);
+export type SeasonFrame = z.infer<typeof SeasonFrameShape>['season_frame'];
 
 export const Checklist = z.strictObject({
   stub: Stub,
@@ -131,6 +146,8 @@ export const Checklist = z.strictObject({
         rule: z.string().optional(),
         /** Only these code-check findings of the rule count for this item, e.g. "season_frame.anchor.fall". */
         only: z.array(Text).optional(),
+        /** A failed critical item fails the checklist whatever the score (stress test of a concept). */
+        critical: z.boolean().default(false),
       }),
     )
     .min(1),
@@ -187,6 +204,8 @@ export const ProductionConstraints = z.strictObject({
   script_metrics: z.strictObject({
     line_chars_per_minute: z.tuple([z.int().min(1), z.int().min(1)]),
     max_line_words: z.int().min(1),
+    /** Lines longer than this are blocking; between max and hard they are a warning. */
+    hard_line_words: z.int().min(1).optional(),
     max_overlay_words: z.int().min(1),
     duration_tolerance: z.number().min(0).max(1),
   }),

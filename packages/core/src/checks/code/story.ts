@@ -22,8 +22,12 @@ export function checkBetrayalTiming(bible: Bible, maxSecond: number): Finding[] 
   ];
 }
 
-/** What the paywall episode must hold: a partial reveal of the secret and/or a threat to the protagonist. */
-export type PaywallNeed = 'reveal' | 'threat';
+/**
+ * What the paywall episode must hold: a partial reveal of the secret, a threat to the protagonist,
+ * a turn of the season question (not an answer) and a personal stake («В+У+Л» of the thriller study).
+ */
+export type PaywallNeed = 'reveal' | 'threat' | 'turn' | 'stake';
+export const PAYWALL_NEEDS: PaywallNeed[] = ['reveal', 'threat', 'turn', 'stake'];
 
 /** The episode at the given anchor (paywall hook) partly reveals the secret and threatens the protagonist. */
 export function checkPaywallHook(
@@ -32,10 +36,13 @@ export function checkPaywallHook(
   needs: PaywallNeed[] = ['reveal', 'threat'],
   terms: GenreTerms = DEFAULT_TERMS,
 ): Finding[] {
-  const noReveal = (e: SeasonPlan['episodes'][number]) => needs.includes('reveal') && !e.reveals_secret;
-  const noThreat = (e: SeasonPlan['episodes'][number]) => needs.includes('threat') && !e.threat_to_heroine;
+  type E = SeasonPlan['episodes'][number];
+  const noReveal = (e: E) => needs.includes('reveal') && !e.reveals_secret;
+  const noThreat = (e: E) => needs.includes('threat') && !e.threat_to_heroine;
+  const noTurn = (e: E) => needs.includes('turn') && !e.question_turn;
+  const noStake = (e: E) => needs.includes('stake') && !e.personal_stake;
   return plan.episodes
-    .filter((e) => e.anchors.includes(anchor) && (noReveal(e) || noThreat(e)))
+    .filter((e) => e.anchors.includes(anchor) && (noReveal(e) || noThreat(e) || noTurn(e) || noStake(e)))
     .map((e) =>
       makeFinding({
         check: 'paywall_hook.content',
@@ -46,7 +53,7 @@ export function checkPaywallHook(
         quote: e.cliffhanger,
         question: 'зачем мне платить за следующую серию?',
         fixes: [
-          `В ${e.ep}-й серии: ${[noReveal(e) && 'частичное раскрытие тайны', noThreat(e) && `угроза ${terms.hero.dat}`].filter(Boolean).join(' и ')}`,
+          `В ${e.ep}-й серии: ${[noReveal(e) && 'частичное раскрытие тайны', noThreat(e) && `угроза ${terms.hero.dat}`, noTurn(e) && 'поворот вопроса сезона (question_turn)', noStake(e) && 'личная ставка из прошлых серий (personal_stake)'].filter(Boolean).join(' и ')}`,
         ],
       }),
     );

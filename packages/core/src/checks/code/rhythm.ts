@@ -58,6 +58,24 @@ export function checkRhythm(plan: SeasonPlan, frame: SeasonFrame, terms: GenreTe
     );
   }
 
+  const vocabulary = Object.keys(frame.hook_types);
+  if (vocabulary.length) {
+    for (const e of eps.filter((x) => !vocabulary.includes(x.hook_type))) {
+      out.push(
+        makeFinding({
+          check: 'rhythm.hook_unknown',
+          controller: 'structure',
+          severity: 'major',
+          holeType: 9,
+          episode: e.ep,
+          quote: `Тип обрыва «${e.hook_type}»`,
+          question: 'что это за обрыв?',
+          fixes: [`Тип обрыва — из словаря жанра: ${vocabulary.map((id) => `${id} (${frame.hook_types[id]})`).join(', ')}`],
+        }),
+      );
+    }
+  }
+
   for (const run of runs(eps, (e) => e.hook_type)) {
     if (run.eps.length <= r.max_same_hook_run) continue;
     out.push(

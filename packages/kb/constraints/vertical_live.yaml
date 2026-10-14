@@ -1,0 +1,19 @@
+# Производственные рамки живой вертикальной съёмки (6–9 съёмочных дней, 10–22 страницы в день).
+# Источник: исследования продюсера (октябрь 2026): ≤5 локаций и ≤6 ключевых персонажей (стресс-тест 6.1),
+# говорящих ≤3 рекомендуемо и ≤4 жёстко, реплика ≤15 слов (20 — блок), 6-словный титр.
+limits:
+  main_locations: 1               # идеал — одна якорная локация
+  max_locations: 5
+  max_regular_characters: 6       # 4–6 карточек героев
+  max_speakers_per_scene: 4       # жёсткий лимит; рекомендация ≤3 — в гайде
+  practical_effects_only: true
+  crowds_allowed: false
+script_metrics:
+  line_chars_per_minute: [150, 300]
+  max_line_words: 15
+  hard_line_words: 20             # больше — блокирующее замечание
+  max_overlay_words: 6            # шестисловный экранный титр
+  duration_tolerance: 0.15
+metro:
+  reveal_readable_s: 2
+  frame: [face, action, object]

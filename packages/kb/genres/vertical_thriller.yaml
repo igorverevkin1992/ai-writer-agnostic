@@ -1,0 +1,18 @@
+# Жанровый пакет: вертикальный триллер, саспенс и хоррор (бытовой триллер, газлайтинг, мистика, хоррор на правилах).
+# Источники: исследования продюсера «Драматургия вертикальных сериалов в хорроре, мистике и триллере:
+# правила и фреймворк для софта» и «Архитектура, драматургия и производственная экономика вертикальных
+# микродрам» (октябрь 2026). Гибрид «жанр + эмоциональное ядро» — стратегия по умолчанию.
+id: vertical_thriller
+title: Вертикальный триллер, саспенс и хоррор
+rules: vertical_thriller        # rules/vertical_thriller.yaml — линтер L01–L32 исследования
+frame: thriller60               # frames/thriller60.yaml — сетка сезона от пэйволла
+checklist: stress10             # checklist/stress10.yaml — стресс-тест концепта, 10 критериев
+personas: thriller_viewers      # personas/thriller_viewers.yaml
+constraints:
+  legal: ru_legal_thriller      # constraints/ru_legal_thriller.yaml
+  production: vertical_live     # constraints/vertical_live.yaml — живая съёмка, 6–9 дней
+guide: vertical_thriller        # guides/vertical_thriller.yaml — хуки, обрывы, угрозы, кадр, звук
+# Главный персонаж в примерах исследования — героиня; рана жанра — необратимый инцидент 1-й серии.
+terms:
+  hero: {nom: героиня, gen: героини, dat: героине}
+  wound: Необратимый инцидент

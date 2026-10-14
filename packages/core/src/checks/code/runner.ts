@@ -10,7 +10,8 @@ import { checkHeroArc, checkPromise, checkStakes, checkVictoryCost, type HeroArc
 import { checkBetrayerRank, checkVillainLadder, type LadderParams } from './ladder.ts';
 import { checkGuns, checkLegalMarkers, checkLimits, checkScriptMetrics, collectTexts } from './production.ts';
 import { checkRhythm } from './rhythm.ts';
-import { checkBetrayalTiming, checkPaywallHook, checkSecretTurns, type PaywallNeed, type SecretTurnParams } from './story.ts';
+import { checkBetrayalTiming, checkPaywallHook, checkSecretTurns, PAYWALL_NEEDS, type PaywallNeed, type SecretTurnParams } from './story.ts';
+import { checkBeats, checkClues, checkGolden3, checkHookQuota, checkKnowledgeMode, checkMatryoshka, checkResets, checkScriptLinter, checkStrongestTwist, checkThreatSign } from './thriller.ts';
 import { checkTimeline } from './timeline.ts';
 import { checkWorldRules } from './world.ts';
 
@@ -46,7 +47,7 @@ const strs = (p: Params, key: string): string[] =>
 /** Every code check a genre rule may reference in check.run[].fn. */
 export const CODE_CHECKS: Record<string, CodeCheck> = {
   season_frame: { always: true, codes: ['count', 'anchor'], run: ({ plan, kit }) => plan && checkSeasonFrame(plan, kit.frame) },
-  rhythm: { always: true, codes: ['response', 'suffering', 'hook_repeat', 'emotions', 'line_gap'], run: ({ plan, kit }) => plan && checkRhythm(plan, kit.frame, kit.genre.terms) },
+  rhythm: { always: true, codes: ['response', 'suffering', 'hook_repeat', 'hook_unknown', 'emotions', 'line_gap'], run: ({ plan, kit }) => plan && checkRhythm(plan, kit.frame, kit.genre.terms) },
   villain_ladder: {
     always: true, codes: ['count', 'rank', 'role', 'on_screen', 'introduced', 'takedown', 'takedown_plan', 'key_to_next', 'counterstrike', 'public_legal', 'order', 'punishment', 'turned_ally', 'infighting'],
     run: ({ bible, plan, kit }, p) =>
@@ -84,15 +85,66 @@ export const CODE_CHECKS: Record<string, CodeCheck> = {
       // The anchor id comes from the genre rule: code does not know the frame's anchor names.
       if (typeof p.anchor !== 'string') throw new UnknownCheckError('Проверке «paywall_hook» нужен параметр anchor — id опорной точки из каркаса');
       const needs = strs(p, 'needs');
-      const bad = needs.filter((n) => n !== 'reveal' && n !== 'threat');
-      if (bad.length) throw new UnknownCheckError(`Проверка «paywall_hook»: needs — только reveal и threat, а не ${bad.join(', ')}`);
+      const bad = needs.filter((n) => !(PAYWALL_NEEDS as string[]).includes(n));
+      if (bad.length) throw new UnknownCheckError(`Проверка «paywall_hook»: needs — только ${PAYWALL_NEEDS.join(', ')}, а не ${bad.join(', ')}`);
       return plan && checkPaywallHook(plan, p.anchor, needs.length ? (needs as PaywallNeed[]) : undefined, kit.genre.terms);
     },
   },
   world_rules: {
-    always: false, codes: ['count', 'unshown'],
+    always: false, codes: ['count', 'unshown', 'per_episode'],
     run: ({ bible }, p) =>
-      bible && checkWorldRules(bible, { min: num(p, 'min') ?? 1, max: num(p, 'max') ?? Infinity, requireEpisodes: p.require_episodes === true }),
+      bible && checkWorldRules(bible, { min: num(p, 'min') ?? 1, max: num(p, 'max') ?? Infinity, requireEpisodes: p.require_episodes === true, maxPerEpisode: num(p, 'max_per_episode') }),
+  },
+  // Vertical thriller study: the season question, clues, threat, golden three, resets, irony, beats, linter.
+  matryoshka: {
+    always: false, codes: ['unmarked', 'trunk', 'levels', 'scale', 'chain', 'active', 'finale_questions'],
+    run: ({ bible, kit }, p) => bible && checkMatryoshka(bible, kit.frame, { minLevels: num(p, 'min_levels') ?? 5, maxActive: num(p, 'max_active') ?? 3, maxQuestionWords: num(p, 'max_question_words') ?? 12 }),
+  },
+  clues: { always: false, codes: ['count', 'visual', 'contradiction', 'payoff_late'], run: ({ bible }, p) => bible && checkClues(bible, { min: num(p, 'min') ?? 3, payoffWithin: num(p, 'payoff_within') ?? 15 }) },
+  threat_sign: { always: false, codes: ['missing', 'late'], run: ({ bible }, p) => bible && checkThreatSign(bible, num(p, 'by_ep') ?? 5) },
+  golden_three: { always: false, codes: ['irreversible', 'characters'], run: ({ plan, cards }, p) => plan && checkGolden3(plan, cards, { irreversibleBy: num(p, 'irreversible_by') ?? 3, maxCastEp1: num(p, 'max_cast_ep1') ?? 2 }) },
+  resets: {
+    always: false, codes: ['count', 'gap'],
+    run: ({ plan, kit }, p) => {
+      const anchors = strs(p, 'anchors');
+      if (!anchors.length) throw new UnknownCheckError('Проверке «resets» нужен параметр anchors — id опорных точек перезагрузок');
+      return plan && checkResets(plan, kit.frame, { anchors, min: num(p, 'min') ?? 2, maxGap: num(p, 'max_gap') ?? 25 });
+    },
+  },
+  knowledge_mode: { always: false, codes: ['unmarked', 'same_episode', 'suspense_run'], run: ({ plan, kit }, p) => plan && checkKnowledgeMode(plan, num(p, 'max_suspense_run') ?? 3, kit.genre.terms) },
+  hook_quota: {
+    always: false, codes: ['exceeded'],
+    run: ({ plan, kit }, p) => {
+      if (typeof p.type !== 'string') throw new UnknownCheckError('Проверке «hook_quota» нужен параметр type — тип обрыва');
+      return plan && checkHookQuota(plan, kit.frame, p.type, num(p, 'per') ?? 6, num(p, 'max') ?? 1);
+    },
+  },
+  strongest_twist: {
+    always: false, codes: ['missing', 'on_paywall'],
+    run: ({ plan, kit }, p) => {
+      if (typeof p.anchor !== 'string') throw new UnknownCheckError('Проверке «strongest_twist» нужен параметр anchor — id опорной точки барьера');
+      return plan && checkStrongestTwist(plan, kit.frame, p.anchor);
+    },
+  },
+  beats: { always: false, codes: ['missing', 'order', 'hook_long', 'stakes_late', 'goal', 'new_info', 'reversal', 'reversal_double', 'mute', 'cliffhanger', 'link'], run: ({ cards, kit }) => cards && checkBeats(cards, kit.frame) },
+  script_linter: {
+    always: false, codes: ['flashback', 'talking_heads', 'faces', 'wide_shots', 'sound_double', 'sound_hits', 'speakers_episode', 'overlap', 'voiceover'],
+    run: ({ scripts, kit }, p) =>
+      scripts &&
+      scripts.flatMap((s) =>
+        checkScriptLinter(s, {
+          talkingHeadsS: num(p, 'talking_heads_s') ?? 10,
+          voiceoverS: num(p, 'voiceover_s') ?? 8,
+          maxFaces: num(p, 'max_faces') ?? 2,
+          maxSpeakers: num(p, 'max_speakers') ?? kit.production.limits.max_speakers_per_scene,
+          maxWideShots: num(p, 'max_wide_shots') ?? 1,
+          maxWideS: num(p, 'max_wide_s') ?? 3,
+          maxSoundHits: num(p, 'max_sound_hits') ?? 1,
+          overlapS: num(p, 'overlap_s') ?? 5,
+          paywallEp: kit.frame.free,
+          overlapAfterPaywallS: num(p, 'overlap_after_paywall_s') ?? 3,
+        }),
+      ),
   },
   stakes: { always: false, codes: ['missing', 'closed_outside'], run: ({ bible, kit }) => bible && checkStakes(bible, kit.frame) },
   hero_arc: {

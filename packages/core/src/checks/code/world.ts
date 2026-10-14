@@ -6,8 +6,31 @@ import { makeFinding } from './finding.ts';
  * How many world rules the genre allows (e.g. «one miracle»: 1–3 rules) and, if the genre asks,
  * that each rule is said in some episode and fires with a consequence after that.
  */
-export function checkWorldRules(bible: Bible, limits: { min: number; max: number; requireEpisodes?: boolean }): Finding[] {
+export function checkWorldRules(bible: Bible, limits: { min: number; max: number; requireEpisodes?: boolean; maxPerEpisode?: number }): Finding[] {
   const n = bible.world_rules.length;
+  const perEpisode: Finding[] = [];
+  if (limits.maxPerEpisode !== undefined) {
+    const byEp = new Map<number, string[]>();
+    for (const r of bible.world_rules) {
+      const first = r.heard_eps.length ? Math.min(...r.heard_eps) : undefined;
+      if (first !== undefined) byEp.set(first, [...(byEp.get(first) ?? []), r.rule]);
+    }
+    for (const [ep, rules] of byEp) {
+      if (rules.length <= limits.maxPerEpisode) continue;
+      perEpisode.push(
+        makeFinding({
+          check: 'world_rules.per_episode',
+          controller: 'logic',
+          severity: 'major',
+          holeType: 1,
+          episode: ep,
+          quote: `В ${ep}-й серии вводятся правила: ${rules.join('; ')}`,
+          question: 'сколько правил я должен запомнить за полторы минуты?',
+          fixes: [`Не больше ${limits.maxPerEpisode} нового правила мира на серию: развести по сериям`],
+        }),
+      );
+    }
+  }
   // A genre may allow any number of rules if each one is said in some episode and fires in another.
   const unshown = limits.requireEpisodes
     ? bible.world_rules.flatMap((r) => {
@@ -28,9 +51,10 @@ export function checkWorldRules(bible: Bible, limits: { min: number; max: number
         ];
       })
     : [];
-  if (n >= limits.min && n <= limits.max) return unshown;
+  if (n >= limits.min && n <= limits.max) return [...perEpisode, ...unshown];
   const range = Number.isFinite(limits.max) ? `${limits.min}–${limits.max}` : `не меньше ${limits.min}`;
   return [
+    ...perEpisode,
     ...unshown,
     makeFinding({
       check: 'world_rules.count',

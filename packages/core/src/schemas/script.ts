@@ -12,6 +12,23 @@ export const ScriptBlock = z
     /** How the line is delivered, e.g. "шёпотом". Only for kind "line". */
     parenthetical: NonEmpty.optional(),
     text: NonEmpty,
+    /** Beat of the episode grid this block belongs to. */
+    beat: z.enum(['HOOK', 'STAKES', 'ESCALATION', 'REVERSAL', 'CLIFFHANGER']).optional(),
+    /** scene: shot size; a wide shot is allowed once per episode and ≤3 s. */
+    shot: z.enum(['detail', 'close', 'medium', 'wide']).optional(),
+    /** scene: faces in frame; more than two need `in_frame`. */
+    faces: z.int().min(0).optional(),
+    in_frame: z.array(NonEmpty).optional(),
+    /** scene: a flashback (forbidden in the first episode before the conflict). */
+    flashback: z.boolean().optional(),
+    /** scene: the first seconds repeat the previous cliffhanger (overlap link). */
+    overlap: z.boolean().optional(),
+    /** sound: a plot sound (needs a visual double) and a sound hit (at most one per episode). */
+    plot: z.boolean().optional(),
+    hit: z.boolean().optional(),
+    visual_double: NonEmpty.optional(),
+    /** line: voice-over (≤8 s per episode). */
+    voiceover: z.boolean().optional(),
   })
   .superRefine((b, ctx) => {
     if (b.t1 < b.t0) {

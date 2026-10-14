@@ -96,7 +96,8 @@ describe('promise of the genre', () => {
 });
 
 describe('two cliffhangers in a row differ', () => {
-  it('every genre frame allows one hook type per run', () => {
-    for (const id of Object.keys(kb.genres)) expect(genreKit(kb, id).frame.rhythm.max_same_hook_run, id).toBe(1);
+  it('the producer\'s genres allow one hook type per run; the thriller study allows two', () => {
+    for (const id of ['revenge_thriller', 'romantasy_revenge', 'slavic_myth']) expect(genreKit(kb, id).frame.rhythm.max_same_hook_run, id).toBe(1);
+    expect(genreKit(kb, 'vertical_thriller').frame.rhythm.max_same_hook_run).toBe(2);
   });
 });

@@ -23,7 +23,7 @@ import {
 
 export const DEFAULT_KB_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-export const METHOD_IDS = ['weiland', 'truby', 'harmon', 'mowery', 'rabkin'] as const;
+export const METHOD_IDS = ['weiland', 'truby', 'harmon', 'mowery', 'rabkin', 'vertical'] as const;
 
 type Frame = z.infer<typeof SeasonFrame>['season_frame'];
 

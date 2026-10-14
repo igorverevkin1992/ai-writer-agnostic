@@ -7,6 +7,10 @@ export const Mood = z.enum(['suffering', 'kaif', 'neutral']);
 export const ArcBeat = z.enum(['lie', 'truth', 'relapse']);
 export type ArcBeat = z.infer<typeof ArcBeat>;
 
+/** Who knows more in the episode: the viewer (suspense), nobody (mystery), a character on screen (surprise). */
+export const KnowledgeMode = z.enum(['suspense', 'mystery', 'surprise']);
+export type KnowledgeMode = z.infer<typeof KnowledgeMode>;
+
 /** One line of the season plan. Frame, rhythm and ladder are checked by code (M3). */
 export const EpisodeOutline = z.object({
   ep: EpisodeNumber,
@@ -41,6 +45,20 @@ export const EpisodeOutline = z.object({
   victory: z.boolean().default(false),
   /** What a victory of this or the previous episode costs her. Empty when nothing is paid. */
   cost: z.string().trim().default(''),
+  /** Thriller: dramatic irony mode of the episode. */
+  knowledge_mode: KnowledgeMode.optional(),
+  /** The viewer sees the threat in this episode (a figure behind, a phone screen, a reflection). */
+  threat_seen_by_viewer: z.boolean().default(false),
+  /** The hero learns the threat in this episode. Same episode as the viewer — the irony is wasted. */
+  threat_known_to_hero: z.boolean().default(false),
+  /** An irreversible event: the threat is taken seriously from here on. */
+  irreversible: z.boolean().default(false),
+  /** Paywall «В+У+Л»: the season question gets a turn (not an answer) in this episode. */
+  question_turn: z.boolean().default(false),
+  /** Paywall «В+У+Л»: the personal stake — a bond from the earlier episodes that is now threatened. */
+  personal_stake: z.string().trim().default(''),
+  /** The strongest twist of the season (never on the paywall episode). */
+  strongest_twist: z.boolean().default(false),
 });
 export type EpisodeOutline = z.infer<typeof EpisodeOutline>;
 

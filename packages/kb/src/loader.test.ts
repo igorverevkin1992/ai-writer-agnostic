@@ -53,7 +53,7 @@ describe('loadKb on the real knowledge base', () => {
 
   it('loads shared sections', () => {
     expect(kb.holes.holes).toHaveLength(11);
-    expect(Object.keys(kb.methods).sort()).toEqual(['harmon', 'mowery', 'rabkin', 'truby', 'weiland']);
+    expect(Object.keys(kb.methods).sort()).toEqual(['harmon', 'mowery', 'rabkin', 'truby', 'vertical', 'weiland']);
     expect(kb.prompts['architect/concept']).toContain('JSON');
   });
 
@@ -109,7 +109,7 @@ describe('other series, other genres', () => {
     const dir = kbCopy();
     addRomance(dir);
     const kb = loadKb(dir);
-    expect(Object.keys(kb.genres).sort()).toEqual(['revenge_thriller', 'romance30', 'romantasy_revenge', 'slavic_myth']);
+    expect(Object.keys(kb.genres).sort()).toEqual(['revenge_thriller', 'romance30', 'romantasy_revenge', 'slavic_myth', 'vertical_thriller']);
     const romance = genreKit(kb, 'romance30');
     expect(romance.frame.episodes).toBe(30);
     expect(romance.frame.villains).toBeUndefined();

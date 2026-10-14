@@ -115,7 +115,20 @@ export function checkScriptMetrics(script: Script, production: ProductionConstra
   }
   for (const b of lines) {
     const words = countWords(b.text);
-    if (words > m.max_line_words) add('line_words', `${b.speaker}: ${b.text}`, 'что он сказал? Слишком длинно.', `Сократить реплику до ${m.max_line_words} слов`);
+    if (words <= m.max_line_words) continue;
+    const hard = m.hard_line_words !== undefined && words > m.hard_line_words;
+    const found = makeFinding({
+      check: 'script_metrics.line_words',
+      controller: 'production',
+      // Between the soft and the hard limit a long line is a warning; past the hard limit it blocks.
+      severity: hard || m.hard_line_words === undefined ? 'major' : 'minor',
+      holeType: 9,
+      episode: ep,
+      quote: `${b.speaker}: ${b.text}`,
+      question: 'что он сказал? Слишком длинно.',
+      fixes: [`Сократить реплику до ${m.max_line_words} слов${m.hard_line_words !== undefined ? ` (больше ${m.hard_line_words} — блок)` : ''}`],
+    });
+    out.push(found);
   }
   for (const b of script.blocks.filter((x) => x.kind === 'overlay')) {
     if (countWords(b.text) > m.max_overlay_words) add('overlay_words', b.text, 'я не успела прочитать надпись', `Плашка — до ${m.max_overlay_words} слов`);

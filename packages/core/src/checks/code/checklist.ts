@@ -40,7 +40,9 @@ export function scoreChecklist(checklist: Checklist, rules: RulesFile, result: C
   });
   const score = items.filter((i) => i.status === 'ok').reduce((n, i) => n + i.points, 0);
   const unknownPoints = items.filter((i) => i.status === 'unknown').reduce((n, i) => n + i.points, 0);
-  const passed = score >= checklist.pass ? true : score + unknownPoints < checklist.pass ? false : null;
+  // A failed critical item (stress test of a concept) rejects the season whatever the score.
+  const criticalFailed = items.some((i) => i.status === 'fail' && checklist.items.find((x) => x.id === i.id)?.critical);
+  const passed = criticalFailed ? false : score >= checklist.pass ? true : score + unknownPoints < checklist.pass ? false : null;
 
   const base = { score, total: checklist.total, pass: checklist.pass, unknownPoints, passed, items };
   return { ...base, finding: checklistFinding(base) };

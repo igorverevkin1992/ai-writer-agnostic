@@ -432,6 +432,7 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
             anchor_ids: Object.keys(f.anchors).join(', '),
             kaif_lines: Object.keys(f.lines).length ? Object.entries(f.lines).map(([id, name]) => `${id} (${name})`).join(', ') : 'в этом жанре линий нет, оставь пустым',
             villain_roles: Object.values(f.villains?.roles ?? {}).join(', ') || 'в жанре нет лестницы злодеев',
+            hook_types: Object.keys(f.hook_types).length ? `только из словаря жанра: ${Object.entries(f.hook_types).map(([id, name]) => `${id} (${name})`).join(', ')}` : 'своими словами (угроза, тайна, победа…)',
             tolerance: f.tolerance,
             schema: schemaText(part),
           }),
