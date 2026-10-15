@@ -50,10 +50,10 @@ Sep 28, 2026 · @Igor
 
 ```yaml
 roles:
-  architect:           {provider: anthropic, model: claude-opus-5-5, max_output: 16000}
-  architect_heavy:     {provider: anthropic, model: claude-fable-5-1, max_output: 16000}  # план сезона, финальный аудит
-  writer:              {provider: google, model: gemini-3.1-pro-preview, max_output: 16000, max_input: 200000}
-  critic_of_architect: {provider: google, model: gemini-3.1-pro-preview}
+  architect:           {provider: anthropic, model: claude-opus-5-5, max_output: 32000}
+  architect_heavy:     {provider: anthropic, model: claude-fable-5-1, max_output: 32000}  # план сезона, финальный аудит
+  writer:              {provider: google, model: gemini-3.1-pro-preview, max_output: 65536, max_input: 200000}
+  critic_of_architect: {provider: google, model: gemini-3.1-pro-preview, max_output: 65536}
   critic_of_writer:    {provider: anthropic, model: claude-opus-5-5}
   helper:              {provider: anthropic, model: claude-haiku-4-5-20251001}
 fallback:
