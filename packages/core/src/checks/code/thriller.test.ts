@@ -1,5 +1,6 @@
 import { genreKit, loadKb, resolveFrameInputs, SeasonFrame as FrameSchema } from '@aiw/kb';
 import { describe, expect, it } from 'vitest';
+import { loadGolden } from '../../fixtures.ts';
 import { Bible, EpisodeCard, EpisodeOutline, SeasonPlan, Script } from '../../schemas/index.ts';
 import { sampleBible, sampleCard, sampleScript } from '../../schemas/samples.ts';
 import { scoreChecklist } from './checklist.ts';
@@ -249,5 +250,27 @@ describe('vertical thriller genre pack', () => {
     expect(score.items.find((i) => i.id === 'S09')?.status).toBe('fail');
     expect(score.passed).toBe(false);
     expect(kit.checklist.items.filter((i) => i.critical).map((i) => i.id)).toEqual(['S01', 'S02', 'S03', 'S09']);
+  });
+});
+
+describe('golden project «Прима» (vertical thriller)', () => {
+  const golden = loadGolden('prima');
+
+  it('passes every code check of its genre and the stress test has no failed item', () => {
+    const res = runCodeChecks({ kit, ...golden });
+    expect(res.findings.map((f) => `${f.check} [${f.episode ?? '-'}] ${f.quote}`)).toEqual([]);
+    const score = scoreChecklist(kit.checklist, kit.rules, res);
+    expect(score.items.filter((i) => i.status === 'fail')).toEqual([]);
+    expect(score.passed).not.toBe(false);
+  });
+
+  it('follows the study\'s season grid: paywall «В+У+Л» in 10, the strongest twist on reset 1, five nested questions', () => {
+    const ep = (n: number) => golden.plan.episodes.find((e) => e.ep === n)!;
+    expect(ep(10)).toMatchObject({ anchors: ['paywall_hook'], question_turn: true, threat_to_heroine: true });
+    expect(ep(10).personal_stake).not.toBe('');
+    expect(ep(27)).toMatchObject({ anchors: ['reset1'], strongest_twist: true });
+    expect(golden.bible.nested).toHaveLength(5);
+    expect(golden.bible.nested.map((q) => q.closed_ep)).toEqual([12, 24, 36, 50, 60]);
+    expect(golden.plan.episodes.filter((e) => e.ep <= 3 && e.irreversible).length).toBeGreaterThan(0);
   });
 });

@@ -55,6 +55,13 @@ describe('demo mode answers with the golden project of the genre', () => {
     expect(plan.checklist?.passed).toBe(true);
   });
 
+  it('vertical thriller: «Прима» — its own bible and plan; only the planted hole is open', async () => {
+    const { memory, plan } = await throughPlan('vertical_thriller');
+    expect(memory.currentBible()?.characters[0]?.name).toBe('Ася');
+    expect(memory.findingsOf('season_plan', 'open').map((f) => f.quote)).toEqual(['Охранник хватает Асю — выдох. В руке у него шаль Лики']);
+    expect(plan.checklist?.passed).not.toBe(false);
+  });
+
   it('thriller: still «Муж женился на мне ради крови»', async () => {
     const { memory } = await throughPlan('revenge_thriller');
     expect(memory.currentBible()?.characters[0]?.name).toBe('Лиза');

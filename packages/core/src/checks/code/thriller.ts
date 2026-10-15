@@ -128,7 +128,9 @@ export function checkResets(plan: SeasonPlan, frame: SeasonFrame, p: ResetsParam
   if (eps.length < p.min) {
     out.push(f('resets.count', 'major', `Перезагрузок в плане: ${eps.length}`, 'правила игры ни разу не поменялись — зачем смотреть дальше середины?', `Поставить не меньше ${p.min} перезагрузок (${p.anchors.map((a) => frame.anchor_labels[a] ?? a).join(', ')})`));
   }
-  const points = [0, ...eps, frame.episodes];
+  // Gaps are measured between resets and from the last reset to the finale; the first reset sits
+  // where the frame puts it (around 45% of the season), so the run-up to it is not a gap.
+  const points = eps.length ? [...eps, frame.episodes] : [];
   for (let i = 1; i < points.length; i++) {
     const gap = points[i]! - points[i - 1]!;
     if (gap > p.maxGap) {
