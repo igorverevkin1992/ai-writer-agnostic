@@ -48,7 +48,7 @@ describe('models config', () => {
       ['architect', 'architect_heavy', 'critic_of_architect', 'critic_of_writer', 'helper', 'writer'],
     );
     expect(cfg.roles.writer.max_input).toBe(200000);
-    expect(cfg.budget.project_limit_usd).toBe(300);
+    expect(cfg.budget.project_limit_usd).toBe(50);
     for (const rc of Object.values(cfg.roles)) expect(cfg.prices_usd_per_mtok[rc.model]).toBeDefined();
   });
 

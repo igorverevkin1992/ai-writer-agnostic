@@ -160,7 +160,7 @@ describe('server', () => {
     db.insert(llmCalls)
       .values({ projectId: 'p1', step: 'bible', role: 'architect', provider: 'anthropic', model: 'm', costUsd: 1.5, durationMs: 1, status: 'ok' })
       .run();
-    expect((await get('/api/projects/p1/costs')).json()).toMatchObject({ totalUsd: 1.5, limitUsd: 300, calls: 1 });
+    expect((await get('/api/projects/p1/costs')).json()).toMatchObject({ totalUsd: 1.5, limitUsd: 50, calls: 1 });
   });
 
   it('runs a step in the background and shows it in the overview', async () => {

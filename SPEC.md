@@ -59,7 +59,7 @@ roles:
 fallback:
   any: {provider: openai_compatible, base_url_env: RESERVE_BASE_URL, model_env: RESERVE_MODEL}
 budget:
-  project_limit_usd: 300
+  project_limit_usd: 50
   warn_at: 0.8
 prices_usd_per_mtok:   # сверять раз в месяц
   claude-opus-5-5:           {in: 4,  out: 20, cache_read: 0.20}
