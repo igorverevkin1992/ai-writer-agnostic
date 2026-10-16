@@ -5,6 +5,10 @@ export function progressLogger(write: (line: string) => void = (l) => process.st
   let calls = 0;
   let totalUsd = 0;
   return (log) => {
+    if (log.status === 'start') {
+      write(`  … ${log.task ?? log.role} · ${log.model} — ждём ответа`);
+      return;
+    }
     calls++;
     totalUsd += log.costUsd;
     const secs = (log.durationMs / 1000).toFixed(0);

@@ -69,7 +69,7 @@ export interface CallLog {
   model: string;
   durationMs: number;
   costUsd: number;
-  status: 'ok' | 'error';
+  status: 'start' | 'ok' | 'error';
   error?: string;
 }
 
@@ -251,6 +251,7 @@ export class LlmClient {
       provider: resolved.provider,
       fallbackUsed,
     };
+    this.onCall?.({ task: request.task, role: opts.role, provider: resolved.provider, model: resolved.target.model, durationMs: 0, costUsd: 0, status: 'start' });
     try {
       const result = await this.providers[resolved.provider].complete(request, resolved.target);
       const { costUsd, priceKnown } = this.cost(result.model, resolved.target.model, result.usage);
