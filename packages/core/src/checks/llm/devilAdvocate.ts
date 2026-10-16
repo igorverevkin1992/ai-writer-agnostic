@@ -9,6 +9,7 @@ import { knowledgeBlock, renderPrompt, schemaText } from '../../prompts/render.t
 import { makeFinding } from '../code/finding.ts';
 import { concurrencyFromEnv, mapLimit } from '../../pipeline/mapLimit.ts';
 import { FindingDraft, FindingDrafts, ReviewDraft, ReviewDrafts } from './schemas.ts';
+import { lineHasFragment, locateQuote } from './quote.ts';
 import { bibleText, factsText, noticeQuestions, planBlocks, type AuditBlock } from './texts.ts';
 
 const MAX_NOTICE_QUESTIONS = 30;
@@ -51,10 +52,14 @@ export interface AuditResult {
   findings: Finding[];
   /** Drafts dropped because their quote is not in the audited text. */
   dropped: number;
+  /** A few of the dropped quotes, to see what the model cites wrongly. */
+  droppedSamples: string[];
   calls: number;
   /** Providers that really answered (the reserve may have stood in): a judge of the audit must differ. */
   providers: ProviderName[];
 }
+
+const MAX_DROPPED_SAMPLES = 10;
 
 const normalize = (s: string) => s.replace(/[«»"“”„]/gu, '"').replace(/[ёЁ]/gu, 'е').replace(/\s+/gu, ' ').trim().toLowerCase();
 
@@ -62,11 +67,10 @@ const normalize = (s: string) => s.replace(/[«»"“”„]/gu, '"').replace(/[
  * Episode of a quote inside a plan block: the "Серия N." line it comes from.
  * When the same words stand in several episodes, the one the auditor named wins.
  */
-function episodeOfQuote(block: AuditBlock, quote: string, named?: number): number | undefined {
-  const q = normalize(quote);
+function episodeOfQuote(block: AuditBlock, fragment: string, named?: number): number | undefined {
   const eps = block.text
     .split('\n')
-    .filter((l) => normalize(l).includes(q))
+    .filter((l) => lineHasFragment(l, fragment))
     .map((l) => /^Серия (\d+)\./u.exec(l))
     .filter((m): m is RegExpExecArray => !!m)
     .map((m) => Number(m[1]));
@@ -74,22 +78,21 @@ function episodeOfQuote(block: AuditBlock, quote: string, named?: number): numbe
 }
 
 /** The episode of a draft: from the quote's line, or the model's number if it is inside the block. */
-function episodeOf(block: AuditBlock, quote: string, named?: number): number | undefined {
+function episodeOf(block: AuditBlock, fragment: string, named?: number): number | undefined {
   const inBlock = (ep: number | undefined) =>
     ep !== undefined && (!block.episodes || (ep >= block.episodes[0] && ep <= block.episodes[1])) ? ep : undefined;
-  return block.episodes ? (episodeOfQuote(block, quote, named) ?? inBlock(named)) : named;
+  return block.episodes ? (episodeOfQuote(block, fragment, named) ?? inBlock(named)) : named;
 }
 
-const quoteIsIn = (block: AuditBlock, quote: string) => normalize(block.text).includes(normalize(quote));
-
 function reviewFinding(d: ReviewDraft, block: AuditBlock, category: Category): Finding | undefined {
-  if (!quoteIsIn(block, d.quote)) return undefined;
+  const fragment = locateQuote(block.text, d.quote);
+  if (!fragment) return undefined;
   const f = makeFinding({
     check: `review.${category.id}`,
     controller: 'logic',
     severity: LEVEL_SEVERITY[d.level],
     holeType: category.hole_types[0],
-    episode: episodeOf(block, d.quote, d.episode),
+    episode: episodeOf(block, fragment, d.episode),
     quote: d.quote,
     question: d.viewerQuestion.replace(/^Зритель спросит:\s*/u, ''),
     fixes: d.fixes as [string],
@@ -106,13 +109,14 @@ function reviewFinding(d: ReviewDraft, block: AuditBlock, category: Category): F
 }
 
 function personaFinding(d: FindingDraft, block: AuditBlock, check: string): Finding | undefined {
-  if (!quoteIsIn(block, d.quote)) return undefined;
+  const fragment = locateQuote(block.text, d.quote);
+  if (!fragment) return undefined;
   return makeFinding({
     check,
     controller: 'logic',
     severity: d.severity,
     holeType: d.holeType,
-    episode: episodeOf(block, d.quote, d.episode),
+    episode: episodeOf(block, fragment, d.episode),
     quote: d.quote,
     question: d.viewerQuestion.replace(/^Зритель спросит:\s*/u, ''),
     fixes: d.fixes as [string],
@@ -150,6 +154,11 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
 
   const found = new Map<string, Finding>();
   let dropped = 0;
+  const droppedSamples: string[] = [];
+  const drop = (quote: string) => {
+    dropped++;
+    if (droppedSamples.length < MAX_DROPPED_SAMPLES) droppedSamples.push(quote);
+  };
   let calls = 0;
   const providers = new Set<ProviderName>();
   const keep = (f: Finding) => {
@@ -213,7 +222,7 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
     for (const d of drafts[i]!) {
       const f = reviewFinding(d, p.block, p.category);
       if (f) keep(f);
-      else dropped++;
+      else drop(d.quote);
     }
   });
 
@@ -237,10 +246,10 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
       for (const d of personaDrafts[i]!) {
         const f = personaFinding(d, whole, `persona.${p.id}`);
         if (f) keep(f);
-        else dropped++;
+        else drop(d.quote);
       }
     });
   }
 
-  return { findings: [...found.values()], dropped, calls, providers: [...providers] };
+  return { findings: [...found.values()], dropped, droppedSamples, calls, providers: [...providers] };
 }

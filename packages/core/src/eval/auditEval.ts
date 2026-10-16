@@ -74,6 +74,9 @@ export interface SeededResult {
 export interface EvalReport {
   findings: Finding[];
   dropped: number;
+  droppedSamples: string[];
+  /** The producer's holes the auditor did not match. */
+  producerMissed: { id: string; description: string }[];
   matches: EvalMatches['matches'];
   producerHoles: number;
   producerFound: number;
@@ -120,6 +123,8 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
   const report: EvalReport = {
     findings: [],
     dropped: 0,
+    droppedSamples: [],
+    producerMissed: [],
     matches: [],
     producerHoles: input.producer?.holes.length ?? 0,
     producerFound: 0,
@@ -150,6 +155,7 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
       const res = await runDevilAdvocate(deps, { ...target, authorProvider: llm.resolve(authorRole).provider });
       report.findings.push(...res.findings);
       report.dropped += res.dropped;
+      report.droppedSamples.push(...res.droppedSamples.slice(0, 5));
       for (const p of res.providers) auditors.add(p);
     }
 
@@ -178,6 +184,7 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
       report.realFindings = new Set(real.map((m) => m.finding_id)).size;
       const matched = new Set(real.map((m) => m.hole_id).filter((x): x is string => !!x));
       report.producerFound = holes.filter((h) => matched.has(h.id)).length;
+      report.producerMissed = holes.filter((h) => !matched.has(h.id)).map((h) => ({ id: h.id, description: h.description }));
     }
 
     // 3. Seeded holes: code first, then a targeted model pass. What the golden project
@@ -275,6 +282,14 @@ export function renderEvalReport(r: EvalReport, meta: { date: string; project: s
       const f = r.findings.find((x) => x.id === m.finding_id);
       lines.push(`- «${f?.quote ?? m.finding_id}» → ${m.hole_id ?? 'не сопоставлено'}: ${m.reason}`);
     }
+  }
+  if (r.producerMissed.length) {
+    lines.push('', '## Не найденные дыры продюсера', '');
+    for (const h of r.producerMissed) lines.push(`- ${h.id}: ${h.description}`);
+  }
+  if (r.droppedSamples.length) {
+    lines.push('', '## Примеры отброшенных цитат', '');
+    for (const q of r.droppedSamples) lines.push(`- «${q}»`);
   }
   const missed = r.seeded.filter((s) => !s.code && !s.model);
   if (missed.length) {

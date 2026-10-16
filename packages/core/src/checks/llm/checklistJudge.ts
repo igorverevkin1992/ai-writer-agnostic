@@ -6,13 +6,12 @@ import type { LlmClient } from '../../providers/llm.ts';
 import type { Bible } from '../../schemas/bible.ts';
 import type { SeasonPlan } from '../../schemas/season.ts';
 import type { ChecklistScore } from '../code/checklist.ts';
+import { locateQuote } from './quote.ts';
 import { bibleText, planBlocks } from './texts.ts';
 
 export const ChecklistVerdicts = z.object({
   items: z.array(z.object({ id: z.string().min(1), ok: z.boolean(), quote: z.string(), reason: z.string().min(1) })),
 });
-
-const norm = (s: string) => s.replace(/[«»"“”„]/gu, '"').replace(/[ёЁ]/gu, 'е').replace(/\s+/gu, ' ').trim().toLowerCase();
 
 /**
  * Judges the checklist items code cannot count. An item counts only when the judge
@@ -46,7 +45,7 @@ export async function judgeChecklist(
     if (i.status !== 'unknown') return i;
     const v = data.items.find((x) => x.id === i.id);
     if (!v) return i;
-    const backed = v.ok && v.quote.trim() !== '' && norm(text).includes(norm(v.quote));
+    const backed = v.ok && locateQuote(text, v.quote) !== undefined;
     return { ...i, status: backed ? ('ok' as const) : v.ok ? ('unknown' as const) : ('fail' as const) };
   });
   const s = items.filter((i) => i.status === 'ok').reduce((n, i) => n + i.points, 0);

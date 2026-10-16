@@ -105,6 +105,8 @@ describe('auditor evaluation', () => {
       {
         findings: [1, 2, 3, 4].map((n) => ({ ...f, id: `f${n}`, quote: `q${n}`, fixes: ['a'] })),
         dropped: 0,
+        droppedSamples: [],
+        producerMissed: [],
         matches: [{ finding_id: 'f1', hole_id: null, real: true, disputed: false, reason: '' }],
         producerHoles: 0,
         producerFound: 0,
