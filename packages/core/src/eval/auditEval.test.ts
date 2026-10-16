@@ -8,7 +8,7 @@ import { LlmClient } from '../providers/llm.ts';
 import { FakeProvider, testConfig } from '../providers/testing.ts';
 import type { LlmRequest } from '../providers/types.ts';
 import { ProducerHolesFile, renderEvalReport, runAuditEval } from './auditEval.ts';
-import { seedHoles } from './seed.ts';
+import { seedHoles, withHole } from './seed.ts';
 
 const kb = loadKb();
 const kit = genreKit(kb, 'revenge_thriller');
@@ -16,6 +16,7 @@ const golden = loadGolden();
 
 let db: Db;
 let tasks: string[];
+let matchCode = false;
 
 const hole = {
   level: 'critical',
@@ -33,7 +34,12 @@ function reply(req: LlmRequest): string {
   if (task.startsWith('devil_advocate:') || task.startsWith('persona:')) return '[]';
   if (task === 'eval_match') {
     const id = /(review\.А\S+) \| тип 3/u.exec(req.system ?? '')?.[1];
-    return JSON.stringify({ matches: [{ finding_id: id, hole_id: 'p1', real: true, disputed: false, reason: 'Та же дыра' }] });
+    // A code finding is offered to the judge too and counts towards the producer's holes.
+    const codeId = /^(\S+) \| тип \d+ \| серия [^|]+\| «[^»]*» \| Зритель спросит: [^\n]*/mu;
+    const codeLine = (req.system ?? '').split('\n').find((l) => codeId.test(l) && !l.startsWith('review.') && !l.startsWith('persona.'));
+    const matches = [{ finding_id: id, hole_id: 'p1', real: true, disputed: false, reason: 'Та же дыра' }];
+    if (codeLine && matchCode) matches.push({ finding_id: codeLine.split(' | ')[0]!, hole_id: 'p2', real: true, disputed: false, reason: 'Код нашёл' });
+    return JSON.stringify({ matches });
   }
   if (task.startsWith('respond:')) return JSON.stringify({ action: 'cite', fact_id: 'f_dasha_target', explanation: 'Даша в опасности' });
   if (task.startsWith('judge:')) return JSON.stringify({ closed: true, reason: 'Закрыто' });
@@ -48,6 +54,7 @@ function client() {
 beforeEach(() => {
   db = openDb(':memory:');
   tasks = [];
+  matchCode = false;
   db.insert(projects).values({ id: 'ev', title: 'eval', genreId: 'revenge_thriller', budgetLimitUsd: 100 }).run();
 });
 
@@ -76,6 +83,25 @@ describe('auditor evaluation', () => {
     expect(md).toContain('| Найдено дыр продюсера | 1 из 2 (50%) | ≥70% ✗ | ≥85% ✗ |');
     expect(md).toContain('| Доля реальных замечаний | 1 из 1 (100%) | ≥50% ✓ | ≥65% ✓ |');
     expect(md).toContain('| Опорные точки на своих номерах | 12 из 12 (100%) | 100% ✓ | 100% |');
+  });
+
+  it('a code finding matched to a producer hole counts as found, but not as a model finding', async () => {
+    matchCode = true;
+    // A seeded hole the code catches, so the golden project yields a code finding to match.
+    const holed = withHole(golden, seedHoles(golden, kit, 1)[0]!);
+    const report = await runAuditEval({
+      llm: client(),
+      kb,
+      kit,
+      golden: holed,
+      projectId: 'ev',
+      seeded: [],
+      producer: ProducerHolesFile.parse({ holes: [{ id: 'p1', holeType: 3, episode: 42, description: 'Почему не в полицию' }, { id: 'p2', holeType: 7, description: 'Возраст Лизы' }] }),
+    });
+    expect(report.producerFound).toBe(2);
+    expect(report.realFindings).toBe(1);
+    expect(report.findings).toHaveLength(1);
+    expect(report.producerMissed).toEqual([]);
   });
 
   it('audits seeded holes with a targeted pass: only the categories of the hole type', async () => {

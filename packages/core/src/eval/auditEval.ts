@@ -160,7 +160,9 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
     }
 
     // 2. Match findings with the producer's holes (judge from another family than the auditor).
-    if (report.findings.length) {
+    // Code findings count towards the producer's holes too: the auditor is code plus model.
+    const toMatch = [...report.findings, ...code.findings];
+    if (toMatch.length) {
       const holes = input.producer?.holes ?? [];
       const { data } = await llm.completeJson(EvalMatches, {
         role: judgeFor(llm, [...auditors]),
@@ -171,7 +173,7 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
           task: 'eval_match',
           system: renderPrompt(kb, 'critic_of_writer/eval_match', {
             holes: holes.map((h) => `${h.id} | ${h.holeType ? `тип ${h.holeType}` : `категория ${h.category.join(', ') || '—'}`} | серии ${h.episodes ?? h.episode ?? '—'} | ${h.description}`).join('\n') || 'Список продюсера не передан.',
-            findings: report.findings.map((f) => `${f.id} | тип ${f.holeType} | серия ${f.episode ?? '—'} | «${f.quote}» | ${f.viewerQuestion}`).join('\n'),
+            findings: toMatch.map((f) => `${f.id} | тип ${f.holeType} | серия ${f.episode ?? '—'} | «${f.quote}» | ${f.viewerQuestion}`).join('\n'),
             schema: schemaText(EvalMatches),
           }),
           messages: [{ role: 'user', content: 'Сопоставь. Только JSON.' }],
@@ -179,9 +181,10 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
       });
       report.matches = data.matches;
       // Only matches to findings the auditor really made count, each finding once.
-      const ids = new Set(report.findings.map((f) => f.id));
-      const real = data.matches.filter((m) => m.real && ids.has(m.finding_id));
-      report.realFindings = new Set(real.map((m) => m.finding_id)).size;
+      const modelIds = new Set(report.findings.map((f) => f.id));
+      const allIds = new Set(toMatch.map((f) => f.id));
+      const real = data.matches.filter((m) => m.real && allIds.has(m.finding_id));
+      report.realFindings = new Set(real.filter((m) => modelIds.has(m.finding_id)).map((m) => m.finding_id)).size;
       const matched = new Set(real.map((m) => m.hole_id).filter((x): x is string => !!x));
       report.producerFound = holes.filter((h) => matched.has(h.id)).length;
       report.producerMissed = holes.filter((h) => !matched.has(h.id)).map((h) => ({ id: h.id, description: h.description }));
@@ -278,9 +281,14 @@ export function renderEvalReport(r: EvalReport, meta: { date: string; project: s
   const disputed = r.matches.filter((m) => m.disputed);
   if (disputed.length) {
     lines.push('', '## Спорные случаи — нужен взгляд продюсера', '');
-    for (const m of disputed) {
+    // One line per hole: the same hole seen from several categories is one question for the producer.
+    const byHole = new Map<string, typeof disputed>();
+    for (const m of disputed) byHole.set(m.hole_id ?? m.finding_id, [...(byHole.get(m.hole_id ?? m.finding_id) ?? []), m]);
+    for (const [key, ms] of byHole) {
+      const m = ms[0]!;
       const f = r.findings.find((x) => x.id === m.finding_id);
-      lines.push(`- «${f?.quote ?? m.finding_id}» → ${m.hole_id ?? 'не сопоставлено'}: ${m.reason}`);
+      const more = ms.length > 1 ? ` (ещё ${ms.length - 1} замеч. о том же)` : '';
+      lines.push(`- «${f?.quote ?? m.finding_id}» → ${m.hole_id ? key : 'не сопоставлено'}: ${m.reason}${more}`);
     }
   }
   if (r.producerMissed.length) {
