@@ -7,6 +7,7 @@ import { LEVEL_SEVERITY, type Finding } from '../../schemas/finding.ts';
 import type { SeasonPlan } from '../../schemas/season.ts';
 import { knowledgeBlock, renderPrompt, schemaText } from '../../prompts/render.ts';
 import { makeFinding } from '../code/finding.ts';
+import { concurrencyFromEnv, mapLimit } from '../../pipeline/mapLimit.ts';
 import { FindingDraft, FindingDrafts, ReviewDraft, ReviewDrafts } from './schemas.ts';
 import { bibleText, factsText, noticeQuestions, planBlocks, type AuditBlock } from './texts.ts';
 
@@ -42,6 +43,8 @@ export interface AuditOptions {
   personas?: boolean;
   /** Episodes per pass; by default the whole season at once, so setups and payoffs are seen together. */
   blockSize?: number;
+  /** Model calls in flight at once; by default AIW_CONCURRENCY or 4. */
+  concurrency?: number;
 }
 
 export interface AuditResult {
@@ -173,13 +176,15 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
   const severities = Object.entries(review.severities)
     .map(([level, text]) => `- ${level}: ${text}`)
     .join('\n');
-  for (const category of pickCategories(review, deps.kit.genre.id, opts)) {
+  // One pass per category and block; the passes are independent, so they run a few at a time.
+  // The results are applied in order, so the findings come out the same whatever finishes first.
+  const passes = pickCategories(review, deps.kit.genre.id, opts).flatMap((category) => {
     const holes = deps.kb.holes.holes.filter((h) => category.hole_types.includes(h.id));
     const questions = [
       ...holes.flatMap((h) => h.questions),
       ...holes.flatMap((h) => deps.kit.guide?.hole_questions[String(h.id)] ?? []),
     ];
-    for (const block of blocks) {
+    return blocks.map((block) => {
       const notice = category.with_notice_questions
         ? noticeQuestions(target.bible, block, target.plan).slice(0, MAX_NOTICE_QUESTIONS)
         : [];
@@ -199,33 +204,42 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
         facts,
         schema: schemaText(ReviewDrafts),
       });
-      for (const d of await ask(`devil_advocate:${category.id}:${block.label}`, system, ReviewDrafts)) {
-        const f = reviewFinding(d, block, category);
-        if (f) keep(f);
-        else dropped++;
-      }
+      return { category, block, system };
+    });
+  });
+  const limit = opts.concurrency ?? concurrencyFromEnv();
+  const drafts = await mapLimit(passes, limit, (p) => ask(`devil_advocate:${p.category.id}:${p.block.label}`, p.system, ReviewDrafts));
+  passes.forEach((p, i) => {
+    for (const d of drafts[i]!) {
+      const f = reviewFinding(d, p.block, p.category);
+      if (f) keep(f);
+      else dropped++;
     }
-  }
+  });
 
   if (opts.personas !== false) {
     const whole: AuditBlock = target.plan
       ? { label: 'план сезона', text: blocks.map((b) => b.text).join('\n'), episodes: [blocks[0]?.episodes?.[0] ?? 1, blocks.at(-1)?.episodes?.[1] ?? 1] }
       : blocks[0]!;
-    for (const p of deps.kit.personas.personas) {
-      const system = renderPrompt(deps.kb, `${role}/persona`, {
+    const personas = deps.kit.personas.personas.map((p) => ({
+      p,
+      system: renderPrompt(deps.kb, `${role}/persona`, {
         persona: `${p.name}${p.age ? `, ${p.age} лет` : ''}`,
         focus: p.focus,
         target: whole.label,
         text: whole.text,
         holes: deps.kb.holes.holes.map((h) => `${h.id}. ${h.name}`).join('\n'),
         schema: schemaText(FindingDrafts),
-      });
-      for (const d of await ask(`persona:${p.id}`, system, FindingDrafts)) {
+      }),
+    }));
+    const personaDrafts = await mapLimit(personas, limit, ({ p, system }) => ask(`persona:${p.id}`, system, FindingDrafts));
+    personas.forEach(({ p }, i) => {
+      for (const d of personaDrafts[i]!) {
         const f = personaFinding(d, whole, `persona.${p.id}`);
         if (f) keep(f);
         else dropped++;
       }
-    }
+    });
   }
 
   return { findings: [...found.values()], dropped, calls, providers: [...providers] };

@@ -10,6 +10,8 @@ function contents(req: LlmRequest): Content[] {
   return req.messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
 }
 
+const REQUEST_TIMEOUT_MS = 15 * 60 * 1000;
+
 const REFUSAL_REASONS = new Set<string>([
   FinishReason.SAFETY,
   FinishReason.PROHIBITED_CONTENT,
@@ -29,7 +31,9 @@ export class GoogleProvider implements Provider {
     this.client ??= new GoogleGenAI({
       apiKey: this.env.GEMINI_API_KEY,
       // Retries on rate limits and 5xx; without it one hiccup fails a whole step.
-      httpOptions: { retryOptions: { attempts: 3 }, ...(this.env.GEMINI_BASE_URL ? { baseUrl: this.env.GEMINI_BASE_URL } : {}) },
+      // The timeout stops a stalled connection from hanging a run forever (a long
+      // thinking answer still fits: it is per request, in milliseconds).
+      httpOptions: { retryOptions: { attempts: 3 }, timeout: REQUEST_TIMEOUT_MS, ...(this.env.GEMINI_BASE_URL ? { baseUrl: this.env.GEMINI_BASE_URL } : {}) },
     });
     return this.client;
   }

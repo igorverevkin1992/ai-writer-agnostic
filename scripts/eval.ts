@@ -13,6 +13,7 @@ import {
   loadModelsConfig,
   loadProducerHoles,
   openDb,
+  progressLogger,
   projects,
   renderEvalReport,
   runAuditEval,
@@ -43,7 +44,7 @@ if (!existsSync(seededPath)) console.log(`Нет fixtures/seeded/${project}.yaml
 const producer = loadProducerHoles(project);
 if (!producer) console.log(`Нет fixtures/golden/${project}/holes.yaml: метрика «найдено дыр продюсера» будет пустой.`);
 
-const llm = new LlmClient({ config, db });
+const llm = new LlmClient({ config, db, onCall: progressLogger() });
 const architectRole = heavy ? 'architect_heavy' : 'architect';
 console.log(`Оценка аудитора: ${project}, архитектор ${config.roles[architectRole].model}, лимит $${budget}…`);
 

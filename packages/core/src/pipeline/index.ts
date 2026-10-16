@@ -4,3 +4,4 @@ export * from './runners.ts';
 export * from './findings.ts';
 export * from './polish.ts';
 export * from './next.ts';
+export * from './mapLimit.ts';

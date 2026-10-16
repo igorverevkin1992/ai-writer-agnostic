@@ -61,9 +61,23 @@ interface Resolved {
   maxInput?: number;
 }
 
+/** One finished model call, successful or not: for progress output in scripts. */
+export interface CallLog {
+  task?: string;
+  role: RoleName;
+  provider: ProviderName;
+  model: string;
+  durationMs: number;
+  costUsd: number;
+  status: 'ok' | 'error';
+  error?: string;
+}
+
 export interface LlmClientDeps {
   config: ModelsConfig;
   db: Db;
+  /** Called after every model call; scripts print progress with it. */
+  onCall?: (log: CallLog) => void;
   /** Injected in tests. Defaults to the real SDK-backed providers. */
   providers?: Partial<Record<ProviderName, Provider>>;
   env?: NodeJS.ProcessEnv;
@@ -76,12 +90,14 @@ export class LlmClient {
   private readonly providers: Record<ProviderName, Provider>;
   private readonly env: NodeJS.ProcessEnv;
   private readonly now: () => number;
+  private readonly onCall: ((log: CallLog) => void) | undefined;
 
-  constructor({ config, db, providers = {}, env = process.env, now = Date.now }: LlmClientDeps) {
+  constructor({ config, db, providers = {}, env = process.env, now = Date.now, onCall }: LlmClientDeps) {
     this.config = config;
     this.db = db;
     this.env = env;
     this.now = now;
+    this.onCall = onCall;
     this.providers = {
       anthropic: providers.anthropic ?? new AnthropicProvider(env),
       google: providers.google ?? new GoogleProvider(env),
@@ -254,6 +270,7 @@ export class LlmClient {
         })
         .returning({ id: llmCalls.id })
         .get();
+      this.onCall?.({ task: request.task, role: opts.role, provider: resolved.provider, model: result.model, durationMs: this.now() - started, costUsd, status: 'ok' });
       return { ...result, callId: row.id };
     } catch (err) {
       // A refused or truncated answer is still billed: its tokens count towards the budget.
@@ -279,6 +296,16 @@ export class LlmClient {
           error: err instanceof Error ? err.message : String(err),
         })
         .run();
+      this.onCall?.({
+        task: request.task,
+        role: opts.role,
+        provider: resolved.provider,
+        model: billed?.model ?? resolved.target.model,
+        durationMs: this.now() - started,
+        costUsd: cost?.costUsd ?? 0,
+        status: 'error',
+        error: err instanceof Error ? err.message : String(err),
+      });
       // Adapters turn SDK and network failures into LlmError. Anything else is a bug in our
       // code: it must surface, not quietly send the work to the reserve provider.
       throw err;
