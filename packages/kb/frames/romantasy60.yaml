@@ -100,5 +100,12 @@ season_frame:
     emotions_per_episode: [2, 3]
     max_without_line: 3           # не больше 3 серий без кайфа мести и без кайфа любви
     line_gap_exempt: [love_breakup]  # исключение — падение (45–47), но и там нужна искра
+  # Виды хука первых 3 секунд (бит HOOK карточки, hook_kind) — общие для вертикального формата.
+  hook_kinds:
+    norm_violation: Нарушение нормы
+    in_media_res: Посреди действия (in media res)
+    paradox_line: Парадоксальная реплика
+    visual_shock: Визуальный шок
+    continuation: Продолжение обрыва
   blocks: [[1, 8], [9, 20], [21, 30], [31, 40], [41, 50], [51, 60]]
   tolerance: 1
