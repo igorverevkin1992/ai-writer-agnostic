@@ -13,6 +13,10 @@ export const projects = sqliteTable('projects', {
   genreId: text('genre_id'),
   /** Overrides budget.project_limit_usd from config/models.yaml when the producer raises it. */
   budgetLimitUsd: real('budget_limit_usd'),
+  /** The project's values of the frame inputs (e.g. {paywall: 12}); null — the frame's defaults. */
+  frameInputs: text('frame_inputs', { mode: 'json' }).$type<Record<string, number>>(),
+  /** The project's words for the hero and the wound, over the genre's; null — the genre's words. */
+  terms: text('terms', { mode: 'json' }).$type<{ hero?: { nom: string; gen: string; dat: string }; wound?: string }>(),
   createdAt: createdAt(),
 });
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, type KeyboardEvent } from 'react';
-import { api, post, type Doc, type Fact, type Finding, type Overview } from '../api.ts';
+import { api, post, put, type Doc, type Fact, type Finding, type Overview } from '../api.ts';
 import { FindingCard, topThree } from './Findings.tsx';
 
 interface ScriptView {
@@ -12,6 +12,50 @@ function blockLine(b: Doc): string {
   if (b.kind === 'line') return `${b.speaker}${b.parenthetical ? ` (${b.parenthetical})` : ''}: ${b.text}`;
   const tag: Record<string, string> = { sound: 'ЗВУК', overlay: 'ТЕКСТ НА ЭКРАНЕ', insert: 'ВСТАВКА', silence: 'ТИШИНА' };
   return `[${tag[b.kind]}] ${b.text}`;
+}
+
+/**
+ * Raw editor of a card or a script: the document as JSON, saved as a new version after the
+ * server checks it. For a producer who wants to fix a line by hand without a model call.
+ */
+function RawEditor({ doc, what, onSave, onClose }: { doc: Doc; what: string; onSave: (body: Doc) => Promise<string>; onClose: () => void }) {
+  const [text, setText] = useState(() => JSON.stringify(doc, null, 2));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const save = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      let body: Doc;
+      try {
+        body = JSON.parse(text) as Doc;
+      } catch {
+        throw new Error('Текст не разбирается как JSON: проверьте кавычки, запятые и скобки');
+      }
+      const note = await onSave(body);
+      onClose();
+      window.alert(note);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="raw-editor">
+      <p className="muted">{what} в виде JSON. Меняйте тексты в кавычках, структуру не трогайте: сервер проверит документ и сохранит его как новую версию, затем прогонит кодовые проверки без модели.</p>
+      <textarea rows={18} value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} />
+      {error && <p className="error">{error}</p>}
+      <div className="actions">
+        <button className="primary" disabled={busy} onClick={() => void save()}>
+          Сохранить
+        </button>
+        <button className="ghost" onClick={onClose}>
+          Отмена
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /** Card, script, up to three findings, and polishing of a selected fragment. */
@@ -34,6 +78,19 @@ export function EpisodeScreen({ data, refresh }: { data: Overview; refresh: () =
   const [variants, setVariants] = useState<Doc[][] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [editing, setEditing] = useState<'' | 'card' | 'script'>('');
+  const working = data.steps.some((s) => s.status === 'checking') || !!data.job?.running;
+  const terms = data.genre?.terms ?? { hero: { nom: 'героиня', gen: 'героини', dat: 'героине' }, wound: 'Предательство' };
+  const saveCard = async (body: Doc) => {
+    const res = await put<{ findings: unknown[] }>(`/projects/${pid}/cards/${ep}`, body);
+    await refresh();
+    return `Карточка ${ep}-й серии сохранена. Замечаний кодовых проверок: ${res.findings.length}. Блок карточек нужно утвердить заново.`;
+  };
+  const saveScript = async (body: Doc) => {
+    const res = await put<{ findings: unknown[] }>(`/projects/${pid}/scripts/${ep}`, body);
+    await refresh();
+    return `Сценарий ${ep}-й серии сохранён. Замечаний кодовых проверок: ${res.findings.length}. Шаг «Сценарии» нужно утвердить заново.`;
+  };
 
   useEffect(() => {
     let alive = true;
@@ -112,14 +169,21 @@ export function EpisodeScreen({ data, refresh }: { data: Overview; refresh: () =
         <article className="panel">
           <h2>
             {ep}-я серия{outline ? ` «${outline.title}»` : ''}
+            {data.stale.cards.includes(ep) && <span className="badge badge-bad"> карточка устарела</span>}
           </h2>
-          {card ? (
+          {card && editing === '' && (
+            <button className="ghost small" disabled={busy || working} onClick={() => setEditing('card')}>
+              Править карточку
+            </button>
+          )}
+          {card && editing === 'card' && <RawEditor doc={card} what="Карточка серии" onSave={saveCard} onClose={() => setEditing('')} />}
+          {card && editing !== 'card' ? (
             <dl className="card">
               <dt>Первые 5 секунд</dt>
               <dd>{card.hook_0_5s}</dd>
               <dt>Событие</dt>
               <dd>{card.event}</dd>
-              <dt>{cap(data.genre.terms.hero.nom)}</dt>
+              <dt>{cap(terms.hero.nom)}</dt>
               <dd>{card.heroine_action}</dd>
               <dt>Реплика-удар</dt>
               <dd>{card.punchline}</dd>
@@ -134,7 +198,7 @@ export function EpisodeScreen({ data, refresh }: { data: Overview; refresh: () =
                 {card.metro_frame.face} / {card.metro_frame.action} / {card.metro_frame.object}
               </dd>
             </dl>
-          ) : (
+          ) : card ? null : (
             <p className="muted">{outline ? `По плану: ${outline.event}` : 'Карточки пока нет.'}</p>
           )}
           {topThree(findings).map((f) => (
@@ -142,7 +206,16 @@ export function EpisodeScreen({ data, refresh }: { data: Overview; refresh: () =
           ))}
         </article>
         <article className="panel">
-          <h2>Сценарий</h2>
+          <h2>
+            Сценарий
+            {data.stale.scripts.includes(ep) && <span className="badge badge-bad"> устарел</span>}
+          </h2>
+          {script && editing === '' && (
+            <button className="ghost small" disabled={busy || working} onClick={() => setEditing('script')}>
+              Править сценарий
+            </button>
+          )}
+          {script && editing === 'script' && <RawEditor doc={script.script} what="Сценарий серии" onSave={saveScript} onClose={() => setEditing('')} />}
           {!script ? (
             <p className="muted">Сценария этой серии пока нет.</p>
           ) : (

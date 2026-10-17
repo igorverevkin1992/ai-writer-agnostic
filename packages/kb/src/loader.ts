@@ -3,13 +3,14 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LineCounter, isNode, parseDocument, type Document } from 'yaml';
 import type { z } from 'zod';
-import { KbLoadError, type KbIssue } from './errors.ts';
-import { evalEpisodeExpr } from './frameInputs.ts';
+import { KbLoadError, formatIssue, type KbIssue } from './errors.ts';
+import { evalEpisodeExpr, resolveFrameInputs, type FrameInputs } from './frameInputs.ts';
 import {
   COMMON_RULES_ID,
   Case,
   Checklist,
   Genre,
+  type GenreTerms,
   Glossary,
   Guide,
   HoleCatalog,
@@ -40,6 +41,8 @@ export interface Kb {
   genres: ById<Genre>;
   rules: ById<RulesFile>;
   frames: ById<Frame>;
+  /** Frames as written in YAML, before their inputs are resolved: a project may resolve them with its own inputs. */
+  rawFrames: ById<unknown>;
   checklists: ById<Checklist>;
   personas: ById<Personas>;
   legal: ById<LegalConstraints>;
@@ -75,18 +78,37 @@ export class UnknownGenreError extends Error {
   override name = 'UnknownGenreError';
 }
 
-/** Resolves a genre pack. References are validated at load time, so this only fails on an unknown id. */
-export function genreKit(kb: Kb, genreId: string): GenreKit {
+/** A project's frame inputs do not fit the frame: unknown name, anchor outside the season. */
+export class FrameInputError extends Error {
+  override name = 'FrameInputError';
+}
+
+/** What a project may change in its genre pack: frame inputs (e.g. paywall) and the words for the hero. */
+export interface GenreOverrides {
+  inputs?: FrameInputs;
+  terms?: Partial<GenreTerms>;
+}
+
+/**
+ * Resolves a genre pack. References are validated at load time, so without overrides this only
+ * fails on an unknown id. With `overrides` the frame is resolved again with the project's inputs
+ * and checked like a file; a bad input throws FrameInputError with a readable message.
+ */
+export function genreKit(kb: Kb, genreId: string, overrides?: GenreOverrides): GenreKit {
   const genre = kb.genres[genreId];
   if (!genre) {
     throw new UnknownGenreError(
       `Жанр «${genreId}» не найден. Есть: ${Object.keys(kb.genres).join(', ') || 'ни одного'}.`,
     );
   }
+  // The project's frame inputs and hero terms apply before the texts are rendered, so every
+  // number and every «героиня» in rules, checklist and guide follows the project.
+  const inputs = overrides?.inputs ?? {};
+  const terms = overrides?.terms;
   const kit: GenreKit = {
-    genre,
+    genre: terms ? { ...genre, terms: { ...genre.terms, ...terms, hero: { ...genre.terms.hero, ...terms.hero } } } : genre,
     rules: mergeRules(kb.rules[genre.rules]!, genre.common_rules ? kb.rules[COMMON_RULES_ID] : undefined),
-    frame: kb.frames[genre.frame]!,
+    frame: Object.keys(inputs).length ? frameWithInputs(kb, genre.frame, inputs) : kb.frames[genre.frame]!,
     checklist: kb.checklists[genre.checklist]!,
     personas: kb.personas[genre.personas]!,
     legal: kb.legal[genre.constraints.legal]!,
@@ -246,6 +268,40 @@ export function renderKit(kit: GenreKit, vars: KitVars = kitVars(kit)): GenreKit
   };
 }
 
+/** The frame resolved with the project's inputs instead of its defaults, validated like a file. */
+export function frameWithInputs(kb: Kb, frameId: string, inputs: FrameInputs): Frame {
+  const base = kb.frames[frameId];
+  const raw = kb.rawFrames[frameId];
+  if (!base || raw === undefined) throw new UnknownGenreError(`Каркас «${frameId}» не найден`);
+  const known = Object.keys(base.inputs);
+  const unknown = Object.keys(inputs).filter((k) => !known.includes(k));
+  if (unknown.length) {
+    throw new FrameInputError(
+      `Каркас не знает ${unknown.length === 1 ? 'параметра' : 'параметров'} ${unknown.map((k) => `«${k}»`).join(', ')}. ${known.length ? `Есть: ${known.join(', ')}` : 'У этого каркаса нет параметров'}`,
+    );
+  }
+  for (const [k, v] of Object.entries(inputs)) {
+    if (!Number.isFinite(v)) throw new FrameInputError(`Параметр «${k}» должен быть числом`);
+  }
+  let resolved: unknown;
+  try {
+    resolved = resolveFrameInputs(raw, inputs);
+  } catch (e) {
+    throw new FrameInputError(e instanceof Error ? e.message : String(e));
+  }
+  const file = `frames/${frameId}.yaml`;
+  const parsed = SeasonFrame.safeParse(resolved);
+  if (!parsed.success) {
+    throw new FrameInputError(parsed.error.issues.map((i) => formatIssue({ file, field: formatPath(i.path), message: i.message })).join('; '));
+  }
+  const issues: KbIssue[] = [];
+  checkFrame(file, parsed.data.season_frame, issues);
+  if (issues.length) {
+    throw new FrameInputError(`С такими параметрами каркас не сходится: ${issues.map((i) => `${i.field ? `${i.field} — ` : ''}${i.message}`).join('; ')}`);
+  }
+  return parsed.data.season_frame;
+}
+
 /**
  * Loads and validates the whole knowledge base. Collects every problem
  * across all files and throws a single KbLoadError listing them.
@@ -277,6 +333,9 @@ export function loadKb(root: string = DEFAULT_KB_ROOT): Kb {
     loaded: Object.fromEntries(Object.entries(frameFiles.loaded).map(([id, f]) => [id, f.season_frame])) as ById<Frame>,
     failed: frameFiles.failed,
   };
+  const rawFrames: ById<unknown> = Object.fromEntries(
+    Object.keys(frames.loaded).map((id) => [id, parseDocument(readFileSync(join(root, `frames/${id}.yaml`), 'utf8'), { uniqueKeys: true }).toJS()]),
+  );
 
   if (Object.keys(genres.loaded).length === 0 && genres.failed.size === 0) {
     issues.push({ file: 'genres/', message: 'Нет ни одного жанрового пакета (genres/<id>.yaml)' });
@@ -340,6 +399,7 @@ export function loadKb(root: string = DEFAULT_KB_ROOT): Kb {
     genres: genres.loaded,
     rules: rules.loaded,
     frames: frames.loaded,
+    rawFrames,
     checklists: checklists.loaded,
     personas: personas.loaded,
     legal,

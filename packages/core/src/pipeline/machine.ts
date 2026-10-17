@@ -156,6 +156,19 @@ export class Pipeline {
     this.setStatus(step, 'approved');
   }
 
+  /**
+   * The producer changed a result by hand (a card, a script): the step needs approval again,
+   * later steps too, and open blockers of the step decide between needs_fix and draft.
+   */
+  reopen(step: StepId): StepStatus {
+    const s = this.get(step);
+    if (s.status === 'checking') throw new PipelineError(`Шаг «${LABELS[step]}» ещё выполняется`);
+    const status: StepStatus = this.openBlockers(step) > 0 ? 'needs_fix' : 'draft';
+    this.setStatus(step, status);
+    this.resetLater(step);
+    return status;
+  }
+
   /** After findings are closed: needs_fix becomes draft once no blocker is open. */
   refresh(step: StepId): StepStatus {
     const s = this.get(step);

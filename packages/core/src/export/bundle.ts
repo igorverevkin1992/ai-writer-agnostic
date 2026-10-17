@@ -2,8 +2,9 @@ import { genreKit, type GenreKit, type Kb } from '@aiw/kb';
 import type { ReviewSummary } from '../checks/llm/reviewSummary.ts';
 import type { Db } from '../db/client.ts';
 import { ProjectMemory } from '../memory/store.ts';
-import { getProject } from '../pipeline/project.ts';
+import { getProject, projectOverrides } from '../pipeline/project.ts';
 import { Pipeline } from '../pipeline/machine.ts';
+import { CARD_BLOCK } from '../pipeline/runners.ts';
 import type { Bible } from '../schemas/bible.ts';
 import type { Concept } from '../schemas/concept.ts';
 import type { EpisodeCard } from '../schemas/episodeCard.ts';
@@ -26,6 +27,34 @@ export interface ProjectBundle {
   /** Closing parts of the latest audits (verdict, tables), by step. */
   reviews: { bible?: ReviewSummary; season_plan?: ReviewSummary };
   steps: ReturnType<Pipeline['states']>;
+  /** Cards and scripts a changed fact made outdated. */
+  stale: { cards: number[]; scripts: number[] };
+  /** First episodes of the card blocks the producer approved. */
+  approvedCardBlocks: number[];
+}
+
+/** How an episode document is marked in exports: outdated, not yet approved, or ready (empty). */
+export type EpisodeMark = '' | 'устарело' | 'не утверждено';
+
+export function cardMark(b: ProjectBundle, ep: number): EpisodeMark {
+  if (b.stale.cards.includes(ep)) return 'устарело';
+  const block = b.approvedCardBlocks.find((start) => ep >= start && ep < start + CARD_BLOCK);
+  return b.steps.find((s) => s.step === 'episode_cards')?.status === 'approved' || block !== undefined ? '' : 'не утверждено';
+}
+
+export function scriptMark(b: ProjectBundle, ep: number): EpisodeMark {
+  if (b.stale.scripts.includes(ep)) return 'устарело';
+  return b.steps.find((s) => s.step === 'scripts')?.status === 'approved' ? '' : 'не утверждено';
+}
+
+/** A heading suffix: « — устарело» or nothing. */
+export function markSuffix(mark: EpisodeMark): string {
+  return mark ? ` — ${mark}` : '';
+}
+
+/** The bundle without outdated and unapproved cards and scripts. */
+export function withoutUnready(b: ProjectBundle): ProjectBundle {
+  return { ...b, cards: b.cards.filter((c) => !cardMark(b, c.ep)), scripts: b.scripts.filter((s) => !scriptMark(b, s.ep)) };
 }
 
 export function loadBundle(db: Db, kb: Kb, projectId: string): ProjectBundle {
@@ -33,7 +62,7 @@ export function loadBundle(db: Db, kb: Kb, projectId: string): ProjectBundle {
   const memory = new ProjectMemory(db, projectId);
   return {
     project: { id: project.id, title: project.title, genreId: project.genreId },
-    kit: genreKit(kb, project.genreId ?? ''),
+    kit: genreKit(kb, project.genreId ?? '', projectOverrides(project)),
     idea: (memory.latestArtifact('idea') as { text: string } | undefined)?.text,
     concept: memory.latestArtifact('concept_choice') as Concept | undefined,
     logline: memory.latestArtifact('logline') as Logline | undefined,
@@ -47,6 +76,8 @@ export function loadBundle(db: Db, kb: Kb, projectId: string): ProjectBundle {
       season_plan: memory.latestArtifact('review:season_plan') as ReviewSummary | undefined,
     },
     steps: new Pipeline(db, projectId).states(),
+    stale: memory.staleEpisodes(),
+    approvedCardBlocks: (memory.latestArtifact('card_blocks') as { approved: number[] } | undefined)?.approved ?? [],
   };
 }
 

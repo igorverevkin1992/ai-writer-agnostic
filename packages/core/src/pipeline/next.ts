@@ -3,7 +3,7 @@ import type { Db } from '../db/client.ts';
 import { ProjectMemory } from '../memory/store.ts';
 import { STEP_IDS, type StepId } from '../steps.ts';
 import { Pipeline, STEP_LABELS } from './machine.ts';
-import { getProject } from './project.ts';
+import { getProject, projectOverrides } from './project.ts';
 import { cardBlocks } from './runners.ts';
 
 export type TaskAction = 'run' | 'wait' | 'choose_concept' | 'resolve' | 'approve' | 'approve_block' | 'polish' | 'export';
@@ -23,7 +23,7 @@ export interface NextTask {
 
 export function nextTask(db: Db, kb: Kb, projectId: string): NextTask {
   const project = getProject(db, projectId);
-  const kit = genreKit(kb, project.genreId ?? '');
+  const kit = genreKit(kb, project.genreId ?? '', projectOverrides(project));
   const pipeline = new Pipeline(db, projectId);
   const memory = new ProjectMemory(db, projectId);
   const f = kit.frame;
@@ -85,14 +85,14 @@ export function nextTask(db: Db, kb: Kb, projectId: string): NextTask {
 }
 
 /** Episodes without a card, or with an outdated one. */
-function missingCards(memory: ProjectMemory): number[] {
+export function missingCards(memory: ProjectMemory): number[] {
   const stale = new Set(memory.staleEpisodes().cards);
   const have = new Set(memory.cards().map((c) => c.ep).filter((ep) => !stale.has(ep)));
   return (memory.currentPlan()?.episodes.map((e) => e.ep) ?? []).filter((ep) => !have.has(ep));
 }
 
 /** Episodes without a script, or with an outdated or unchecked one. */
-function missingScripts(memory: ProjectMemory): number[] {
+export function missingScripts(memory: ProjectMemory): number[] {
   const stale = new Set(memory.staleEpisodes().scripts);
   const have = new Set(memory.scripts().map((x) => x.ep).filter((ep) => !stale.has(ep)));
   return memory.cards().map((c) => c.ep).filter((ep) => !have.has(ep));

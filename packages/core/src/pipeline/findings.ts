@@ -46,17 +46,35 @@ export function resolveByProducer(db: Db, projectId: string, findingId: string, 
   refreshStep(db, projectId, row.step);
 }
 
-/** The producer dismisses a finding; a dismissal must point to the fact that answers it. */
-export function dismissByProducer(db: Db, projectId: string, findingId: string, factId: string): void {
+export interface ProducerDismissal {
+  /** A fact of the base that already answers the viewer's question. */
+  factId?: string;
+  /** Or the producer's reason in free text: «это не дыра, потому что…». */
+  reason?: string;
+}
+
+/**
+ * The producer dismisses a finding («это не дыра»): with a fact that answers it, or with a
+ * reason in free text. The reason is kept in the revision log as the producer's contribution.
+ */
+export function dismissByProducer(db: Db, projectId: string, findingId: string, input: string | ProducerDismissal): void {
+  const { factId, reason } = typeof input === 'string' ? { factId: input, reason: undefined } : input;
   const memory = new ProjectMemory(db, projectId);
   const row = memory.finding(findingId);
   if (!row) throw new PipelineError(`Замечание ${findingId} не найдено`);
   if (row.status !== 'open') throw new PipelineError('Замечание уже закрыто');
   if (row.check === INCOMPLETE_CHECK) throw new PipelineError('Это замечание закрывается повторным запуском шага');
-  if (!memory.currentBible()?.facts.some((f) => f.id === factId)) {
-    throw new PipelineError(`Чтобы отклонить замечание, укажите факт из базы${factId ? `: факта ${factId} нет` : ''}`);
+  const why = reason?.trim();
+  if (factId !== undefined && factId !== '' && !memory.currentBible()?.facts.some((f) => f.id === factId)) {
+    throw new PipelineError(`Факта ${factId} нет в базе`);
   }
-  memory.setFindingOutcome(findingId, { status: 'dismissed', verdict: 'Отклонено продюсером', resolutionFactId: factId });
+  if (!factId && !why) throw new PipelineError('Чтобы отклонить замечание, укажите факт из базы или напишите, почему это не дыра');
+  const verdict = why ? `Отклонено продюсером: ${why}` : 'Отклонено продюсером';
+  memory.setFindingOutcome(findingId, { status: 'dismissed', verdict, ...(factId ? { resolutionFactId: factId } : {}) });
+  memory.logEdit('finding', findingId, { status: 'open' }, { status: 'dismissed', ...(factId ? { factId } : {}), ...(why ? { reason: why } : {}) }, {
+    author: 'producer',
+    note: why ?? `Отвечает факт ${factId}`,
+  });
   refreshStep(db, projectId, row.step);
 }
 

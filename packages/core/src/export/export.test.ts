@@ -110,6 +110,34 @@ describe('export', () => {
     expect(md).toContain('СЕРИЯ 1. «Серия 1» (90 с)');
   });
 
+  it('marks outdated and unapproved episodes, and can leave them out', async () => {
+    const m = new ProjectMemory(db, pid);
+    m.saveCard(EpisodeCard.parse({ ...sampleCard, ep: 2 }));
+    m.saveScript(script(2));
+    m.markOutdated('scripts', [2]);
+    // Nothing is approved yet: episode 1 is «не утверждено», the rewritten script of 2 is «устарело».
+    const md = (await exportProject(db, kb, pid, 'md')).body.toString();
+    expect(md).toContain('**Серия 1 — не утверждено.**');
+    expect(md).toContain('### Серия 1 — не утверждено');
+    expect(md).toContain('### Серия 2 — устарело');
+    const without = (await exportProject(db, kb, pid, 'md', { excludeUnready: true })).body.toString();
+    expect(without).not.toContain('### Серия');
+    expect(without).not.toContain('**Серия 1');
+
+    for (const step of ['concept', 'logline', 'bible', 'season_plan']) skipStep({ db, kb, projectId: pid }, step as 'concept');
+    m.saveArtifact('card_blocks', { approved: [1] });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load((await exportProject(db, kb, pid, 'xlsx')).body as unknown as ExcelJS.Buffer);
+    const cards = wb.getWorksheet('Карточки')!;
+    expect(cards.getRow(1).getCell(11).value).toBe('Статус');
+    expect(cards.getRow(2).getCell(11).value).toBe('');
+    expect(cards.getRow(3).getCell(11).value).toBe('');
+    expect(wb.getWorksheet('Сезон')!.getRow(3).getCell(14).value).toBe('устарело');
+    const JSZip = (await import('jszip')).default;
+    const xml = await (await JSZip.loadAsync((await exportProject(db, kb, pid, 'docx')).body)).file('word/document.xml')!.async('string');
+    expect(xml).toContain('Серия 2. «Серия 2» (90 с) — устарело');
+  });
+
   it('video prompts take appearance only from the bible', () => {
     const prompts = videoPrompts(loadBundle(db, kb, pid));
     expect(prompts).toHaveLength(2);

@@ -57,14 +57,15 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export function SeasonScreen({ data }: { data: Overview }) {
   const plan = data.plan;
-  if (!plan) return <p className="muted panel">Плана сезона пока нет: он появится после шага «План сезона».</p>;
-  const label = (id: string) => data.genre.anchorLabels[id] ?? id;
+  if (!plan || !data.genre) return <p className="muted panel">Плана сезона пока нет: он появится после шага «План сезона».</p>;
+  const genre = data.genre;
+  const label = (id: string) => genre.anchorLabels[id] ?? id;
   // Genres with several story lines (e.g. revenge and love) show which of them pay off.
-  const lines = Object.entries(data.genre.lines ?? {});
+  const lines = Object.entries(genre.lines ?? {});
   return (
     <section>
       <div className="panel">
-        <MoodStrip episodes={plan.episodes} free={data.genre.free} label={label} />
+        <MoodStrip episodes={plan.episodes} free={genre.free} label={label} />
       </div>
       <div className="panel">
         <table className="season">
@@ -72,7 +73,7 @@ export function SeasonScreen({ data }: { data: Overview }) {
             <tr>
               <th>Серия</th>
               <th>Событие</th>
-              <th>{cap(data.genre.terms.hero.nom)}</th>
+              <th>{cap(genre.terms.hero.nom)}</th>
               <th>Опорная точка</th>
               <th>Настроение</th>
               {lines.length > 0 && <th>Кайф линий</th>}
@@ -84,7 +85,7 @@ export function SeasonScreen({ data }: { data: Overview }) {
               <tr key={e.ep} className={e.anchors.length ? 'row-anchor' : ''}>
                 <td>
                   <b>{e.ep}</b>
-                  {e.ep <= data.genre.free && <div className="muted">бесплатно</div>}
+                  {e.ep <= genre.free && <div className="muted">бесплатно</div>}
                 </td>
                 <td>
                   <b>{e.title}.</b> {e.event}

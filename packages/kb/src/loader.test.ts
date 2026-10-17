@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { KbLoadError } from './errors.ts';
-import { DEFAULT_KB_ROOT, UnknownGenreError, genreKit, loadKb } from './loader.ts';
+import { DEFAULT_KB_ROOT, FrameInputError, UnknownGenreError, genreKit, loadKb } from './loader.ts';
 import { episodeRange } from './schemas.ts';
 
 const KB_ENTRIES = ['genres', 'rules', 'frames', 'checklist', 'methods', 'glossary.yaml', 'constraints', 'holes', 'personas', 'cases', 'prompts', 'guides', 'review'];
@@ -147,6 +147,34 @@ describe('loadKb on the real knowledge base', () => {
   it('rejects an unknown genre with a clear message', () => {
     expect(() => genreKit(kb, 'sitcom')).toThrow(UnknownGenreError);
     expect(() => genreKit(kb, 'sitcom')).toThrow(/Жанр «sitcom» не найден. Есть: revenge_thriller/);
+  });
+
+  it('a project can move a frame input: paywall 12 shifts the anchors written over it', () => {
+    const base = genreKit(kb, 'vertical_thriller');
+    expect(base.frame.inputs.paywall).toBe(10);
+    expect(base.frame.anchors.paywall_hook).toBe(10);
+    const moved = genreKit(kb, 'vertical_thriller', { inputs: { paywall: 12 } });
+    expect(moved.frame.inputs.paywall).toBe(12);
+    expect(moved.frame.free).toBe(12);
+    expect(moved.frame.anchors.paywall_hook).toBe(12);
+    expect(moved.frame.anchors.false_solution).toBe(10);
+    expect(moved.frame.anchors.paywall_answer).toEqual([13, 14]);
+    expect(moved.frame.anchors.finale).toBe(60);
+    // The shared knowledge base is untouched.
+    expect(genreKit(kb, 'vertical_thriller').frame.anchors.paywall_hook).toBe(10);
+  });
+
+  it('a project can rename the hero without touching the genre pack', () => {
+    const kit = genreKit(kb, 'vertical_thriller', { terms: { hero: { nom: 'героиня', gen: 'героини', dat: 'героине' }, wound: 'Травма' } });
+    expect(kit.genre.terms).toEqual({ hero: { nom: 'героиня', gen: 'героини', dat: 'героине' }, wound: 'Травма' });
+    expect(kb.genres.vertical_thriller!.terms.wound).not.toBe('Травма');
+  });
+
+  it('rejects frame inputs the frame does not know or that break the season', () => {
+    expect(() => genreKit(kb, 'vertical_thriller', { inputs: { midpoint: 30 } })).toThrow(FrameInputError);
+    expect(() => genreKit(kb, 'vertical_thriller', { inputs: { midpoint: 30 } })).toThrow(/не знает параметра «midpoint». Есть: paywall/);
+    expect(() => genreKit(kb, 'vertical_thriller', { inputs: { paywall: 70 } })).toThrow(/не сходится/);
+    expect(() => genreKit(kb, 'revenge_thriller', { inputs: { paywall: 9 } })).toThrow(/нет параметров/);
   });
 });
 

@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { anchorLabel, cleanText, type ProjectBundle } from './bundle.ts';
+import { anchorLabel, cardMark, cleanText, scriptMark, type ProjectBundle } from './bundle.ts';
 import { videoPrompts } from './video.ts';
 
 const MAX_CELL = 32_767;
@@ -34,6 +34,7 @@ export async function buildXlsx(b: ProjectBundle): Promise<Buffer> {
     { header: 'Крючок', key: 'hook', width: 18 },
     { header: 'Клиффхэнгер', key: 'cliff', width: 40 },
     { header: 'Бесплатная', key: 'free', width: 11 },
+    { header: 'Сценарий', key: 'script', width: 16 },
   ]);
   for (const e of b.plan?.episodes ?? []) {
     season.addRow({
@@ -50,6 +51,7 @@ export async function buildXlsx(b: ProjectBundle): Promise<Buffer> {
       hook: e.hook_type,
       cliff: e.cliffhanger,
       free: e.ep <= b.kit.frame.free ? 'да' : '',
+      script: b.scripts.some((s) => s.ep === e.ep) ? scriptMark(b, e.ep) || 'готов' : '',
     });
   }
   season.getColumn('event').alignment = { wrapText: true, vertical: 'top' };
@@ -65,6 +67,7 @@ export async function buildXlsx(b: ProjectBundle): Promise<Buffer> {
     { header: 'В кадре', key: 'cast', width: 22 },
     { header: 'Локация', key: 'loc', width: 18 },
     { header: 'Кадр метро', key: 'metro', width: 30 },
+    { header: 'Статус', key: 'mark', width: 16 },
   ]);
   for (const c of b.cards) {
     cards.addRow({
@@ -78,6 +81,7 @@ export async function buildXlsx(b: ProjectBundle): Promise<Buffer> {
       cast: c.cast.join(', '),
       loc: c.location,
       metro: `${c.metro_frame.face} / ${c.metro_frame.action} / ${c.metro_frame.object}`,
+      mark: cardMark(b, c.ep),
     });
   }
 
