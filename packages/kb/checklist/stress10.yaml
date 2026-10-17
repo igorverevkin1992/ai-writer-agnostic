@@ -11,7 +11,7 @@ items:
   - {id: S04, text: "Близость угрозы: у угрозы есть лицо или знак, показанный к 5-й серии", points: 2, rule: R18}
   - {id: S05, text: "Ёмкость: не меньше 5 уровней матрёшки вопросов", points: 2, rule: R09, only: [matryoshka.levels, matryoshka.unmarked]}
   - {id: S06, text: "Перезагрузки: не меньше 2 способов сменить правила, роли или дно", points: 2, rule: R16}
-  - {id: S07, text: "Эмоциональное ядро: есть отношенческая ставка", points: 2, rule: R22, only: [stakes.missing]}
-  - {id: S08, text: "Компактность: ≤5 локаций, ≤6 ключевых персонажей", points: 2, rule: R21}
-  - {id: S09, text: "Пэйволл-момент: событие «В+У+Л» на 8–12 серии", points: 2, rule: R13, critical: true}
+  - {id: S07, text: "Эмоциональное ядро: есть отношенческая ставка", points: 2, rule: C01, only: [stakes.missing]}
+  - {id: S08, text: "Компактность: не больше {{limits.max_locations}} локаций, не больше {{limits.max_regular_characters}} ключевых персонажей", points: 2, rule: R21}
+  - {id: S09, text: "Пэйволл-момент: событие «В+У+Л» на серии барьера ({{anchors.paywall_hook}}-я)", points: 2, rule: R13, critical: true}
   - {id: S10, text: "Обсуждаемость: не меньше 2 конкурирующих теорий", points: 2, rule: R11, only: [clues.contradiction]}

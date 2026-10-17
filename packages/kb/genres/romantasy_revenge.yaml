@@ -5,6 +5,7 @@ id: romantasy_revenge
 title: Женское ромэнтэзи с реваншем и наказанием подлеца
 platform: Иви
 rules: romantasy_revenge      # rules/romantasy_revenge.yaml
+common_rules: true            # + rules/common.yaml (C01–C04: ставки, арка героя, цена победы, обещание жанра)
 frame: romantasy60            # frames/romantasy60.yaml
 checklist: romantasy20        # checklist/romantasy20.yaml
 personas: romantasy_viewers   # personas/romantasy_viewers.yaml

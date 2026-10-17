@@ -4,6 +4,7 @@
 id: slavic_myth
 title: Тёмное славянское фэнтези-миф
 rules: slavic_myth           # rules/slavic_myth.yaml
+common_rules: true           # + rules/common.yaml (C01–C04: ставки, арка героя, цена победы, обещание жанра)
 frame: myth60                # frames/myth60.yaml
 checklist: myth27            # checklist/myth27.yaml
 personas: myth_viewers       # personas/myth_viewers.yaml
@@ -12,6 +13,7 @@ constraints:
   production: ai_video       # constraints/ai_video.yaml
 guide: slavic_myth           # guides/slavic_myth.yaml — биты, фольклор, крючки, съёмка ИИ
 # Главный персонаж жанра — искатель; в исследовании это отец. Рана — его собственная вина в прошлом.
+# Это умолчания жанра: проект может задать свои термины героя, тексты правил подставят их через {{hero.*}}.
 terms:
   hero: {nom: герой, gen: героя, dat: герою}
   wound: Рана

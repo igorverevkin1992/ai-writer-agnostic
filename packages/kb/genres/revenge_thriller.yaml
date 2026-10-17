@@ -4,6 +4,7 @@ id: revenge_thriller
 title: Женский психологический триллер мести с семейной тайной
 platform: Иви
 rules: revenge_thriller       # rules/revenge_thriller.yaml
+common_rules: true            # + rules/common.yaml (C01–C04: ставки, арка героя, цена победы, обещание жанра)
 frame: season60               # frames/season60.yaml
 checklist: season20           # checklist/season20.yaml
 personas: viewers             # personas/viewers.yaml

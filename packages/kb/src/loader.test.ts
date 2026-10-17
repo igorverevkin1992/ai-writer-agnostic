@@ -42,13 +42,80 @@ describe('loadKb on the real knowledge base', () => {
   const kb = loadKb();
   const kit = genreKit(kb, 'revenge_thriller');
 
-  it('loads the revenge thriller genre pack', () => {
+  it('loads the revenge thriller genre pack: 18 genre rules plus the 4 common ones', () => {
     expect(kit.genre.title).toMatch(/триллер мести/);
-    expect(kit.rules.rules.map((r) => r.id)).toEqual(
-      Array.from({ length: 22 }, (_, i) => `R${String(i + 1).padStart(2, '0')}`),
-    );
+    expect(kit.rules.rules.map((r) => r.id)).toEqual([
+      ...Array.from({ length: 18 }, (_, i) => `R${String(i + 1).padStart(2, '0')}`),
+      'C01', 'C02', 'C03', 'C04',
+    ]);
     expect(kit.personas.personas).toHaveLength(5);
     expect(kit.checklist.items.reduce((n, i) => n + i.points, 0)).toBe(20);
+  });
+
+  it('merges rules/common.yaml with the genre overrides and fills the hero words', () => {
+    const common = kit.rules.rules.filter((r) => r.id.startsWith('C'));
+    expect(common.map((r) => r.module)).toEqual(['common', 'common', 'common', 'common']);
+    // The revenge pack keeps the common text and check of C01–C03 and says what its first episode promises.
+    expect(common[0]!.text).toContain('что героиня получит или потеряет');
+    expect(common[1]!.check.run).toEqual([{ fn: 'hero_arc', params: { anchor: 'midpoint', min_lie_acts: 3, relapse: true } }]);
+    expect(common[3]!.text).toContain('предательство');
+    expect(common[3]!.check.run).toEqual([{ fn: 'promise', params: { ep: 1, anchors: ['betrayal'] } }]);
+    expect(common[3]!.check.llm).toContain('обещание мести');
+    // The myth pack speaks of a hero, not a heroine.
+    const myth = genreKit(kb, 'slavic_myth').rules.rules.find((r) => r.id === 'C03')!;
+    expect(myth.text).toBe('Каждая победа героя до финального блока стоит герою чего-то в той же или следующей серии. Победа без цены останавливает историю');
+    // The thriller moves the arc to its first reset and leaves the promise to the judge (R14 checks the anchor).
+    const thriller = genreKit(kb, 'vertical_thriller').rules.rules;
+    expect(thriller.map((r) => r.id)).toEqual([...Array.from({ length: 21 }, (_, i) => `R${String(i + 1).padStart(2, '0')}`), 'R26', 'C01', 'C02', 'C03', 'C04']);
+    expect(thriller.find((r) => r.id === 'C02')!.check.run[0]!.params.anchor).toBe('reset1');
+    const promise = thriller.find((r) => r.id === 'C04')!;
+    expect(promise.check.code).toBeUndefined();
+    expect(promise.check.run).toEqual([]);
+    expect(promise.check.llm).toContain('невозможный кадр');
+  });
+
+  it('fills numbers from the frame and the production limits into texts and check params', () => {
+    const thriller = genreKit(kb, 'vertical_thriller');
+    const rule = (id: string) => thriller.rules.rules.find((r) => r.id === id)!;
+    expect(rule('R06').text).toContain('не больше 4');
+    expect(rule('R05').text).toContain('не длиннее 15 слов (больше 20 — блок)');
+    expect(rule('R08').text).toContain('одинаковых подряд не больше 2');
+    expect(rule('R12').check.run[0]!.params).toEqual({ max_suspense_run: 3 });
+    expect(rule('R13').text).toContain('на серии барьера (10-я)');
+    expect(rule('R13').text).toContain('в сериях 11–12');
+    // R16: one reset per 30 episodes, gaps of at most 42% of the season — both follow from L.
+    expect(rule('R16').text).toContain('на 60 серий это 2');
+    expect(rule('R16').check.run[0]!.params).toEqual({ anchors: ['reset1', 'false_finale'], min: 2, max_gap: 25 });
+    expect(rule('R18').check.run[0]!.params).toEqual({ by_ep: 5 });
+    expect(thriller.checklist.items.find((i) => i.id === 'S08')!.text).toBe('Компактность: не больше 5 локаций, не больше 6 ключевых персонажей');
+    expect(thriller.guide!.sections.find((s) => s.title.startsWith('Сетка сезона'))!.title).toBe('Сетка сезона (60 серий, пэйволл 10)');
+    expect(thriller.personas.personas.find((p) => p.id === 'platform_editor')!.focus).toContain('10-я серия');
+    // The raw files keep the placeholders: another paywall or season length renders other numbers.
+    expect(kb.rules.vertical_thriller!.rules.find((r) => r.id === 'R16')!.text).toContain('{{L/30}}');
+  });
+
+  it('reports an unknown placeholder with its file', () => {
+    const dir = kbCopy();
+    edit(dir, 'rules/vertical_thriller.yaml', (t) => t.replace('{{limits.max_locations}}', '{{limits.max_locatons}}'));
+    expect(loadError(dir).issues).toContainEqual(
+      expect.objectContaining({ file: 'rules/vertical_thriller.yaml', field: 'R21', message: expect.stringContaining('{{limits.max_locatons}}') }),
+    );
+  });
+
+  it('reports an override of a common rule that does not exist and a genre that forgot common_rules', () => {
+    const dir = kbCopy();
+    edit(dir, 'rules/revenge_thriller.yaml', (t) => t.replace('  C04:\n', '  C09:\n'));
+    expect(loadError(dir).issues).toContainEqual(expect.objectContaining({ file: 'rules/revenge_thriller.yaml', field: 'common.C09', message: 'Нет правила C09 в rules/common.yaml' }));
+    const dir2 = kbCopy();
+    edit(dir2, 'genres/revenge_thriller.yaml', (t) => t.replace('common_rules: true', 'common_rules: false'));
+    const issues = loadError(dir2).issues;
+    expect(issues).toContainEqual(expect.objectContaining({ file: 'genres/revenge_thriller.yaml', field: 'common_rules' }));
+  });
+
+  it('does not let a genre file carry C-rules or the common file carry R-rules', () => {
+    const dir = kbCopy();
+    edit(dir, 'rules/common.yaml', (t) => t.replace('- id: C01', '- id: R01'));
+    expect(loadError(dir).message).toContain('Общие правила нумеруются C01, C02…');
   });
 
   it('loads shared sections', () => {
