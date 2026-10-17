@@ -1,6 +1,6 @@
 import { genreKit, METHOD_STEPS, type GenreKit, type Kb, type MethodStep } from '@aiw/kb';
 import { z } from 'zod';
-import { makeFinding } from '../checks/code/finding.ts';
+import { formatEpisodes, makeFinding } from '../checks/code/finding.ts';
 import { checkKnowledge } from '../checks/code/knowledge.ts';
 import { checkLegalMarkers, checkLimits, checkScriptMetrics, collectTexts } from '../checks/code/production.ts';
 import { runCodeChecks } from '../checks/code/runner.ts';
@@ -416,40 +416,59 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
   async season_plan(ctx) {
     const bible = need(ctx.memory.currentBible(), 'библия');
     const f = ctx.kit.frame;
+    const outline = outlineSchema(f);
     const episodes: EpisodeOutline[] = [];
     const deviations: FrameDeviation[] = [];
     const authors = new Set<ProviderName>();
-    // The plan is written in the frame's blocks: one answer for the whole season is too long.
+    // Parts written for this very bible survive a failed run: they are not paid for twice.
+    const stamp = fingerprint(bible);
+    const saved = ctx.memory.latestArtifact(PARTIAL_PLAN) as PartialPlan | undefined;
+    const partial: PartialPlan = saved?.bible === stamp ? saved : { bible: stamp, parts: {} };
+    // The plan is written in parts of at least MIN_PLAN_PART episodes: one answer for the whole
+    // season is too long, and shorter parts lose the season's memory.
     for (const [from, to] of planParts(f.episodes, f.blocks)) {
-      const part = planPart(from, to);
-      const { data, provider } = await ctx.llm.completeJson(part, {
-        role: 'architect_heavy',
-        projectId: ctx.projectId,
-        step: 'season_plan',
-        request: {
-          task: `season_plan:${from}-${to}`,
-          cacheablePrefix: [ctx.kbText, `# Библия сериала\n${json(bible)}`],
-          system: renderPrompt(ctx.kb, 'architect_heavy/season_plan', {
-            episodes: f.episodes,
-            from,
-            to,
-            written: episodes.length ? episodes.map((e) => episodeLine(e, ctx.kit.genre.terms, ctx.kit.frame.hook_types)).join('\n') : 'Это начало сезона.',
-            hero: ctx.kit.genre.terms.hero.nom,
-            anchor_ids: Object.keys(f.anchors).join(', '),
-            kaif_lines: Object.keys(f.lines).length ? Object.entries(f.lines).map(([id, name]) => `${id} (${name})`).join(', ') : 'в этом жанре линий нет, оставь пустым',
-            villain_roles: Object.values(f.villains?.roles ?? {}).join(', ') || 'в жанре нет лестницы злодеев',
-            hook_types: Object.keys(f.hook_types).length ? `только из словаря жанра: ${Object.entries(f.hook_types).map(([id, name]) => `${id} (${name})`).join(', ')}` : 'своими словами (угроза, тайна, победа…)',
-            tolerance: f.tolerance,
-            schema: schemaText(part),
-          }),
-          messages: [{ role: 'user', content: `Составь план серий ${from}–${to}. Только JSON.` }],
-        },
-      });
-      episodes.push(...data.episodes);
-      deviations.push(...data.deviations);
-      authors.add(provider);
+      const key = `${from}-${to}`;
+      let part = partial.parts[key];
+      if (!part) {
+        const { data, provider } = await ctx.llm.completeJson(planPart(from, to, outline), {
+          role: 'architect_heavy',
+          projectId: ctx.projectId,
+          step: 'season_plan',
+          request: {
+            task: `season_plan:${key}`,
+            cacheablePrefix: [ctx.kbText, `# Библия сериала\n${json(bible)}`],
+            system: renderPrompt(ctx.kb, 'architect_heavy/season_plan', {
+              episodes: f.episodes,
+              from,
+              to,
+              // The whole table of what is written so far: rhythm, hooks, moods and knowledge are visible.
+              written: episodes.length ? episodes.map((e) => episodeLine(e, ctx.kit.genre.terms, f.hook_types)).join('\n') : 'Это начало сезона.',
+              hero: ctx.kit.genre.terms.hero.nom,
+              anchor_ids: Object.keys(f.anchors).join(', '),
+              kaif_lines: Object.keys(f.lines).length ? Object.entries(f.lines).map(([id, name]) => `${id} (${name})`).join(', ') : 'в этом жанре линий нет, оставь пустым',
+              villain_roles: Object.values(f.villains?.roles ?? {}).join(', ') || 'в жанре нет лестницы злодеев',
+              hook_types: hookTypesText(f),
+              tolerance: f.tolerance,
+              schema: schemaText(planPart(from, to, outline)),
+            }),
+            messages: [{ role: 'user', content: `Составь план серий ${from}–${to}. Только JSON.` }],
+          },
+        });
+        part = { ...data, provider };
+        partial.parts[key] = part;
+        // Saved after every part: a run that fails later resumes from here.
+        ctx.memory.saveArtifact(PARTIAL_PLAN, partial);
+      }
+      episodes.push(...part.episodes);
+      deviations.push(...part.deviations);
+      authors.add(part.provider);
     }
-    ctx.memory.importPlan(SeasonPlan.parse({ episodes, deviations }));
+    const assembled = SeasonPlan.parse({ episodes, deviations });
+    const reconciled = await reconcilePlan(ctx, bible, assembled, outline);
+    if (reconciled.provider) authors.add(reconciled.provider);
+    ctx.memory.importPlan(reconciled.plan);
+    // The plan is whole: nothing is left to resume.
+    ctx.memory.saveArtifact(PARTIAL_PLAN, { bible: stamp, parts: {} } satisfies PartialPlan);
     // Cards were written from the old plan: they need rewriting and approving again.
     const oldCards = ctx.memory.cards().map((c) => c.ep);
     if (oldCards.length) {
@@ -459,6 +478,89 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
     return audit(ctx, 'season_plan', [...authors]);
   },
 };
+
+/** Artifact that holds the parts of a season plan written so far (resume after a failure). */
+export const PARTIAL_PLAN = 'season_plan:partial';
+
+interface PartialPlan {
+  /** Fingerprint of the bible the parts were written for. */
+  bible: string;
+  parts: Record<string, { episodes: EpisodeOutline[]; deviations: FrameDeviation[]; provider: ProviderName }>;
+}
+
+/** Stable short hash of a JSON value (djb2), for telling versions apart. */
+function fingerprint(value: unknown): string {
+  const text = JSON.stringify(value);
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+function hookTypesText(f: GenreKit['frame']): string {
+  return Object.keys(f.hook_types).length
+    ? `только из словаря жанра: ${Object.entries(f.hook_types).map(([id, name]) => `${id} (${name})`).join(', ')}`
+    : 'своими словами (угроза, тайна, победа…)';
+}
+
+/**
+ * Outline schema for a frame: where the frame lists hook types, `hook_type` is validated against
+ * them when the answer is parsed, so a wrong type is fixed by the model's retry, not found as a
+ * finding later.
+ */
+export function outlineSchema(frame: GenreKit['frame']) {
+  const types = Object.keys(frame.hook_types);
+  return types.length ? EpisodeOutline.extend({ hook_type: z.enum(types as [string, ...string[]]) }) : EpisodeOutline;
+}
+type OutlineSchema = ReturnType<typeof outlineSchema>;
+
+/** Outlines of exactly these episodes, in order. */
+function outlinesFor(eps: number[], outline: OutlineSchema) {
+  return z
+    .array(outline)
+    .length(eps.length)
+    .superRefine((list, ctx) => {
+      list.forEach((e, i) => {
+        if (e.ep !== eps[i]) ctx.addIssue({ code: 'custom', path: [i, 'ep'], message: `Здесь должна быть ${eps[i]}-я серия` });
+      });
+    });
+}
+
+/**
+ * Reconciliation: the assembled plan goes through the code checks, and when they raise blocker or
+ * major findings, one call of the heavy architect rewrites only the episodes they point at,
+ * with the findings and the whole plan in front of it. One round at most; the audit that follows
+ * runs the checks again and records what is left.
+ */
+async function reconcilePlan(ctx: Ctx, bible: Bible, plan: SeasonPlan, outline: OutlineSchema): Promise<{ plan: SeasonPlan; provider?: ProviderName }> {
+  const serious = runCodeChecks({ kit: ctx.kit, bible, plan }).findings.filter((x) => x.severity !== 'minor' && x.episode !== undefined);
+  if (serious.length === 0) return { plan };
+  const f = ctx.kit.frame;
+  const eps = [...new Set(serious.map((x) => x.episode!))].sort((a, b) => a - b);
+  const schema = outlinesFor(eps, outline);
+  const { data, provider } = await ctx.llm.completeJson(schema, {
+    role: 'architect_heavy',
+    projectId: ctx.projectId,
+    step: 'season_plan',
+    request: {
+      task: `season_plan_fix:${eps.join(',')}`,
+      cacheablePrefix: [ctx.kbText, `# Библия сериала\n${json(bible)}`],
+      system: renderPrompt(ctx.kb, 'architect_heavy/season_plan_fix', {
+        episodes: formatEpisodes(eps),
+        plan: plan.episodes.map((e) => episodeLine(e, ctx.kit.genre.terms, f.hook_types)).join('\n'),
+        findings: serious
+          .map((x) => `- Серия ${x.episode}: «${x.quote}» — ${x.viewerQuestion} Как исправить: ${x.fixes.join(' / ')}`)
+          .join('\n'),
+        hero: ctx.kit.genre.terms.hero.nom,
+        anchor_ids: Object.keys(f.anchors).join(', '),
+        hook_types: hookTypesText(f),
+        schema: schemaText(schema),
+      }),
+      messages: [{ role: 'user', content: `Перепиши серии ${formatEpisodes(eps)}. Только JSON.` }],
+    },
+  });
+  const byEp = new Map(data.map((e) => [e.ep, e]));
+  return { plan: SeasonPlan.parse({ episodes: plan.episodes.map((e) => byEp.get(e.ep) ?? e), deviations: plan.deviations }), provider };
+}
 
 /** Findings deduplicated by id; the first occurrence wins. */
 function uniqueFindings(list: Finding[]): Finding[] {
@@ -475,27 +577,42 @@ function cardCodeChecks(ctx: Ctx, bible: Bible, plan: SeasonPlan, cards: Episode
   return runCodeChecks({ kit: ctx.kit, bible, plan, cards }).findings.filter((f) => !withoutCards.has(f.id));
 }
 
-/** Parts of the season to write the plan in: the frame's blocks, or blocks of 10. */
-export function planParts(episodes: number, blocks: [number, number][]): [number, number][] {
+/** The plan is written in parts of at least this many episodes. */
+export const MIN_PLAN_PART = 10;
+
+/**
+ * Parts of the season to write the plan in: the frame's blocks (or blocks of CARD_BLOCK when they
+ * do not cover the season), with neighbouring blocks merged until a part holds at least
+ * `minSize` episodes. A short tail joins the last part, so the last one may be longer.
+ */
+export function planParts(episodes: number, blocks: [number, number][], minSize = MIN_PLAN_PART): [number, number][] {
   const sorted = [...blocks].sort((a, b) => a[0] - b[0]);
   const covers = sorted.length > 0 && sorted[0]![0] === 1 && sorted.at(-1)![1] === episodes &&
     sorted.every(([a, b], i) => a <= b && (i === 0 || a === sorted[i - 1]![1] + 1));
-  if (covers) return sorted;
+  const base: [number, number][] = [];
+  if (covers) base.push(...sorted);
+  else for (let a = 1; a <= episodes; a += CARD_BLOCK) base.push([a, Math.min(a + CARD_BLOCK - 1, episodes)]);
+
   const out: [number, number][] = [];
-  for (let a = 1; a <= episodes; a += CARD_BLOCK) out.push([a, Math.min(a + CARD_BLOCK - 1, episodes)]);
+  let start: number | undefined;
+  for (const [a, b] of base) {
+    start ??= a;
+    if (b - start + 1 >= minSize) {
+      out.push([start, b]);
+      start = undefined;
+    }
+  }
+  if (start !== undefined) {
+    const end = base.at(-1)![1];
+    const last = out.pop();
+    out.push(last ? [last[0], end] : [start, end]);
+  }
   return out;
 }
 
-function planPart(from: number, to: number) {
+function planPart(from: number, to: number, outline: OutlineSchema) {
   return z.object({
-    episodes: z
-      .array(EpisodeOutline)
-      .length(to - from + 1)
-      .superRefine((list, ctx) => {
-        list.forEach((e, i) => {
-          if (e.ep !== from + i) ctx.addIssue({ code: 'custom', path: [i, 'ep'], message: `Здесь должна быть ${from + i}-я серия` });
-        });
-      }),
+    episodes: outlinesFor(Array.from({ length: to - from + 1 }, (_, i) => from + i), outline),
     deviations: z.array(FrameDeviation).default([]),
   });
 }

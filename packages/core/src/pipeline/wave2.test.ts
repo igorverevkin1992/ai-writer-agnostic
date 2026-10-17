@@ -6,8 +6,9 @@ import { ProjectMemory } from '../memory/store.ts';
 import { LlmClient } from '../providers/llm.ts';
 import { FakeProvider, testConfig } from '../providers/testing.ts';
 import type { LlmRequest } from '../providers/types.ts';
+import { confirmChecklist } from '../demo.ts';
 import { createProject } from './project.ts';
-import { runStep, skipStep } from './runners.ts';
+import { PARTIAL_PLAN, planParts, runStep, skipStep } from './runners.ts';
 
 /**
  * Wave 2 of the audit (quality of the series itself) on a thriller project: the golden «Прима»
@@ -95,8 +96,20 @@ function epsOf(range: string): number[] {
   return Array.from({ length: to! - from! + 1 }, (_, i) => from! + i);
 }
 
+/** The golden plan's episodes of one part, e.g. "1-12". */
+function planPart(range: string) {
+  const eps = epsOf(range);
+  return { episodes: prima.plan.episodes.filter((e) => eps.includes(e.ep)), deviations: prima.plan.deviations.filter((d) => eps.includes(d.ep)) };
+}
+
 function defaultAnswers(): typeof answers {
   return {
+    season_plan: (a) => planPart(a),
+    season_plan_fix: (a) => a.split(',').map(Number).map((ep) => prima.plan.episodes.find((e) => e.ep === ep)),
+    checklist_judge: (_a, req) => confirmChecklist(req.system ?? ''),
+    devil_advocate: () => [],
+    persona: () => [],
+    review_summary: () => ({ verdict: 'Сезон почти готов.', dangers: [{ where: 'Серия 1', why: 'Первая серия' }], legal: [] }),
     episode_cards: (a) => epsOf(a).map(card),
     script: (a) => script(Number(a)),
     controller: () => [],
@@ -159,5 +172,69 @@ describe('code checks in the app (audit item 13)', () => {
     expect(writer.system).toContain('Исправь замечания к прошлой версии');
     expect(writer.system).toContain('с разговора без смены положения');
     expect(second.findings).toEqual([]);
+  });
+});
+
+describe('season plan in parts (audit item 14)', () => {
+  it('merges short frame blocks into parts of at least 10 episodes; a short tail joins the last part', () => {
+    expect(planParts(60, [[1, 8], [9, 20], [21, 30], [31, 40], [41, 50], [51, 60]])).toEqual([[1, 20], [21, 30], [31, 40], [41, 50], [51, 60]]);
+    expect(planParts(60, kb.frames.thriller60!.blocks)).toEqual([[1, 12], [13, 24], [25, 45], [46, 60]]);
+    // Blocks that do not cover the season: blocks of 10, the tail of 5 joins the last one.
+    expect(planParts(25, [[1, 5]])).toEqual([[1, 10], [11, 25]]);
+  });
+
+  it('writes the plan in four parts, each seeing the full table of the episodes written so far', async () => {
+    await runStep(deps(), 'season_plan');
+    expect(tasks.filter((t) => t.startsWith('season_plan'))).toEqual(['season_plan:1-12', 'season_plan:13-24', 'season_plan:25-45', 'season_plan:46-60']);
+    const third = requests.find((r) => r.task === 'season_plan:25-45')!.system!;
+    expect(third).toContain('Серия 1. «Крест»');
+    expect(third).toContain('Серия 24.');
+    expect(third).not.toContain('Серия 25.');
+    // The table carries hook type, knowledge mode and anchors, not only the events.
+    expect(third).toContain('Крючок (Откровение (revelation))');
+    expect(third).toContain('режим: тайна');
+    expect(third).toContain('якоря: hook_violation');
+    expect(memory().currentPlan()?.episodes).toHaveLength(60);
+  });
+
+  it('resumes from the parts saved before a failure instead of writing them again', async () => {
+    answers.season_plan = (a) => {
+      if (a === '25-45') throw new Error('сеть упала');
+      return planPart(a);
+    };
+    await expect(runStep(deps(), 'season_plan')).rejects.toThrow();
+    const partial = memory().latestArtifact(PARTIAL_PLAN) as { parts: Record<string, unknown> };
+    expect(Object.keys(partial.parts)).toEqual(['1-12', '13-24']);
+
+    answers = defaultAnswers();
+    tasks = [];
+    const run = await runStep(deps(), 'season_plan');
+    expect(tasks.filter((t) => t.startsWith('season_plan:'))).toEqual(['season_plan:25-45', 'season_plan:46-60']);
+    expect(run.status).toBe('draft');
+    expect((memory().latestArtifact(PARTIAL_PLAN) as { parts: Record<string, unknown> }).parts).toEqual({});
+  });
+
+  it('one reconciliation call rewrites only the episodes with blocker or major code findings', async () => {
+    answers.season_plan = (a) => {
+      const part = planPart(a);
+      // Episode 1 loses its anchor: a blocker of the frame check, pointing at episode 1.
+      return { ...part, episodes: part.episodes.map((e) => (e.ep === 1 ? { ...e, anchors: [] } : e)) };
+    };
+    const run = await runStep(deps(), 'season_plan');
+    expect(tasks.filter((t) => t.startsWith('season_plan_fix:'))).toEqual(['season_plan_fix:1']);
+    const fix = requests.find((r) => r.task === 'season_plan_fix:1')!.system!;
+    expect(fix).toContain('Опорная точка «Хук-нарушение и необратимый инцидент» не отмечена');
+    expect(fix).toContain('Серия 60.');
+    expect(memory().currentPlan()?.episodes[0]?.anchors).toEqual(['hook_violation']);
+    expect(run.findings.filter((f) => f.check?.startsWith('season_frame'))).toEqual([]);
+  });
+
+  it('a hook type outside the frame vocabulary is rejected when the answer is parsed', async () => {
+    answers.season_plan = (a) => {
+      const part = planPart(a);
+      return { ...part, episodes: part.episodes.map((e) => (e.ep === 1 ? { ...e, hook_type: 'boom' } : e)) };
+    };
+    await expect(runStep(deps(), 'season_plan')).rejects.toThrow(/дважды/);
+    expect(tasks.filter((t) => t.startsWith('season_plan_fix:'))).toEqual([]);
   });
 });

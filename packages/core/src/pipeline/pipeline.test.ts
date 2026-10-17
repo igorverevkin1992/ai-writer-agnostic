@@ -52,6 +52,9 @@ function reply(req: LlmRequest): string {
       return JSON.stringify(golden.bible);
     case 'season_plan':
       return JSON.stringify(planPart(a));
+    case 'season_plan_fix':
+      // The reconciliation call: the golden outlines of the listed episodes.
+      return JSON.stringify(a.split(',').map(Number).map((ep) => golden.plan.episodes.find((e) => e.ep === ep)));
     case 'checklist_judge':
       return JSON.stringify(confirmChecklist(req.system ?? ''));
     case 'devil_advocate':
@@ -234,13 +237,15 @@ describe('review fixes: pipeline', () => {
     approveStep(deps(), 'bible');
   }
 
-  it('writes the season plan in the frame blocks', async () => {
+  it('writes the season plan in the frame blocks, merged to parts of at least 10 episodes', async () => {
     await throughBible();
     calls = [];
     await runStep(deps(), 'season_plan');
     expect(calls.filter((c) => c.startsWith('season_plan:'))).toEqual([
-      'season_plan:1-8', 'season_plan:9-20', 'season_plan:21-30', 'season_plan:31-40', 'season_plan:41-50', 'season_plan:51-60',
+      'season_plan:1-20', 'season_plan:21-30', 'season_plan:31-40', 'season_plan:41-50', 'season_plan:51-60',
     ]);
+    // The golden plan passes the code checks: no reconciliation call.
+    expect(calls.some((c) => c.startsWith('season_plan_fix:'))).toBe(false);
     expect(new ProjectMemory(db, projectId).currentPlan()?.episodes).toHaveLength(60);
   });
 
