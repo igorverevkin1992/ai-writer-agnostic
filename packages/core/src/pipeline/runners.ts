@@ -7,7 +7,7 @@ import { runCodeChecks } from '../checks/code/runner.ts';
 import { runScriptControllers } from '../checks/llm/controllers.ts';
 import { episodeLine } from '../checks/llm/texts.ts';
 import type { LlmRequest } from '../providers/types.ts';
-import { InvalidOutputError } from '../providers/errors.ts';
+import { InvalidOutputError, OutputTruncatedError } from '../providers/errors.ts';
 import { EpisodeCard } from '../schemas/episodeCard.ts';
 import { Script } from '../schemas/script.ts';
 import { ContinuityExtract, ledgerLines } from '../schemas/continuity.ts';
@@ -859,12 +859,22 @@ async function audit(ctx: Ctx, step: 'bible' | 'season_plan', authors: ProviderN
       continue;
     }
     answered++;
-    const res = await resolveFinding(
-      { llm: ctx.llm, kb: ctx.kb, kit: ctx.kit, projectId: ctx.projectId, step, authorRole: 'architect', authorProvider: authors, judgeRole: 'critic_of_architect' },
-      f,
-      bible,
-      plan,
-    );
+    let res;
+    try {
+      res = await resolveFinding(
+        { llm: ctx.llm, kb: ctx.kb, kit: ctx.kit, projectId: ctx.projectId, step, authorRole: 'architect', authorProvider: authors, judgeRole: 'critic_of_architect' },
+        f,
+        bible,
+        plan,
+      );
+    } catch (err) {
+      // A malformed answer of the author or the judge leaves this one finding open for the
+      // producer; the audit and the other answers are already paid for and stay.
+      if (!(err instanceof InvalidOutputError || err instanceof OutputTruncatedError)) throw err;
+      ctx.memory.setFindingOutcome(f.id, { status: 'open', verdict: 'Автор или судья не ответили по форме — решите сами' });
+      outcome.push(f);
+      continue;
+    }
     if (res.bible !== bible && res.reply?.fact) {
       ctx.memory.addFact(res.reply.fact, res.reply.knowledge, { author: 'agent', note: `Ответ на замечание ${f.id}` });
       bible = res.bible;

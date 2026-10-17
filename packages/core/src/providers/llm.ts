@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import type { z } from 'zod';
 import type { Db } from '../db/client.ts';
-import { llmCalls } from '../db/schema.ts';
+import { llmCache, llmCalls } from '../db/schema.ts';
 import { AnthropicProvider } from './anthropic.ts';
 import { assertBudget, budgetStatus, type BudgetStatus } from './budget.ts';
 import type { ModelsConfig, ProviderName, RoleName } from './config.ts';
@@ -72,7 +73,7 @@ export interface CallLog {
   durationMs: number;
   costUsd: number;
   /** `invalid` and `truncated`: the answer is being asked for again (shows why the step takes longer). */
-  status: 'start' | 'ok' | 'error' | 'invalid' | 'truncated';
+  status: 'start' | 'ok' | 'error' | 'invalid' | 'truncated' | 'cached';
   error?: string;
 }
 
@@ -81,6 +82,11 @@ export interface LlmClientDeps {
   db: Db;
   /** Called after every model call; scripts print progress with it. */
   onCall?: (log: CallLog) => void;
+  /**
+   * Reuse validated answers to identical requests (eval, pilot): a run restarted after a crash
+   * pays only for what it had not got yet. Off in the app: «переделать» must ask the model again.
+   */
+  cache?: boolean;
   /** Injected in tests. Defaults to the real SDK-backed providers. */
   providers?: Partial<Record<ProviderName, Provider>>;
   env?: NodeJS.ProcessEnv;
@@ -96,13 +102,15 @@ export class LlmClient {
   private readonly onCall: ((log: CallLog) => void) | undefined;
   /** Estimated cost of calls in flight: counted against the budget until they are logged. */
   private reservedUsd = 0;
+  private readonly cache: boolean;
 
-  constructor({ config, db, providers = {}, env = process.env, now = Date.now, onCall }: LlmClientDeps) {
+  constructor({ config, db, providers = {}, env = process.env, now = Date.now, onCall, cache = false }: LlmClientDeps) {
     this.config = config;
     this.db = db;
     this.env = env;
     this.now = now;
     this.onCall = onCall;
+    this.cache = cache;
     this.providers = {
       anthropic: providers.anthropic ?? new AnthropicProvider(env),
       google: providers.google ?? new GoogleProvider(env),
@@ -186,9 +194,18 @@ export class LlmClient {
     schema: T,
     opts: CallOptions,
   ): Promise<CallResult & { data: z.infer<T> }> {
+    const key = this.cache ? cacheKey(opts, this.resolve(opts.role).target.model) : undefined;
+    if (key) {
+      const hit = this.cached(schema, opts, key);
+      if (hit) return hit;
+    }
+    const remember = <R extends CallResult>(r: R): R => {
+      if (key) this.db.insert(llmCache).values({ key, role: opts.role, model: r.model, task: opts.request.task ?? null, text: r.text }).onConflictDoNothing().run();
+      return r;
+    };
     const first = await this.completeOrShorter(opts);
     const firstCheck = validate(schema, first.text);
-    if (firstCheck.ok) return { ...first, data: firstCheck.data };
+    if (firstCheck.ok) return remember({ ...first, data: firstCheck.data });
     this.markInvalid(first.callId);
     this.onCall?.({ task: first.request.task, role: opts.role, provider: first.provider, model: first.model, durationMs: 0, costUsd: 0, status: 'invalid' });
 
@@ -212,7 +229,7 @@ export class LlmClient {
     };
     const second = await this.complete(retry);
     const secondCheck = validate(schema, second.text);
-    if (secondCheck.ok) return { ...second, data: secondCheck.data };
+    if (secondCheck.ok) return remember({ ...second, data: secondCheck.data });
     this.markInvalid(second.callId);
     throw new InvalidOutputError(
       `Модель дважды прислала ответ не по форме (роль ${opts.role}). Ошибки:\n${secondCheck.error}`,
@@ -379,6 +396,34 @@ export class LlmClient {
     return this.cost(resolved.target.model, resolved, usage).costUsd;
   }
 
+  /** A cached answer that still passes the schema, logged as a free call. */
+  private cached<T extends z.ZodType>(schema: T, opts: CallOptions, key: string): (CallResult & { data: z.infer<T> }) | undefined {
+    const row = this.db.select().from(llmCache).where(eq(llmCache.key, key)).get();
+    if (!row) return undefined;
+    const check = validate(schema, row.text);
+    if (!check.ok) return undefined;
+    const r = this.resolve(opts.role);
+    const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const logged = this.db
+      .insert(llmCalls)
+      .values({ projectId: opts.projectId ?? null, step: opts.step ?? null, role: opts.role, provider: r.provider, model: row.model, costUsd: 0, durationMs: 0, status: 'cached' })
+      .returning({ id: llmCalls.id })
+      .get();
+    this.onCall?.({ task: opts.request.task, role: opts.role, provider: r.provider, model: row.model, durationMs: 0, costUsd: 0, status: 'cached' });
+    return {
+      callId: logged.id,
+      text: row.text,
+      provider: r.provider,
+      model: row.model,
+      usage,
+      costUsd: 0,
+      fallbackUsed: false,
+      budget: opts.projectId ? budgetStatus(this.db, this.config, opts.projectId) : undefined,
+      request: opts.request,
+      data: check.data,
+    };
+  }
+
   private markInvalid(callId: number): void {
     this.db.update(llmCalls).set({ status: 'invalid_output' }).where(eq(llmCalls.id, callId)).run();
   }
@@ -386,6 +431,28 @@ export class LlmClient {
 
 function authorsOf(a: CallOptions['authorProvider']): readonly ProviderName[] {
   return a === undefined ? [] : typeof a === 'string' ? [a] : a;
+}
+
+/** The request fields that decide the answer; the project id and the step do not. */
+function cacheKey(opts: CallOptions, model: string): string {
+  const r = opts.request;
+  return createHash('sha256')
+    .update(JSON.stringify([opts.role, model, r.task ?? '', r.cacheablePrefix ?? [], r.system ?? '', r.messages]))
+    .digest('hex');
+}
+
+/**
+ * Models sometimes wrap a right answer: an object in a one-item array, or under a single key
+ * («result», «verdict», «data»). These are unwrapped before the answer counts as malformed.
+ */
+function unwrapCandidates(raw: unknown): unknown[] {
+  const out: unknown[] = [];
+  if (Array.isArray(raw) && raw.length === 1) out.push(raw[0]);
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const values = Object.values(raw as Record<string, unknown>);
+    if (values.length === 1 && values[0] && typeof values[0] === 'object') out.push(values[0]);
+  }
+  return out;
 }
 
 function validate<T extends z.ZodType>(
@@ -400,6 +467,10 @@ function validate<T extends z.ZodType>(
   }
   const res = schema.safeParse(raw);
   if (res.success) return { ok: true, data: res.data };
+  for (const candidate of unwrapCandidates(raw)) {
+    const again = schema.safeParse(candidate);
+    if (again.success) return { ok: true, data: again.data };
+  }
   return {
     ok: false,
     error: res.error.issues.map((i) => `- ${i.path.join('.') || '(корень)'}: ${i.message}`).join('\n'),

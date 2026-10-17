@@ -34,7 +34,7 @@ const db = openDb(resolve(REPO_ROOT, 'data/app.db'));
 const kb = loadKb();
 console.log(`Пилот: ${project}, серии 1–${episodes}, лимит $${budget}…`);
 try {
-  const report = await runPilot({ db, llm: new LlmClient({ config, db, onCall: progressLogger() }), kb }, loadGolden(project), {
+  const report = await runPilot({ db, llm: new LlmClient({ config, db, onCall: progressLogger(), cache: !process.argv.includes('--fresh') }), kb }, loadGolden(project), {
     genreId,
     episodes,
     budgetLimitUsd: budget,

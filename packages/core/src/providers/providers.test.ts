@@ -511,3 +511,36 @@ describe('audit fixes: providers and progress', () => {
     expect(() => assertBudget(db, testConfig(), 'p1', 0.5)).toThrow(BudgetExceededError);
   });
 });
+
+describe('answer cache and wrapped answers', () => {
+  const Verdict = z.object({ closed: z.boolean(), reason: z.string() });
+  const req = { role: 'architect' as const, request: { task: 'judge:x', system: 'sys', messages: [{ role: 'user' as const, content: 'go' }] } };
+
+  it('a cached client pays once for the same request, also across clients and projects', async () => {
+    const db = openDb(':memory:');
+    const anthropic = new FakeProvider('anthropic', ['{"closed":true,"reason":"ok"}']);
+    const first = new LlmClient({ config: testConfig(), db, env: {}, providers: { anthropic }, cache: true });
+    const a = await first.completeJson(Verdict, { ...req, projectId: 'run-1' });
+    const logs: string[] = [];
+    const second = new LlmClient({ config: testConfig(), db, env: {}, providers: { anthropic }, cache: true, onCall: (l) => logs.push(l.status) });
+    const b = await second.completeJson(Verdict, { ...req, projectId: 'run-2' });
+    expect(anthropic.calls).toHaveLength(1);
+    expect(b.data).toEqual(a.data);
+    expect(b.costUsd).toBe(0);
+    expect(logs).toEqual(['cached']);
+    expect(db.select().from(llmCalls).all().map((r) => r.status)).toEqual(['ok', 'cached']);
+    // Another request, or the cache off, goes to the model.
+    await second.completeJson(Verdict, { ...req, request: { ...req.request, system: 'другое' } });
+    await new LlmClient({ config: testConfig(), db, env: {}, providers: { anthropic } }).completeJson(Verdict, req);
+    expect(anthropic.calls).toHaveLength(3);
+  });
+
+  it('a right answer wrapped in a one-item array or under one key is accepted without a retry', async () => {
+    const db = openDb(':memory:');
+    const anthropic = new FakeProvider('anthropic', ['[{"closed":false,"reason":"нет"}]', '{"verdict":{"closed":true,"reason":"да"}}']);
+    const llm = new LlmClient({ config: testConfig(), db, env: {}, providers: { anthropic } });
+    expect((await llm.completeJson(Verdict, req)).data).toEqual({ closed: false, reason: 'нет' });
+    expect((await llm.completeJson(Verdict, req)).data).toEqual({ closed: true, reason: 'да' });
+    expect(anthropic.calls).toHaveLength(2);
+  });
+});

@@ -12,7 +12,10 @@ import { EvalMatches } from '../checks/llm/schemas.ts';
 import { FIXTURES_DIR, type ProjectFixture } from '../fixtures.ts';
 import { renderPrompt, schemaText } from '../prompts/render.ts';
 import { ROLE_NAMES, type ProviderName, type RoleName } from '../providers/config.ts';
-import { BudgetExceededError } from '../providers/errors.ts';
+import { BudgetExceededError, InvalidOutputError, OutputTruncatedError } from '../providers/errors.ts';
+
+/** Real findings the architect answers in an eval run unless the caller says otherwise. */
+export const DEFAULT_RESOLVE_LIMIT = 10;
 import type { LlmClient } from '../providers/llm.ts';
 import { ReviewCategory, ReviewLevel, type Finding } from '../schemas/finding.ts';
 import { withHole, type SeededHole } from './seed.ts';
@@ -104,6 +107,11 @@ export interface EvalInput {
   seededModel?: 'all' | 'missed' | 'none';
   /** Architect role answering findings (default architect; heavy for the Fable comparison). */
   architectRole?: RoleName;
+  /**
+   * How many real findings the architect answers and the judge closes (2 calls each). The
+   * recall and precision metrics do not depend on it; a small sample shows how the loop works.
+   */
+  resolveLimit?: number;
 }
 
 export interface SeededResult {
@@ -129,7 +137,9 @@ export interface EvalReport {
   /** judged: the agent's score after the model-judge (what the producer's score is compared with). */
   checklist: { code: number; unknown: number; producer?: number; judged?: number; judgedUnknown?: number };
   anchors: { total: number; onPlace: number };
-  resolved: { tried: number; closed: number; architect: RoleName };
+  resolved: { tried: number; closed: number; architect: RoleName; failed: number; of: number };
+  /** Model calls whose answers stayed malformed: what they would have said is missing from the report. */
+  failed: string[];
   /** Set when the budget ran out: the report is partial. */
   stopped?: string;
 }
@@ -178,7 +188,8 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
     seeded: [],
     checklist: { code: score.score, unknown: score.unknownPoints, producer: input.producer?.checklist_score },
     anchors: { total: anchorIds.length, onPlace: anchorIds.filter((a) => !misplaced.has(a)).length },
-    resolved: { tried: 0, closed: 0, architect: architectRole },
+    resolved: { tried: 0, closed: 0, architect: architectRole, failed: 0, of: 0 },
+    failed: [],
   };
 
   const auditors = new Set<ProviderName>([criticProvider]);
@@ -200,6 +211,7 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
     ] as const) {
       const res = await runDevilAdvocate(deps, { ...target, authorProvider: llm.resolve(authorRole).provider });
       report.findings.push(...res.findings);
+      report.failed.push(...res.failedPasses);
       report.dropped += res.dropped;
       report.droppedSamples.push(...res.droppedSamples.slice(0, 5));
       for (const p of res.providers) auditors.add(p);
@@ -220,6 +232,7 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
       const judge = judgeFor(llm, [...auditors]);
       const matched = await mapLimit(windows, concurrencyFromEnv(), async (w) => {
         if (!w.findings.length) return [];
+        try {
         const { data } = await llm.completeJson(EvalMatches, {
           role: judge,
           projectId,
@@ -237,6 +250,11 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
           },
         });
         return data.matches;
+        } catch (err) {
+          if (!(err instanceof InvalidOutputError || err instanceof OutputTruncatedError)) throw err;
+          report.failed.push(`eval_match:${w.label}`);
+          return [];
+        }
       });
       report.matches = matched.flat();
       // Only matches to findings the auditor really made count, each finding once.
@@ -278,16 +296,27 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
     }
 
     // 4. The architect answers the real blocker and major findings; a judge decides.
+    // A sample: blockers first, then majors, spread over the season.
     const real = new Set(report.matches.filter((m) => m.real).map((m) => m.finding_id));
-    for (const f of report.findings.filter((x) => real.has(x.id) && x.severity !== 'minor')) {
+    const candidates = report.findings
+      .filter((x) => real.has(x.id) && x.severity !== 'minor')
+      .sort((a, b) => (a.severity === b.severity ? (a.episode ?? 0) - (b.episode ?? 0) : a.severity === 'blocker' ? -1 : 1));
+    report.resolved.of = candidates.length;
+    for (const f of candidates.slice(0, input.resolveLimit ?? DEFAULT_RESOLVE_LIMIT)) {
       report.resolved.tried++;
-      const res = await resolveFinding(
-        { ...deps, authorRole: architectRole, authorProvider: llm.resolve(architectRole).provider, judgeRole: critic },
-        f,
-        golden.bible,
-        golden.plan,
-      );
-      if (res.finding.status === 'resolved') report.resolved.closed++;
+      try {
+        const res = await resolveFinding(
+          { ...deps, authorRole: architectRole, authorProvider: llm.resolve(architectRole).provider, judgeRole: critic },
+          f,
+          golden.bible,
+          golden.plan,
+        );
+        if (res.finding.status === 'resolved') report.resolved.closed++;
+      } catch (err) {
+        if (!(err instanceof InvalidOutputError || err instanceof OutputTruncatedError)) throw err;
+        report.resolved.failed++;
+        report.failed.push(`resolve:${f.id}`);
+      }
     }
   } catch (err) {
     if (!(err instanceof BudgetExceededError)) throw err;
@@ -332,7 +361,8 @@ export function renderEvalReport(r: EvalReport, meta: { date: string; project: s
     '',
     `Чек-лист: код — ${r.checklist.code} баллов, с судьёй — ${agentScore}${r.checklist.judgedUnknown ? ` (не подтверждено ${r.checklist.judgedUnknown})` : ''}${r.checklist.producer !== undefined ? `, у продюсера — ${r.checklist.producer}` : ''}.`,
     `Замечаний аудитора: ${r.findings.length}; отброшено без точной цитаты: ${r.dropped}.`,
-    `Архитектор ответил на ${r.resolved.tried} реальных замечаний, судья закрыл ${r.resolved.closed}.`,
+    `Архитектор ответил на ${r.resolved.tried} реальных замечаний (выборка из ${r.resolved.of}), судья закрыл ${r.resolved.closed}${r.resolved.failed ? `, без ответа по форме — ${r.resolved.failed}` : ''}.`,
+    ...(r.failed.length ? [`Вызовов без ответа по форме (их часть не проверена): ${r.failed.length} — ${r.failed.slice(0, 8).join(', ')}${r.failed.length > 8 ? '…' : ''}.`] : []),
     '',
     '## Посеянные дыры по типам',
     '',

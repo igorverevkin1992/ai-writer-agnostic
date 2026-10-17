@@ -7,6 +7,7 @@ import { LEVEL_SEVERITY, type Finding } from '../../schemas/finding.ts';
 import type { SeasonPlan } from '../../schemas/season.ts';
 import { knowledgeBlock, renderPrompt, schemaText } from '../../prompts/render.ts';
 import { makeFinding } from '../code/finding.ts';
+import { InvalidOutputError, OutputTruncatedError } from '../../providers/errors.ts';
 import { concurrencyFromEnv, mapLimit } from '../../pipeline/mapLimit.ts';
 import { FindingDraft, FindingDrafts, ReviewDraft, ReviewDrafts } from './schemas.ts';
 import { lineHasFragment, locateQuote, wordsOf } from './quote.ts';
@@ -57,6 +58,8 @@ export interface AuditResult {
   /** A few of the dropped quotes, to see what the model cites wrongly. */
   droppedSamples: string[];
   calls: number;
+  /** Passes whose answer stayed malformed after the retries: their part of the text went unchecked. */
+  failedPasses: string[];
   /** Providers that really answered (the reserve may have stood in): a judge of the audit must differ. */
   providers: ProviderName[];
 }
@@ -216,17 +219,26 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
     else if (f.category && !prev.category) prev.category = f.category;
   };
 
-  const ask = async <T>(task: string, system: string, schema: ZodType<T[]>) => {
+  // A pass whose answer stays malformed or cut off after the retries is lost, not the audit:
+  // the other passes are paid for and still count. Budget and outages still stop the run.
+  const failedPasses: string[] = [];
+  const ask = async <T>(task: string, system: string, schema: ZodType<T[]>): Promise<T[]> => {
     calls++;
-    const res = await deps.llm.completeJson(schema, {
-      role,
-      projectId: deps.projectId,
-      step: deps.step,
-      authorProvider: target.authorProvider,
-      request: { task, cacheablePrefix: [kbText], system, messages: [{ role: 'user', content: 'Проверь текст. Ответ — только JSON.' }] },
-    });
-    providers.add(res.provider);
-    return res.data;
+    try {
+      const res = await deps.llm.completeJson(schema, {
+        role,
+        projectId: deps.projectId,
+        step: deps.step,
+        authorProvider: target.authorProvider,
+        request: { task, cacheablePrefix: [kbText], system, messages: [{ role: 'user', content: 'Проверь текст. Ответ — только JSON.' }] },
+      });
+      providers.add(res.provider);
+      return res.data;
+    } catch (err) {
+      if (!(err instanceof InvalidOutputError || err instanceof OutputTruncatedError)) throw err;
+      failedPasses.push(task);
+      return [];
+    }
   };
 
   const severities = Object.entries(review.severities)
@@ -322,5 +334,5 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
     }
   }
 
-  return { findings: [...found.values()], dropped, droppedSamples, calls, providers: [...providers] };
+  return { findings: [...found.values()], dropped, droppedSamples, calls, failedPasses, providers: [...providers] };
 }

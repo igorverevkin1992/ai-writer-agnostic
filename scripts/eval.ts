@@ -1,5 +1,6 @@
 // Auditor evaluation on the golden set and seeded holes. Real API calls — run manually.
-// Usage: pnpm eval [--project=muzh_krov] [--genre=revenge_thriller] [--architect=heavy] [--budget=25] [--seeded=all|missed|none]
+// Usage: pnpm eval [--project=muzh_krov] [--genre=revenge_thriller] [--architect=heavy] [--budget=25] [--seeded=all|missed|none] [--resolve=10] [--fresh]
+// Answers are cached: a run restarted after a crash pays only for what it had not got. --fresh asks the models again.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parse } from 'yaml';
@@ -53,7 +54,7 @@ if (!existsSync(seededPath)) console.log(`Нет fixtures/seeded/${project}.yaml
 const producer = loadProducerHoles(project);
 if (!producer) console.log(`Нет fixtures/golden/${project}/holes.yaml: метрика «найдено дыр продюсера» будет пустой.`);
 
-const llm = new LlmClient({ config, db, onCall: progressLogger() });
+const llm = new LlmClient({ config, db, onCall: progressLogger(), cache: !process.argv.includes('--fresh') });
 const architectRole = heavy ? 'architect_heavy' : 'architect';
 console.log(`Оценка аудитора: ${project}, архитектор ${config.roles[architectRole].model}, лимит $${budget}…`);
 
@@ -77,6 +78,7 @@ try {
     projectId,
     seededModel,
     architectRole,
+    resolveLimit: process.argv.some((a) => a.startsWith('--resolve=')) ? Math.floor(Number(arg('resolve', '10'))) || 0 : undefined,
   });
 } catch (err) {
   console.error(`Оценка прервана: ${err instanceof Error ? err.message : String(err)}`);

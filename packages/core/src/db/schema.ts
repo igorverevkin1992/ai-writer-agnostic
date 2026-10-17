@@ -20,6 +20,19 @@ export const projects = sqliteTable('projects', {
   createdAt: createdAt(),
 });
 
+/**
+ * Answers of the models that passed their Zod schema, keyed by a hash of the request.
+ * Scripts that may be re-run after a crash (eval, pilot) read them back instead of paying again.
+ */
+export const llmCache = sqliteTable('llm_cache', {
+  key: text('key').primaryKey(),
+  role: text('role').notNull(),
+  model: text('model').notNull(),
+  task: text('task'),
+  text: text('text').notNull(),
+  createdAt: createdAt(),
+});
+
 export const llmCalls = sqliteTable(
   'llm_calls',
   {

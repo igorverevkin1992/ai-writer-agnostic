@@ -136,3 +136,14 @@ describe('review fixes: model checks', () => {
   });
 });
 
+
+describe('a malformed pass does not lose the audit', () => {
+  it('keeps the findings of the other passes and names the lost one', async () => {
+    const draft = { level: 'high', quote: golden.plan.episodes[0]!.event, viewerQuestion: 'Зритель спросит: почему?', whyNoticed: 'видно', fixes: ['a'], agentRule: 'правило' };
+    answer = (req) => (req.task?.startsWith('devil_advocate:Б:') ? { not: 'an array' } : req.task?.startsWith('devil_advocate:А:') ? [draft] : []);
+    const res = await runDevilAdvocate({ llm: client(), kb, kit }, { bible: golden.bible, plan: golden.plan, authorProvider: 'anthropic' }, { categories: ['А', 'Б'], personas: false });
+    expect(res.findings).toHaveLength(1);
+    expect(res.failedPasses.length).toBeGreaterThan(0);
+    expect(res.failedPasses.every((t) => t.startsWith('devil_advocate:Б:'))).toBe(true);
+  });
+});

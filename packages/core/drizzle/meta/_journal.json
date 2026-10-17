@@ -36,6 +36,13 @@
       "when": 1792222447178,
       "tag": "0004_project_frame_inputs",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792267844981,
+      "tag": "0005_flashy_invaders",
+      "breakpoints": true
     }
   ]
 }

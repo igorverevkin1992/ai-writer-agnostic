@@ -13,6 +13,10 @@ export function progressLogger(write: (line: string) => void = (l) => process.st
       write(log.status === 'invalid' ? '  ! повтор: ответ не по форме' : '  ! повтор: ответ обрезан');
       return;
     }
+    if (log.status === 'cached') {
+      write(`  = ${log.task ?? log.role} · из прошлого прогона, $0`);
+      return;
+    }
     calls++;
     totalUsd += log.costUsd;
     const secs = (log.durationMs / 1000).toFixed(0);

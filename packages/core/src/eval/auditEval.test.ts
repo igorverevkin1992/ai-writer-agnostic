@@ -17,6 +17,7 @@ const golden = loadGolden();
 let db: Db;
 let tasks: string[];
 let matchCode = false;
+let badJudge = false;
 
 const hole = {
   level: 'critical',
@@ -42,7 +43,7 @@ function reply(req: LlmRequest): string {
     return JSON.stringify({ matches });
   }
   if (task.startsWith('respond:')) return JSON.stringify({ action: 'cite', fact_id: 'f_dasha_target', explanation: 'Даша в опасности' });
-  if (task.startsWith('judge:')) return JSON.stringify({ closed: true, reason: 'Закрыто' });
+  if (task.startsWith('judge:')) return badJudge ? '{"verdict": "не знаю"}' : JSON.stringify({ closed: true, reason: 'Закрыто' });
   if (task === 'checklist_judge') return JSON.stringify(confirmChecklist(req.system ?? ''));
   throw new Error(task);
 }
@@ -55,6 +56,7 @@ beforeEach(() => {
   db = openDb(':memory:');
   tasks = [];
   matchCode = false;
+  badJudge = false;
   db.insert(projects).values({ id: 'ev', title: 'eval', genreId: 'revenge_thriller', budgetLimitUsd: 100 }).run();
 });
 
@@ -104,6 +106,33 @@ describe('auditor evaluation', () => {
     expect(report.producerMissed).toEqual([]);
   });
 
+  it('a judge that keeps answering out of form leaves one finding unresolved, and the report still comes out', async () => {
+    badJudge = true;
+    const report = await runAuditEval({
+      llm: client(),
+      kb,
+      kit,
+      golden,
+      projectId: 'ev',
+      seeded: [],
+      producer: ProducerHolesFile.parse({ holes: [{ id: 'p1', holeType: 3, episode: 42, description: 'Почему не в полицию' }] }),
+    });
+    expect(report.producerFound).toBe(1);
+    expect(report.resolved).toMatchObject({ tried: 1, closed: 0, failed: 1 });
+    expect(report.failed.some((t) => t.startsWith('resolve:'))).toBe(true);
+    const md = renderEvalReport(report, { date: 'd', project: 'p', costUsd: 0, architectModel: 'm' });
+    expect(md).toContain('без ответа по форме — 1');
+  });
+
+  it('answers only a sample of real findings when asked to', async () => {
+    const report = await runAuditEval({
+      llm: client(), kb, kit, golden, projectId: 'ev', seeded: [], resolveLimit: 0,
+      producer: ProducerHolesFile.parse({ holes: [{ id: 'p1', holeType: 3, episode: 42, description: 'Почему не в полицию' }] }),
+    });
+    expect(report.resolved).toMatchObject({ tried: 0, of: 1 });
+    expect(tasks.some((t) => t.startsWith('respond:'))).toBe(false);
+  });
+
   it('audits seeded holes with a targeted pass: only the categories of the hole type', async () => {
     const [h] = seedHoles(golden, kit, 1).filter((x) => x.holeType === 11 && x.episode);
     await runAuditEval({ llm: client(), kb, kit, golden, projectId: 'ev', seeded: [h!] });
@@ -143,7 +172,8 @@ describe('auditor evaluation', () => {
         seeded: [],
         checklist: { code: 0, unknown: 0 },
         anchors: { total: 1, onPlace: 1 },
-        resolved: { tried: 0, closed: 0, architect: 'architect' },
+        resolved: { tried: 0, closed: 0, architect: 'architect', failed: 0, of: 0 },
+        failed: [],
       },
       { date: 'd', project: 'p', costUsd: 0, architectModel: 'm' },
     );
