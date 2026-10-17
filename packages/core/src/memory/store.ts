@@ -24,11 +24,19 @@ import type { Finding } from '../schemas/finding.ts';
 import { SeasonPlan } from '../schemas/season.ts';
 import { STEP_IDS } from '../steps.ts';
 import { Script as ScriptSchema, type Script } from '../schemas/script.ts';
+import type { LedgerEntry } from '../schemas/continuity.ts';
 
 export type Author = 'producer' | 'agent';
 
 /** Prefix of links added by hand with link(): replaceLinks never touches them. */
 const MANUAL = 'manual:';
+
+/** Artifact that holds the continuity ledger (facts, knowledge and object states from written scripts). */
+export const CONTINUITY = 'continuity';
+/** How many ledger lines the writer and the critic get at once. */
+export const CONTINUITY_DIGEST = 40;
+
+const normalizeText = (s: string) => s.replace(/[«»"“”„]/gu, '"').replace(/[ёЁ]/gu, 'е').replace(/[.\s]+$/u, '').replace(/\s+/gu, ' ').trim().toLowerCase();
 
 export interface EditMeta {
   author: Author;
@@ -478,6 +486,80 @@ export class ProjectMemory {
       this.db.insert(knowledge).values({ projectId: p, who: k.who, factId: k.fact, sinceEp: k.since_ep, how: k.how ?? null }).run();
     }
     return this.logRevision('fact', fact.id, null, { fact, knowledge: known }, meta);
+  }
+
+  /**
+   * Merges extracted facts and knowledge into the fact base. A fact whose id or (normalized) text
+   * is already there is not added again; its knowledge entries go to the existing fact. A knowledge
+   * entry already present (who, fact, since) is skipped. Returns the ids of the facts added.
+   */
+  mergeFacts(list: Fact[], known: KnowledgeEntry[], meta: EditMeta): string[] {
+    const p = this.projectId;
+    const rows = this.db.select().from(facts).where(eq(facts.projectId, p)).all();
+    const byText = new Map(rows.map((r) => [normalizeText(r.text), r.id]));
+    const ids = new Set(rows.map((r) => r.id));
+    const alias = new Map<string, string>();
+    const added: string[] = [];
+    for (const f of list) {
+      const same = ids.has(f.id) ? f.id : byText.get(normalizeText(f.text));
+      if (same) {
+        alias.set(f.id, same);
+        continue;
+      }
+      this.db.insert(facts).values({ projectId: p, id: f.id, text: f.text, sinceEp: f.since_ep ?? null, source: meta.author }).run();
+      ids.add(f.id);
+      byText.set(normalizeText(f.text), f.id);
+      added.push(f.id);
+    }
+    const have = new Set(
+      this.db.select().from(knowledge).where(eq(knowledge.projectId, p)).all().map((k) => `${k.who}\u0000${k.factId}\u0000${k.sinceEp}`),
+    );
+    const addedKnowledge: KnowledgeEntry[] = [];
+    for (const k of known) {
+      const factId = alias.get(k.fact) ?? k.fact;
+      if (!ids.has(factId)) continue;
+      const key = `${k.who}\u0000${factId}\u0000${k.since_ep}`;
+      if (have.has(key)) continue;
+      have.add(key);
+      this.db.insert(knowledge).values({ projectId: p, who: k.who, factId, sinceEp: k.since_ep, how: k.how ?? null }).run();
+      addedKnowledge.push({ ...k, fact: factId });
+    }
+    if (added.length || addedKnowledge.length) {
+      this.logRevision('facts', added.join(',') || 'knowledge', null, { facts: list.filter((f) => added.includes(f.id)), knowledge: addedKnowledge }, meta);
+    }
+    return added;
+  }
+
+  /** Facts added by hand or by the agent after the bible was written (not the bible's own). */
+  factsBy(source: Author): Fact[] {
+    return this.db
+      .select()
+      .from(facts)
+      .where(and(eq(facts.projectId, this.projectId), eq(facts.source, source)))
+      .all()
+      .map((f): Fact => ({ id: f.id, text: f.text, ...(f.sinceEp !== null ? { since_ep: f.sinceEp } : {}) }));
+  }
+
+  // ---- continuity ledger ----
+
+  /** The continuity ledger: what every written script showed, in episode order. */
+  continuity(): LedgerEntry[] {
+    const stored = this.latestArtifact(CONTINUITY) as { entries?: LedgerEntry[] } | undefined;
+    return [...(stored?.entries ?? [])].sort((a, b) => a.ep - b.ep);
+  }
+
+  /** Replaces the ledger lines of one episode: a rewritten script brings its own. */
+  recordContinuity(ep: number, lines: LedgerEntry[]): void {
+    const kept = this.continuity().filter((e) => e.ep !== ep);
+    this.saveArtifact(CONTINUITY, { entries: [...kept, ...lines.filter((l) => l.ep === ep)] });
+  }
+
+  /** The last `limit` ledger lines before an episode: what the writer and the critic must not contradict. */
+  continuityDigest(beforeEp: number, limit = CONTINUITY_DIGEST): string[] {
+    return this.continuity()
+      .filter((e) => e.ep < beforeEp)
+      .map((e) => e.line)
+      .slice(-limit);
   }
 
   openFindings(): (typeof findingsTable.$inferSelect)[] {

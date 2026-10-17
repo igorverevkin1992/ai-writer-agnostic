@@ -75,8 +75,9 @@ function reply(req: LlmRequest): string {
   tasks.push(task);
   const [kind, a = '', b = ''] = task.split(':');
   if (kind === 'episode_cards') {
-    const [from, to] = a.split('-').map(Number);
-    const eps = Array.from({ length: to! - from! + 1 }, (_, i) => from! + i);
+    // "1-10" is a block; "14" or "12,14" are single cards rewritten in place.
+    const [from, to = from] = a.split('-').map(Number);
+    const eps = a.includes(',') ? a.split(',').map(Number) : Array.from({ length: to! - from! + 1 }, (_, i) => from! + i);
     return JSON.stringify(eps.map((ep) => (ep === 14 ? { ...card(ep), acts_on: [{ who: 'Лиза', fact: 'f_herman_initiator' }] } : card(ep))));
   }
   if (kind === 'script') {
@@ -84,6 +85,7 @@ function reply(req: LlmRequest): string {
     return JSON.stringify(script(Number(a), req.system?.includes('Исправь замечания') ? 'Спи. Завтра выставка.' : ''));
   }
   if (kind === 'controller') return JSON.stringify(controllerReply(a, b));
+  if (kind === 'continuity') return JSON.stringify({ facts: [], knowledge: [], states: [] });
   if (kind === 'polish') {
     const v = (n: number) => [{ t0: 5, t1: 15, kind: 'line', speaker: 'ВЕРА', text: `Вариант ${n}: ты опять здесь?` }];
     return JSON.stringify({ variants: [1, 2, 3, 4, 5].map(v) });
@@ -140,10 +142,12 @@ describe('episode cards', () => {
     expect(() => approveStep({ db, kb, projectId }, 'episode_cards')).toThrow('Сначала утвердите блоки карточек: 11–20');
     expect(new Pipeline(db, projectId).get('episode_cards').status).toBe('needs_fix');
 
-    // Regenerating only the block with episode 14.
+    // Rewriting only the card of episode 14: its block loses its approval, the rest of the block stays.
+    approveStep({ db, kb, projectId }, 'episode_cards', { block: 21 });
     tasks = [];
     await runStep(deps(), 'episode_cards', { episodes: [14] });
-    expect(tasks).toEqual(['episode_cards:11-20']);
+    expect(tasks).toEqual(['episode_cards:14']);
+    expect(new ProjectMemory(db, projectId).latestArtifact('card_blocks')).toEqual({ approved: [1, 21] });
   });
 
   it('the whole step is approved when every block is', async () => {
@@ -162,12 +166,13 @@ describe('scripts', () => {
     skipStep({ db, kb, projectId }, 'episode_cards');
   });
 
-  it('the writer gets the card, a compressed bible and the two previous episodes', async () => {
+  it('the writer gets the card, the whole bible and the two previous episodes', async () => {
     await runStep(deps(), 'scripts', { episodes: [1, 2, 3] });
     const third = writerCalls[2]!.system!;
     expect(third).toContain('СЕРИЯ 1. «Серия 1»');
     expect(third).toContain('СЕРИЯ 2. «Серия 2»');
-    expect(third).not.toContain('"timeline"');
+    // The bible is not compressed while the input fits the writer's limit.
+    expect(third).toContain('"timeline"');
     expect(new ProjectMemory(db, projectId).scripts().map((s) => s.ep)).toEqual([1, 2, 3]);
   });
 

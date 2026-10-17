@@ -35,14 +35,66 @@ export interface KnowledgeOptions {
   step?: MethodStep;
 }
 
+/**
+ * How much of the methods section stays when the block is over the size cap: everything; without
+ * the general principles (no `for`); only the principles written for this step alone; summaries only.
+ */
+export type MethodsTrim = 'none' | 'general' | 'specific' | 'all';
+const TRIM_ORDER: readonly MethodsTrim[] = ['none', 'general', 'specific', 'all'];
+
 /** Method principles for a step and a genre: those addressed to them and those addressed to all. */
-export function methodsBlock(kb: Kb, step?: MethodStep, genreId?: string): string[] {
+export function methodsBlock(kb: Kb, step?: MethodStep, genreId?: string, trim: MethodsTrim = 'none'): string[] {
+  const kept = (p: { for: string[] }) =>
+    trim === 'none' || (trim === 'general' && p.for.length > 0) || (trim === 'specific' && p.for.length === 1 && p.for[0] === step);
   return Object.values(kb.methods).flatMap((m) => {
     const principles = m.principles.filter(
-      (p) => (!step || !p.for.length || p.for.includes(step)) && (!genreId || !p.genres.length || p.genres.includes(genreId)),
+      (p) => (!step || !p.for.length || p.for.includes(step)) && (!genreId || !p.genres.length || p.genres.includes(genreId)) && kept(p),
     );
     return [`### ${m.name} (${m.author})`, m.summary, ...principles.map((p) => `- ${p.id}. ${p.text}`)];
   });
+}
+
+/** Steps whose author gets the critic's full rule set; the others get the category list only. */
+const FULL_CRITIC_STEPS: ReadonlySet<MethodStep> = new Set<MethodStep>(['bible', 'season_plan', 'episode_cards', 'scripts']);
+
+/** The knowledge block is kept under this many characters per step; the methods section gives way first. */
+export const KNOWLEDGE_CAP = 60_000;
+
+/** Hole catalog questions as the auditor of this genre asks them: the genre guide replaces or adds to the catalog's. */
+export function holeQuestions(kb: Kb, kit: GenreKit): { id: number; name: string; questions: string[] }[] {
+  const guide = kit.guide;
+  return kb.holes.holes.map((h) => {
+    const own = guide?.hole_questions[String(h.id)] ?? [];
+    const questions = guide?.replace_hole_questions.includes(String(h.id)) && own.length ? own : [...h.questions, ...own];
+    return { id: h.id, name: h.name, questions };
+  });
+}
+
+/**
+ * «Что проверит критик»: what the auditor of another family will ask about this step's text.
+ * The author sees the same questions as the critic, so fewer holes reach the review. Concept and
+ * logline get only the category names and their checks; the later steps get the category rules,
+ * the judge's questions and fix hints of the genre rules, and the hole catalog questions.
+ */
+export function criticBlock(kb: Kb, kit: GenreKit, step?: MethodStep): string[] {
+  const full = step !== undefined && FULL_CRITIC_STEPS.has(step);
+  const categories = kb.review.categories.filter((c) => !c.genres.length || c.genres.includes(kit.genre.id));
+  const out = [
+    '## Что проверит критик',
+    'Текст прочитает проверяющий другой модели с этими вопросами. Ответ «так работает» не принимается; каждое замечание — с цитатой.',
+    '### Категории разбора',
+    ...categories.flatMap((c) => [`- ${c.id}. ${c.name}: ${c.check}`, ...(full ? c.rules.map((r) => `  - ${r}`) : [])]),
+  ];
+  if (!full) return out;
+  const judged = kit.rules.rules.filter((r) => r.check.llm);
+  if (judged.length) {
+    out.push(
+      '### Вопросы судьи к правилам жанра',
+      ...judged.map((r) => `- ${r.id}: ${r.check.llm}${r.fix_hints.length ? ` Как исправить: ${r.fix_hints.join(' / ')}` : ''}`),
+    );
+  }
+  out.push('### Каталог дыр', ...holeQuestions(kb, kit).map((h) => `- ${h.id}. ${h.name}: ${h.questions.join(' ')}`));
+  return out;
 }
 
 /**
@@ -70,7 +122,7 @@ export function knowledgeBlock(kb: Kb, kit: GenreKit, opts: KnowledgeOptions = {
       ]
     : ['Лестницы злодеев в этом жанре нет.'];
   const p = kit.production;
-  return [
+  const build = (trim: MethodsTrim) => [
     `# База знаний: ${kit.genre.title}${kit.genre.platform ? ` (${kit.genre.platform})` : ''}`,
     '## Правила жанра',
     list(kit.rules.rules.map((r) => `${r.id} [${r.severity}] ${r.text}`)),
@@ -105,8 +157,16 @@ export function knowledgeBlock(kb: Kb, kit: GenreKit, opts: KnowledgeOptions = {
     '## Словарь',
     list(kb.glossary.terms.filter((t) => !t.genres.length || t.genres.includes(kit.genre.id)).map((t) => `${t.term} — ${t.definition}`)),
     '## Методики',
-    ...methodsBlock(kb, opts.step, kit.genre.id),
+    ...methodsBlock(kb, opts.step, kit.genre.id, trim),
     '## Кейсы',
     list(kb.cases.filter((c) => !c.stub && (!c.genres.length || c.genres.includes(kit.genre.id))).map((c) => `${c.id}: ${c.title} — ${c.summary}`)),
+    ...criticBlock(kb, kit, opts.step),
   ].join('\n');
+  // Over the cap, the methods section gives way step by step; the last stage is taken as it is.
+  let text = '';
+  for (const trim of TRIM_ORDER) {
+    text = build(trim);
+    if (text.length <= KNOWLEDGE_CAP) break;
+  }
+  return text;
 }

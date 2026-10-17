@@ -50,8 +50,14 @@ function reply(req: LlmRequest): string {
       return JSON.stringify(sampleLogline);
     case 'bible':
       return JSON.stringify(golden.bible);
+    case 'extract_facts':
+      // The helper repeats one bible fact under a new id: the merge must keep it once.
+      return JSON.stringify({ facts: [{ id: 'f_helper_dup', text: golden.bible.facts[0]!.text }, { id: 'f_helper_new', text: 'Факт, найденный помощником' }], knowledge: [] });
     case 'season_plan':
       return JSON.stringify(planPart(a));
+    case 'season_plan_fix':
+      // The reconciliation call: the golden outlines of the listed episodes.
+      return JSON.stringify(a.split(',').map(Number).map((ep) => golden.plan.episodes.find((e) => e.ep === ep)));
     case 'checklist_judge':
       return JSON.stringify(confirmChecklist(req.system ?? ''));
     case 'devil_advocate':
@@ -136,6 +142,11 @@ describe('steps 1–4 end to end', () => {
     script.auditBible = (t) => (t === 'В' ? [{ ...dasha, quote: 'Кровь забирают под видом лечения' }] : []);
     const bible = await runStep(deps(), 'bible');
     expect(bible.status).toBe('draft');
+    // The helper's facts always merge in: the new one is added, the duplicate by text is not.
+    const factIds = new ProjectMemory(db, projectId).currentBible()!.facts.map((f) => f.id);
+    expect(factIds).toContain('f_helper_new');
+    expect(factIds).not.toContain('f_helper_dup');
+    expect(factIds).toHaveLength(golden.bible.facts.length + 1);
     expect(bible.findings).toMatchObject([{ holeType: 1, category: ['В'], level: 'critical', status: 'resolved', resolutionFactId: 'f_dasha_target', controller: 'logic' }]);
     approveStep(deps(), 'bible');
 
@@ -239,13 +250,15 @@ describe('review fixes: pipeline', () => {
     approveStep(deps(), 'bible');
   }
 
-  it('writes the season plan in the frame blocks', async () => {
+  it('writes the season plan in the frame blocks, merged to parts of at least 10 episodes', async () => {
     await throughBible();
     calls = [];
     await runStep(deps(), 'season_plan');
     expect(calls.filter((c) => c.startsWith('season_plan:'))).toEqual([
-      'season_plan:1-8', 'season_plan:9-20', 'season_plan:21-30', 'season_plan:31-40', 'season_plan:41-50', 'season_plan:51-60',
+      'season_plan:1-20', 'season_plan:21-30', 'season_plan:31-40', 'season_plan:41-50', 'season_plan:51-60',
     ]);
+    // The golden plan passes the code checks: no reconciliation call.
+    expect(calls.some((c) => c.startsWith('season_plan_fix:'))).toBe(false);
     expect(new ProjectMemory(db, projectId).currentPlan()?.episodes).toHaveLength(60);
   });
 

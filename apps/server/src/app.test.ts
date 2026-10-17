@@ -40,6 +40,7 @@ function reply(req: { task?: string; system?: string }): string {
   if (t === 'concept') return JSON.stringify(concepts);
   if (t === 'logline') return JSON.stringify(logline);
   if (t === 'bible') return JSON.stringify(golden.bible);
+  if (t === 'extract_facts') return JSON.stringify({ facts: [], knowledge: [] });
   if (t.startsWith('season_plan:')) {
     const [from = 1, to = Infinity] = t.slice('season_plan:'.length).split('-').map(Number);
     const inPart = (ep: number) => ep >= from && ep <= to;

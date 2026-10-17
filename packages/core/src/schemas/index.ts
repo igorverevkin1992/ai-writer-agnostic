@@ -6,3 +6,4 @@ export * from './season.ts';
 export * from './episodeCard.ts';
 export * from './script.ts';
 export * from './finding.ts';
+export * from './continuity.ts';
