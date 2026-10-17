@@ -57,5 +57,10 @@ export const EpisodeCard = z.object({
   obstacle: z.string().trim().optional(),
   /** Audio beats with their visual doubles (the viewer may watch muted). */
   audio: z.array(z.object({ cue: NonEmpty, visual_double: NonEmpty })).optional(),
+  /** Ids of the bible's clues and guns this episode plants or pays off; the writer must show them. */
+  plants: z.array(NonEmpty).optional(),
+  /** Nested question levels (bible.nested) this episode closes and opens. */
+  closes_question: z.int().min(1).optional(),
+  opens_question: z.int().min(1).optional(),
 });
 export type EpisodeCard = z.infer<typeof EpisodeCard>;

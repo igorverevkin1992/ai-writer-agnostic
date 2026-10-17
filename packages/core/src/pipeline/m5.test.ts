@@ -84,6 +84,7 @@ function reply(req: LlmRequest): string {
     return JSON.stringify(script(Number(a), req.system?.includes('Исправь замечания') ? 'Спи. Завтра выставка.' : ''));
   }
   if (kind === 'controller') return JSON.stringify(controllerReply(a, b));
+  if (kind === 'continuity') return JSON.stringify({ facts: [], knowledge: [], states: [] });
   if (kind === 'polish') {
     const v = (n: number) => [{ t0: 5, t1: 15, kind: 'line', speaker: 'ВЕРА', text: `Вариант ${n}: ты опять здесь?` }];
     return JSON.stringify({ variants: [1, 2, 3, 4, 5].map(v) });
@@ -162,12 +163,13 @@ describe('scripts', () => {
     skipStep({ db, kb, projectId }, 'episode_cards');
   });
 
-  it('the writer gets the card, a compressed bible and the two previous episodes', async () => {
+  it('the writer gets the card, the whole bible and the two previous episodes', async () => {
     await runStep(deps(), 'scripts', { episodes: [1, 2, 3] });
     const third = writerCalls[2]!.system!;
     expect(third).toContain('СЕРИЯ 1. «Серия 1»');
     expect(third).toContain('СЕРИЯ 2. «Серия 2»');
-    expect(third).not.toContain('"timeline"');
+    // The bible is not compressed while the input fits the writer's limit.
+    expect(third).toContain('"timeline"');
     expect(new ProjectMemory(db, projectId).scripts().map((s) => s.ep)).toEqual([1, 2, 3]);
   });
 

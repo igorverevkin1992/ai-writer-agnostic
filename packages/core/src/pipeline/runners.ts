@@ -9,6 +9,7 @@ import { episodeLine } from '../checks/llm/texts.ts';
 import type { LlmRequest } from '../providers/types.ts';
 import { EpisodeCard } from '../schemas/episodeCard.ts';
 import { Script } from '../schemas/script.ts';
+import { ContinuityExtract, ledgerLines } from '../schemas/continuity.ts';
 import { renderScript } from '../text/script.ts';
 import { compressBible, MAX_COMPRESSION, type CompressionLevel } from './compress.ts';
 import { checklistFinding, scoreChecklist, type ChecklistScore } from '../checks/code/checklist.ts';
@@ -281,6 +282,8 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
             max_line_words: p.script_metrics.max_line_words,
             max_speakers: p.limits.max_speakers_per_scene,
             locations: bible.locations.join(', ') || 'список не задан',
+            plants: plantsText(bible, eps),
+            nested: nestedText(bible),
             schema: schemaText(cardsFor(eps)),
           }),
           messages: [{ role: 'user', content: 'Напиши карточки. Только JSON.' }],
@@ -350,7 +353,14 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
       const notes = opts.fix
         ? ctx.memory.findingsOf('scripts', 'open').filter((x) => x.episode === ep)
         : [];
-      let level: CompressionLevel = 1;
+      const outline = plan?.episodes.find((e) => e.ep === ep);
+      // The next episode's first seconds: the cliffhanger of this one must flow into them.
+      const nextCard = cards.find((c) => c.ep === ep + 1);
+      const nextOutline = plan?.episodes.find((e) => e.ep === ep + 1);
+      const nextHook = nextCard?.hook_0_5s ?? (nextOutline ? `обрыв по плану: ${nextOutline.cliffhanger}` : 'это последняя серия сезона');
+      const ledger = ctx.memory.continuityDigest(ep);
+      // The writer gets the whole bible; it shrinks only when the input is really over the limit.
+      let level: CompressionLevel = 0;
       const build = (): LlmRequest => ({
         task: `script:${ep}`,
         cacheablePrefix: [ctx.kbText],
@@ -359,6 +369,13 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
           card: json(card),
           bible: json(compressBible(bible, card, level)),
           previous: previous || 'Это первая серия.',
+          outline: plan
+            ? plan.episodes.filter((e) => Math.abs(e.ep - ep) <= 2).map((e) => episodeLine(e, ctx.kit.genre.terms, f.hook_types)).join('\n')
+            : 'Плана сезона нет.',
+          next_hook: nextHook,
+          plants: cardPlantsText(bible, card),
+          knowledge_mode: outline?.knowledge_mode ? KNOWLEDGE_MODE_TEXT[outline.knowledge_mode] : 'не задан планом',
+          ledger: ledger.length ? ledger.join('\n') : 'Пока пусто: это первая написанная серия.',
           fix_notes: notes.length
             ? `\nИсправь замечания к прошлой версии:\n${notes.map((n) => `- «${n.quote}» — ${n.viewerQuestion} Как исправить: ${n.fixes.join(' / ')}`).join('\n')}\n`
             : '',
@@ -397,13 +414,17 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
           ...checkScriptMetrics(script, p, f),
           ...checkLegalMarkers(collectTexts({ scripts: [script] }), ctx.kit.legal),
         ]);
+        // The controllers read the card as JSON: the ledger digest rides along in it, so the logic
+        // controller sees who holds what and who knows what by this episode.
+        const cardForCritics = { ...card, continuity: ledger };
         const model = await runScriptControllers(
           { llm: ctx.llm, kb: ctx.kb, kit: ctx.kit, projectId: ctx.projectId, step: 'scripts' },
-          { script, card, outline: plan?.episodes.find((e) => e.ep === ep), authorProvider: writer },
+          { script, card: cardForCritics, outline, authorProvider: writer },
         );
         found.push(...model.findings);
         ctx.memory.saveFindings(found, 'scripts');
         all.push(...found);
+        await recordContinuity(ctx, bible, script);
       } catch (err) {
         // An unchecked script must be written and checked again, not approved.
         ctx.memory.markOutdated('scripts', [ep]);
@@ -575,6 +596,63 @@ function uniqueFindings(list: Finding[]): Finding[] {
 function cardCodeChecks(ctx: Ctx, bible: Bible, plan: SeasonPlan, cards: EpisodeCard[]): Finding[] {
   const withoutCards = new Set(runCodeChecks({ kit: ctx.kit, bible, plan }).findings.map((f) => f.id));
   return runCodeChecks({ kit: ctx.kit, bible, plan, cards }).findings.filter((f) => !withoutCards.has(f.id));
+}
+
+const KNOWLEDGE_MODE_TEXT = { suspense: 'саспенс — зритель знает больше героя', mystery: 'тайна — никто не знает', surprise: 'сюрприз — персонаж в кадре знает больше' } as const;
+
+/** Clues and guns the architect may plant or pay off in these episodes, with their episodes. */
+function plantsText(bible: Bible, eps: number[]): string {
+  const near = (a: number, b?: number | null) => eps.includes(a) || (b != null && eps.includes(b));
+  const clues = bible.clues.filter((c) => near(c.planted_ep, c.paid_ep)).map((c) => `${c.id} (улика, заложена в ${c.planted_ep}-й${c.paid_ep ? `, окупается в ${c.paid_ep}-й` : ''}): ${c.text}`);
+  const guns = bible.guns.filter((g) => near(g.planted_ep, g.fired_ep)).map((g) => `${g.id} (ружьё, показано в ${g.planted_ep}-й${g.fired_ep ? `, стреляет в ${g.fired_ep}-й` : ''}): ${g.object}`);
+  const all = [...clues, ...guns];
+  return all.length ? all.join('\n') : 'в библии нет улик и ружей на эти серии — оставь `plants` пустым';
+}
+
+/** Nested questions of the bible, for `closes_question` / `opens_question`. */
+function nestedText(bible: Bible): string {
+  if (!bible.nested.length) return 'в библии нет матрёшки вопросов — оставь `closes_question` и `opens_question` пустыми';
+  return [...bible.nested]
+    .sort((a, b) => a.level - b.level)
+    .map((q) => `уровень ${q.level}: ${q.question} (открыт в ${q.opened_ep}-й${q.closed_ep ? `, закрыт в ${q.closed_ep}-й` : ''})`)
+    .join('\n');
+}
+
+/** What this card's `plants` point at, with the text the writer must show. */
+function cardPlantsText(bible: Bible, card: EpisodeCard): string {
+  const items = (card.plants ?? []).map((id) => {
+    const clue = bible.clues.find((c) => c.id === id);
+    if (clue) return `${id} — улика: ${clue.text}${clue.visual ? ' (визуальная, без комментария)' : ''}`;
+    const gun = bible.guns.find((g) => g.id === id);
+    if (gun) return `${id} — ружьё: ${gun.object}${gun.metro_visible ? ' (читается без звука)' : ''}`;
+    return `${id} — нет в библии: уточни у архитектора`;
+  });
+  return items.length ? items.join('\n') : 'ничего особого: карточка не называет улик и ружей';
+}
+
+/**
+ * Continuity ledger: after a script is written, the helper extracts new facts, who learned what
+ * and where the objects are now. Facts and knowledge merge into the fact base (deduplicated);
+ * the lines go into the ledger the writer and the critics of the next episodes read.
+ */
+async function recordContinuity(ctx: Ctx, bible: Bible, script: Script): Promise<void> {
+  const { data } = await ctx.llm.completeJson(ContinuityExtract, {
+    role: 'helper',
+    projectId: ctx.projectId,
+    step: 'scripts',
+    request: {
+      task: `continuity:${script.ep}`,
+      system: renderPrompt(ctx.kb, 'helper/continuity', {
+        ep: script.ep,
+        script: renderScript(script),
+        facts: bible.facts.map((x) => `${x.id}: ${x.text}`).join('\n') || 'фактов пока нет',
+        schema: schemaText(ContinuityExtract),
+      }),
+      messages: [{ role: 'user', content: 'Выпиши ведомость. Только JSON.' }],
+    },
+  });
+  ctx.memory.mergeFacts(data.facts, data.knowledge, { author: 'agent', note: `Ведомость непрерывности, ${script.ep}-я серия` });
+  ctx.memory.recordContinuity(script.ep, ledgerLines(script.ep, data));
 }
 
 /** The plan is written in parts of at least this many episodes. */

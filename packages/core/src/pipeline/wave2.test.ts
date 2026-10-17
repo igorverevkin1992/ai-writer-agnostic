@@ -238,3 +238,75 @@ describe('season plan in parts (audit item 14)', () => {
     expect(tasks.filter((t) => t.startsWith('season_plan_fix:'))).toEqual([]);
   });
 });
+
+describe('writer context and continuity ledger (audit item 16)', () => {
+  beforeEach(async () => {
+    answers.episode_cards = (a) => epsOf(a).map((ep) => (ep === 2 ? { ...card(ep), plants: ['c1_shoes', 'g_lika_shoes'], closes_question: 1, opens_question: 2 } : card(ep)));
+    await runStep(deps(), 'episode_cards', { episodes: [1] });
+    skipStep({ db, kb, projectId }, 'episode_cards');
+  });
+
+  it('the architect sees the clues, guns and nested questions of the block', () => {
+    const cards = requests.find((r) => r.task === 'episode_cards:1-10')!.system!;
+    expect(cards).toContain('c1_shoes (улика, заложена в 2-й, окупается в 12-й)');
+    expect(cards).toContain('g_flask (ружьё, показано в 7-й, стреляет в 20-й)');
+    expect(cards).toContain('уровень 1:');
+    expect(memory().cards().find((c) => c.ep === 2)).toMatchObject({ plants: ['c1_shoes', 'g_lika_shoes'], closes_question: 1, opens_question: 2 });
+  });
+
+  it('the writer gets the plan outline, the next hook, the plants with their text and the knowledge mode', async () => {
+    await runStep(deps(), 'scripts', { episodes: [2] });
+    const writer = requests.find((r) => r.task === 'script:2')!.system!;
+    expect(writer).toContain('Серия 1. «Крест»');
+    expect(writer).toContain('Серия 4.');
+    expect(writer).not.toContain('Серия 5.');
+    expect(writer).toContain('Следующая серия начинается с: Продолжение обрыва 2-й');
+    expect(writer).toContain('c1_shoes — улика: Пуанты Лики с именем Аси в её шкафчике (визуальная, без комментария)');
+    expect(writer).toContain('g_lika_shoes — ружьё: Пуанты Лики (читается без звука)');
+    expect(writer).toContain('Режим знания в серии: ');
+    // The whole bible: nothing is compressed while the input fits.
+    expect(writer).toContain('"world_rules"');
+    expect(writer).toContain('"timeline"');
+  });
+
+  it('the continuity ledger merges new facts and knowledge and reaches the next writer and the critics', async () => {
+    answers.continuity = (a) =>
+      a === '1'
+        ? {
+            facts: [
+              { id: 'f_key_asya', text: 'Ключ от гримёрки Лики теперь у Аси', since_ep: 1 },
+              { id: 'f_lika_alive_dup', text: 'Лика жива и спрятана за зеркалом гримёрки, в бункере под сценой' },
+            ],
+            knowledge: [{ who: 'Ася', fact: 'f_key_asya', since_ep: 1, how: 'нашла в пуантах' }, { who: 'Ася', fact: 'f_asya_entered', since_ep: 5, how: 'Запись камеры' }],
+            states: [{ object: 'Пуанты Лики', holder: 'Ася', since_ep: 1, note: 'спрятаны в шкафчике' }],
+          }
+        : { facts: [], knowledge: [], states: [] };
+    await runStep(deps(), 'scripts', { episodes: [1, 2] });
+    const m = memory();
+    const bible = m.currentBible()!;
+    // The new fact is added once; the duplicate of a bible fact (same text) is not.
+    expect(bible.facts.map((f) => f.id)).toContain('f_key_asya');
+    expect(bible.facts.map((f) => f.id)).not.toContain('f_lika_alive_dup');
+    expect(bible.facts).toHaveLength(prima.bible.facts.length + 1);
+    // Knowledge already in the base is not duplicated.
+    expect(bible.knowledge.filter((k) => k.who === 'Ася' && k.fact === 'f_asya_entered')).toHaveLength(1);
+    expect(bible.knowledge).toContainEqual({ who: 'Ася', fact: 'f_key_asya', since_ep: 1, how: 'нашла в пуантах' });
+    expect(m.continuityDigest(2)).toEqual([
+      'Серия 1: факт f_key_asya — Ключ от гримёрки Лики теперь у Аси',
+      'Серия 1: факт f_lika_alive_dup — Лика жива и спрятана за зеркалом гримёрки, в бункере под сценой',
+      'Серия 1: Ася знает f_key_asya (нашла в пуантах)',
+      'Серия 1: Ася знает f_asya_entered (Запись камеры)',
+      'Серия 1: Пуанты Лики — у Ася (спрятаны в шкафчике)',
+    ]);
+    expect(m.continuityDigest(1)).toEqual([]);
+    const writer2 = requests.find((r) => r.task === 'script:2')!.system!;
+    expect(writer2).toContain('Серия 1: Пуанты Лики — у Ася');
+    const logic2 = requests.find((r) => r.task === 'controller:logic:2')!.system!;
+    expect(logic2).toContain('Пуанты Лики — у Ася');
+    // The helper is called once per written script; a rewrite replaces the episode's lines.
+    expect(tasks.filter((t) => t.startsWith('continuity:'))).toEqual(['continuity:1', 'continuity:2']);
+    answers.continuity = () => ({ facts: [], knowledge: [], states: [{ object: 'Ключ', holder: 'Регина', since_ep: 1 }] });
+    await runStep(deps(), 'scripts', { episodes: [1] });
+    expect(m.continuityDigest(2)).toEqual(['Серия 1: Ключ — у Регина']);
+  });
+});

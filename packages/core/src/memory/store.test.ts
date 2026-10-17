@@ -167,3 +167,24 @@ describe('review fixes 2', () => {
   });
 });
 
+
+describe('mergeFacts', () => {
+  it('adds new facts once, maps duplicates by text to the existing id and skips known knowledge', () => {
+    const golden = loadGolden();
+    const memory = new ProjectMemory(openDb(':memory:'), 'p1');
+    memory.importBible(golden.bible);
+    const first = golden.bible.facts[0]!;
+    const known = golden.bible.knowledge.find((k) => k.fact === first.id)!;
+    const added = memory.mergeFacts(
+      [{ id: 'f_dup', text: `${first.text}.` }, { id: 'f_new', text: 'Совсем новый факт', since_ep: 3 }, { id: 'f_new', text: 'Совсем новый факт' }],
+      [{ who: 'Кто-то', fact: 'f_dup', since_ep: 2 }, { who: known.who, fact: first.id, since_ep: known.since_ep }, { who: 'Кто-то', fact: 'f_nope', since_ep: 1 }],
+      { author: 'agent' },
+    );
+    expect(added).toEqual(['f_new']);
+    const bible = memory.currentBible()!;
+    expect(bible.facts).toHaveLength(golden.bible.facts.length + 1);
+    expect(bible.knowledge).toHaveLength(golden.bible.knowledge.length + 1);
+    expect(bible.knowledge).toContainEqual({ who: 'Кто-то', fact: first.id, since_ep: 2 });
+    expect(memory.factsBy('agent').map((f) => f.id)).toEqual(['f_new']);
+  });
+});
