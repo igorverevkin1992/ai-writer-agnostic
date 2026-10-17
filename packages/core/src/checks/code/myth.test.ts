@@ -37,7 +37,7 @@ describe('genre pack: dark Slavic fantasy myth', () => {
     expect(response?.viewerQuestion).toMatch(/почему герой не отвечает/u);
     expect(response?.fixes[0]).toMatch(/^Дать герою ответный ход/u);
     expect(bibleText(golden.bible, kit.genre.terms).split('\n')[0]).toBe('РАНА');
-    expect(episodeLine(golden.plan.episodes[0]!, kit.genre.terms)).toContain('. Герой: ');
+    expect(episodeLine(golden.plan.episodes[0]!, kit.genre.terms)).toContain(' Герой: ');
     // Genres that say nothing keep «героиня».
     expect(genreKit(kb, 'revenge_thriller').genre.terms.hero.nom).toBe('героиня');
   });

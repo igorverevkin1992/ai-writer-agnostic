@@ -21,6 +21,8 @@ export const FindingDrafts = z.array(FindingDraft);
  */
 export const ReviewDraft = z.object({
   level: ReviewLevel,
+  /** Hole type of the catalog, one of the pass category's types; code falls back to the first. */
+  holeType: z.int().min(1).max(11).optional(),
   /** Other categories this hole also belongs to; the pass category is added by code. */
   category: z.array(ReviewCategory).default([]),
   episode: z.int().min(1).optional(),

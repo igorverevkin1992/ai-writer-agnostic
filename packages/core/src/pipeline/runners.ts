@@ -427,7 +427,7 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
             episodes: f.episodes,
             from,
             to,
-            written: episodes.length ? episodes.map((e) => episodeLine(e, ctx.kit.genre.terms)).join('\n') : 'Это начало сезона.',
+            written: episodes.length ? episodes.map((e) => episodeLine(e, ctx.kit.genre.terms, ctx.kit.frame.hook_types)).join('\n') : 'Это начало сезона.',
             hero: ctx.kit.genre.terms.hero.nom,
             anchor_ids: Object.keys(f.anchors).join(', '),
             kaif_lines: Object.keys(f.lines).length ? Object.entries(f.lines).map(([id, name]) => `${id} (${name})`).join(', ') : 'в этом жанре линий нет, оставь пустым',

@@ -84,15 +84,30 @@ function episodeOf(block: AuditBlock, fragment: string, named?: number): number 
   return block.episodes ? (episodeOfQuote(block, fragment, named) ?? inBlock(named)) : named;
 }
 
-function reviewFinding(d: ReviewDraft, block: AuditBlock, category: Category): Finding | undefined {
-  const fragment = locateQuote(block.text, d.quote);
-  if (!fragment) return undefined;
+/** Where a quote was found: in the audited block, or in the bible/facts shown next to it. */
+function locate(block: AuditBlock, facts: string, quote: string): { fragment: string; inBlock: boolean } | undefined {
+  const inBlock = locateQuote(block.text, quote);
+  if (inBlock) return { fragment: inBlock, inBlock: true };
+  const inFacts = locateQuote(facts, quote);
+  return inFacts ? { fragment: inFacts, inBlock: false } : undefined;
+}
+
+/** The episode of a finding whose quote comes from the bible: the model's number, if it is inside the block. */
+function episodeFromFacts(block: AuditBlock, named?: number): number | undefined {
+  if (named === undefined) return undefined;
+  return !block.episodes || (named >= block.episodes[0] && named <= block.episodes[1]) ? named : undefined;
+}
+
+function reviewFinding(d: ReviewDraft, block: AuditBlock, facts: string, category: Category): Finding | undefined {
+  const at = locate(block, facts, d.quote);
+  if (!at) return undefined;
   const f = makeFinding({
     check: `review.${category.id}`,
     controller: 'logic',
     severity: LEVEL_SEVERITY[d.level],
-    holeType: category.hole_types[0],
-    episode: episodeOf(block, fragment, d.episode),
+    // The model names the hole type among the category's; code falls back to the first.
+    holeType: d.holeType !== undefined && category.hole_types.includes(d.holeType) ? d.holeType : category.hole_types[0],
+    episode: at.inBlock ? episodeOf(block, at.fragment, d.episode) : episodeFromFacts(block, d.episode),
     quote: d.quote,
     question: d.viewerQuestion.replace(/^Зритель спросит:\s*/u, ''),
     fixes: d.fixes as [string],
@@ -108,15 +123,15 @@ function reviewFinding(d: ReviewDraft, block: AuditBlock, category: Category): F
   };
 }
 
-function personaFinding(d: FindingDraft, block: AuditBlock, check: string): Finding | undefined {
-  const fragment = locateQuote(block.text, d.quote);
-  if (!fragment) return undefined;
+function personaFinding(d: FindingDraft, block: AuditBlock, facts: string, check: string): Finding | undefined {
+  const at = locate(block, facts, d.quote);
+  if (!at) return undefined;
   return makeFinding({
     check,
     controller: 'logic',
     severity: d.severity,
     holeType: d.holeType,
-    episode: episodeOf(block, fragment, d.episode),
+    episode: at.inBlock ? episodeOf(block, at.fragment, d.episode) : episodeFromFacts(block, d.episode),
     quote: d.quote,
     question: d.viewerQuestion.replace(/^Зритель спросит:\s*/u, ''),
     fixes: d.fixes as [string],
@@ -143,11 +158,16 @@ function pickCategories(review: ReviewMethod, genreId: string, opts: AuditOption
 export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opts: AuditOptions = {}): Promise<AuditResult> {
   const role = deps.criticRole ?? 'critic_of_architect';
   const kbText = knowledgeBlock(deps.kb, deps.kit, { step: 'review' });
-  const facts = factsText(target.bible) || 'Фактов пока нет.';
+  const terms = deps.kit.genre.terms;
+  // A plan audit gets the whole bible as its fact base: world rules with their numbers, villains'
+  // motives, dates, clues and guns are what most cross-episode holes are made of. A bible audit
+  // already reads the bible as its text, so it gets only the facts table.
+  const bible = bibleText(target.bible, terms);
+  const facts = target.plan ? bible : factsText(target.bible) || 'Фактов пока нет.';
   const review = deps.kb.review;
   let blocks: AuditBlock[] = target.plan
-    ? planBlocks(target.plan, opts.blockSize ?? target.plan.episodes.length, deps.kit.genre.terms)
-    : [{ label: 'библия', text: bibleText(target.bible, deps.kit.genre.terms) }];
+    ? planBlocks(target.plan, opts.blockSize ?? target.plan.episodes.length, terms, deps.kit.frame.hook_types)
+    : [{ label: 'библия', text: bible }];
   if (opts.episodes && target.plan) {
     blocks = blocks.filter((b) => opts.episodes!.some((ep) => b.episodes && ep >= b.episodes[0] && ep <= b.episodes[1]));
   }
@@ -199,6 +219,7 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
         : [];
       const system = renderPrompt(deps.kb, `${role}/devil_advocate`, {
         category: `${category.id}. ${category.name}`,
+        hole_types: holes.map((h) => `${h.id} — ${h.name}`).join('; ') || String(category.hole_types[0]),
         hero: deps.kit.genre.terms.hero.nom,
         check: category.check,
         hole_questions: questions.map((q) => `- ${q}`).join('\n') || '- (нет)',
@@ -220,7 +241,7 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
   const drafts = await mapLimit(passes, limit, (p) => ask(`devil_advocate:${p.category.id}:${p.block.label}`, p.system, ReviewDrafts));
   passes.forEach((p, i) => {
     for (const d of drafts[i]!) {
-      const f = reviewFinding(d, p.block, p.category);
+      const f = reviewFinding(d, p.block, facts, p.category);
       if (f) keep(f);
       else drop(d.quote);
     }
@@ -238,13 +259,14 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
         target: whole.label,
         text: whole.text,
         holes: deps.kb.holes.holes.map((h) => `${h.id}. ${h.name}`).join('\n'),
+        facts,
         schema: schemaText(FindingDrafts),
       }),
     }));
     const personaDrafts = await mapLimit(personas, limit, ({ p, system }) => ask(`persona:${p.id}`, system, FindingDrafts));
     personas.forEach(({ p }, i) => {
       for (const d of personaDrafts[i]!) {
-        const f = personaFinding(d, whole, `persona.${p.id}`);
+        const f = personaFinding(d, whole, facts, `persona.${p.id}`);
         if (f) keep(f);
         else drop(d.quote);
       }

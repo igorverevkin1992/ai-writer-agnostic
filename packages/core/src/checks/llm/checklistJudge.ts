@@ -25,7 +25,7 @@ export async function judgeChecklist(
   const unknown = score.items.filter((i) => i.status === 'unknown');
   if (unknown.length === 0) return score;
   const terms = deps.kit.genre.terms;
-  const text = `${bibleText(input.bible, terms)}\n\n${planBlocks(input.plan, input.plan.episodes.length, terms).map((b) => b.text).join('\n')}`;
+  const text = `${bibleText(input.bible, terms)}\n\n${planBlocks(input.plan, input.plan.episodes.length, terms, deps.kit.frame.hook_types).map((b) => b.text).join('\n')}`;
   const { data } = await deps.llm.completeJson(ChecklistVerdicts, {
     role: deps.role ?? 'critic_of_architect',
     projectId: deps.projectId,
