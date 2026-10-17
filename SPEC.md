@@ -189,14 +189,22 @@ prices_usd_per_mtok:   # сверять раз в месяц
 
 ```
 packages/kb/
-  rules/revenge_thriller.yaml    # 22 правила жанра (R01–R22)
-  frames/season60.yaml           # каркас сезона
-  checklist/season20.yaml        # чек-лист на 20 баллов
+  genres/<id>.yaml               # жанровые пакеты: revenge_thriller, romantasy_revenge, slavic_myth, vertical_thriller
+  rules/common.yaml              # 4 общих правила всех жанров (C01–C04: ставки, арка героя, цена победы, обещание жанра)
+  rules/revenge_thriller.yaml    # 18 правил жанра (R01–R18) + переопределения общих; итого в пакете 22
+  rules/romantasy_revenge.yaml   # 18 правил (R01–R18); итого 22
+  rules/slavic_myth.yaml         # 17 правил (R01–R17); итого 21
+  rules/vertical_thriller.yaml   # 22 правила (R01–R21, R26); итого 26
+  frames/season60.yaml  romantasy60.yaml  myth60.yaml  thriller60.yaml   # каркасы сезона; у thriller60 входы (paywall, L)
+  checklist/season20.yaml  romantasy20.yaml  myth27.yaml  stress10.yaml  # чек-листы
   methods/weiland.yaml  truby.yaml  harmon.yaml  mowery.yaml  rabkin.yaml  vertical.yaml
-  glossary.yaml                  # кайф, страдание, поворот, разница в знании…
-  constraints/ru_legal.yaml  production.yaml
+  glossary.yaml                  # кайф, страдание, поворот, разница в знании… (термины помечены жанрами)
+  constraints/ru_legal.yaml  ru_legal_fantasy.yaml  ru_legal_myth.yaml  ru_legal_thriller.yaml   # правовые рамки
+  constraints/production.yaml  vertical_live.yaml  ai_video.yaml                               # производственные лимиты
+  guides/romantasy_revenge.yaml  slavic_myth.yaml  vertical_thriller.yaml   # жанровые подсказки и вопросы аудитора
   holes/catalog.yaml             # 11 типов дыр + вопросы
-  personas/viewers.yaml          # 5 персон зрителей для аудита
+  review/review.yaml             # метод разбора дыр: шесть вопросов, категории А–П
+  personas/viewers.yaml  romantasy_viewers.yaml  myth_viewers.yaml  thriller_viewers.yaml   # персоны зрителей (5–6)
   cases/*.yaml                   # собственные пересказы эталонов
   prompts/<role>/<step>.md       # промпты по ролям и шагам
 ```
@@ -274,11 +282,11 @@ episode: {ep, duration_s, hook_0_5s, event, twist, emotions, punchline, cliffhan
 [85–90 с] Дверь открывается. В проёме — свекровь с тем же ключом.
 ```
 
-**Откуда брать содержимое.** Шаблоны выше — источник для Zod-схем в `packages/core/schemas`: поля совпадают один к одному. Тексты 18 правил — в разделе ниже. Чек-лист, методики и каталог дыр продюсер передаст файлами из своих документов. До этого создай файлы-заглушки с правильной структурой и 2–3 примерами. Полные чужие сценарии в базу не загружать. Новый жанр — новый файл в `rules/` с теми же полями, движок не меняется.
+**Откуда брать содержимое.** Шаблоны выше — источник для Zod-схем в `packages/core/schemas`: поля совпадают один к одному. Тексты 18 жанровых правил — в разделе ниже; четыре общих правила (C01–C04) лежат в `rules/common.yaml`, жанр подключает их строкой `common_rules: true`. Числа лимитов в текстах правил, гайдов и персон — не константы, а подстановки `{{limits.*}}`, `{{metrics.*}}`, `{{rhythm.*}}`, `{{anchors.*}}`, `{{inputs.*}}`, `{{L}}` из каркаса и производственных рамок (см. README базы знаний). Чек-лист, методики и каталог дыр продюсер передаст файлами из своих документов. До этого создай файлы-заглушки с правильной структурой и 2–3 примерами. Полные чужие сценарии в базу не загружать. Новый жанр — новый файл в `rules/` с теми же полями, движок не меняется.
 
-## 18 правил жанра
+## 22 правила жанра: 18 жанровых и 4 общих
 
-Содержимое `packages/kb/rules/revenge_thriller.yaml`. Каждое правило хранится с идентификатором, типом проверки и серьёзностью. «Код» — проверка в `checks/code`, «модель» — судья другого семейства с цитатой.
+Содержимое `packages/kb/rules/revenge_thriller.yaml` (R01–R18) и `rules/common.yaml` (C01–C04: три ставки сезона, арка героя по Лжи и Правде, цена каждой победы, обещание жанра в первой серии — из методик Моуэри, Рабкина и Уэйланд, утверждены продюсером 14.10.2026). Каждое правило хранится с идентификатором, типом проверки и серьёзностью. «Код» — проверка в `checks/code`, «модель» — судья другого семейства с цитатой.
 
 | ID | Правило | Проверка | Серьёзность |
 |---|---|---|---|
@@ -310,7 +318,7 @@ episode: {ep, duration_s, hook_0_5s, event, twist, emotions, punchline, cliffhan
 | Контролёр | Кто проверяет | Примеры проверок |
 |---|---|---|
 | Логический аудитор | Claude (сценарии), Gemini (план Claude) | 11 типов дыр, см. ниже |
-| Жанровый | Код + Claude | 18 правил, чек-лист на 20 баллов |
+| Жанровый | Код + Claude | 22 правила (18 жанровых + 4 общих), чек-лист на 20 баллов |
 | Структурный | Код + Claude | Каркас 60 серий, мидпоинт — контрраскрытие, экспозиция через конфликт |
 | Согласованности | Код + база фактов | Возрасты, хронология, кто что знает и с какой серии, внешность |
 | Производственный | Код + Claude | Одна основная локация, до 10 зон, только практические эффекты, до 3 говорящих, без толп |
