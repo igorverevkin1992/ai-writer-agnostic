@@ -87,9 +87,10 @@ describe('promise of the genre', () => {
 
   it('is wired into the genre rules with their params', () => {
     const ids = kit.rules.rules.filter((r) => r.check.run.some((x) => ['stakes', 'hero_arc', 'victory_cost', 'promise'].includes(x.fn))).map((r) => r.id);
-    expect(ids).toEqual(['R19', 'R20', 'R21', 'R22']);
+    // The four method rules live in rules/common.yaml as C01–C04 (formerly R19–R22 of every genre file).
+    expect(ids).toEqual(['C01', 'C02', 'C03', 'C04']);
     const res = runCodeChecks({ kit, ...golden });
-    expect(['R19', 'R20', 'R21', 'R22'].every((id) => res.evaluatedRules.has(id))).toBe(true);
+    expect(['C01', 'C02', 'C03', 'C04'].every((id) => res.evaluatedRules.has(id))).toBe(true);
     const bad = { ...kit, rules: { ...kit.rules, rules: [{ ...kit.rules.rules[0]!, check: { code: 'x', run: [{ fn: 'promise', params: {} }] } }] } };
     expect(() => runCodeChecks({ kit: bad, ...golden })).toThrow(UnknownCheckError);
   });

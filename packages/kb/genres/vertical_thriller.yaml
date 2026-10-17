@@ -5,6 +5,7 @@
 id: vertical_thriller
 title: Вертикальный триллер, саспенс и хоррор
 rules: vertical_thriller        # rules/vertical_thriller.yaml — линтер L01–L32 исследования
+common_rules: true              # + rules/common.yaml (C01–C04: ставки, арка героя, цена победы, обещание жанра)
 frame: thriller60               # frames/thriller60.yaml — сетка сезона от пэйволла
 checklist: stress10             # checklist/stress10.yaml — стресс-тест концепта, 10 критериев
 personas: thriller_viewers      # personas/thriller_viewers.yaml
@@ -13,6 +14,7 @@ constraints:
   production: vertical_live     # constraints/vertical_live.yaml — живая съёмка, 6–9 дней
 guide: vertical_thriller        # guides/vertical_thriller.yaml — хуки, обрывы, угрозы, кадр, звук
 # Главный персонаж в примерах исследования — героиня; рана жанра — необратимый инцидент 1-й серии.
+# Это умолчания жанра: проект может задать свои термины героя, тексты правил подставят их через {{hero.*}}.
 terms:
   hero: {nom: героиня, gen: героини, dat: героине}
   wound: Необратимый инцидент
