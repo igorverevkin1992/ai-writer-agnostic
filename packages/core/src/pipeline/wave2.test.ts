@@ -110,6 +110,7 @@ function defaultAnswers(): typeof answers {
     checklist_judge: (_a, req) => confirmChecklist(req.system ?? ''),
     devil_advocate: () => [],
     persona: () => [],
+    realism: () => [],
     review_summary: () => ({ verdict: 'Сезон почти готов.', dangers: [{ where: 'Серия 1', why: 'Первая серия' }], legal: [] }),
     episode_cards: (a) => epsOf(a).map(card),
     script: (a) => script(Number(a)),

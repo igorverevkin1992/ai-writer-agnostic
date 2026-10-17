@@ -81,7 +81,7 @@ describe('«Что проверит критик» in the knowledge block', () =
     expect(text).toContain('- R01: Стоп-кадр на 3-й секунде понятен случайному зрителю');
     expect(text).toContain('Как исправить: Начать с нарушения нормы или посреди действия');
     // Hole type 10: the thriller guide replaces the catalog's questions with its own.
-    expect(text).toContain('Стоит ли на серии барьера поворот вопроса');
+    expect(text).toContain('Стоит ли на серии барьера (10-й) поворот вопроса');
     expect(text).not.toContain('Переворачивает ли середина сезона то, во что зритель верил?');
     // Hole type 3: the guide adds to the catalog's.
     expect(text).toContain('Почему героиня не уходит? Почему не идёт в полицию? Почему злодей не действует быстрее? Есть ли у героини «окно спасения»');
