@@ -1,4 +1,5 @@
-import { ApiError, FinishReason, GoogleGenAI, type Content } from '@google/genai';
+import { ApiError, FinishReason, GoogleGenAI, ThinkingLevel, type Content } from '@google/genai';
+import type { ThinkingLevel as ConfiguredThinking } from './config.ts';
 import { LlmError, MissingKeyError, OutputTruncatedError, ProviderUnavailableError, RefusalError } from './errors.ts';
 import type { CallTarget, LlmRequest, Provider, ProviderResult } from './types.ts';
 
@@ -11,6 +12,13 @@ function contents(req: LlmRequest): Content[] {
 }
 
 const REQUEST_TIMEOUT_MS = 15 * 60 * 1000;
+
+const THINKING_LEVELS: Record<ConfiguredThinking, ThinkingLevel> = {
+  minimal: ThinkingLevel.MINIMAL,
+  low: ThinkingLevel.LOW,
+  medium: ThinkingLevel.MEDIUM,
+  high: ThinkingLevel.HIGH,
+};
 
 const REFUSAL_REASONS = new Set<string>([
   FinishReason.SAFETY,
@@ -38,7 +46,7 @@ export class GoogleProvider implements Provider {
     return this.client;
   }
 
-  async complete(req: LlmRequest, { model, maxOutput }: CallTarget): Promise<ProviderResult> {
+  async complete(req: LlmRequest, { model, maxOutput, thinking }: CallTarget): Promise<ProviderResult> {
     const sdk = this.sdk();
     const system = systemText(req);
     let res;
@@ -50,6 +58,7 @@ export class GoogleProvider implements Provider {
           ...(system ? { systemInstruction: system } : {}),
           maxOutputTokens: maxOutput,
           responseMimeType: 'application/json',
+          ...(thinking ? { thinkingConfig: { thinkingLevel: THINKING_LEVELS[thinking] } } : {}),
         },
       });
     } catch (err) {

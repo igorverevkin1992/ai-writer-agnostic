@@ -18,6 +18,8 @@ loadDotEnv();
 const config = loadModelsConfig();
 const db = openDb(resolve(REPO_ROOT, 'data/app.db'));
 const llm = new LlmClient({ config, db });
+// A fresh project per run: the smoke budget never fills up from earlier runs.
+const projectId = `smoke-${Date.now()}`;
 
 const Pong = z.object({ ok: z.literal(true) });
 const request = {
@@ -40,7 +42,7 @@ for (const role of ROLE_NAMES) {
   try {
     const res = await llm.completeJson(Pong, {
       role,
-      projectId: 'smoke',
+      projectId,
       step: 'smoke',
       authorProvider: AUTHOR_OF[role],
       request,
@@ -63,8 +65,10 @@ const fb = config.fallback?.any;
 const reserveModel = fb && process.env[fb.model_env];
 if (fb && reserveModel) {
   const reserve = new OpenAiCompatibleProvider(process.env, fb.base_url_env);
+  // The reserve inherits the role's max_output: check it accepts the largest one configured.
+  const maxOutput = Math.max(...Object.values(config.roles).map((r) => r.max_output));
   try {
-    await reserve.complete(request, { model: reserveModel, maxOutput: 1000 });
+    await reserve.complete(request, { model: reserveModel, maxOutput });
     console.log(`✓ ${'резерв'.padEnd(20)} ${fb.provider}/${reserveModel}`);
   } catch (err) {
     failed++;

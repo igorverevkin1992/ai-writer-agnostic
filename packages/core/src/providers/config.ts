@@ -23,6 +23,10 @@ export type RoleName = z.infer<typeof RoleName>;
 
 const Tokens = z.int().positive();
 
+/** How much a model thinks before answering. Google only; other providers ignore it. */
+export const ThinkingLevel = z.enum(['minimal', 'low', 'medium', 'high']);
+export type ThinkingLevel = z.infer<typeof ThinkingLevel>;
+
 const RoleConfig = z.strictObject({
   provider: ProviderName,
   model: z.string().min(1),
@@ -30,6 +34,8 @@ const RoleConfig = z.strictObject({
   max_input: Tokens.optional(),
   /** Anthropic only: server-side refusal fallback to another Claude model. */
   refusal_fallback: z.literal('default').optional(),
+  /** Google only: thinking level of Gemini; its thinking tokens count towards max_output. */
+  thinking: ThinkingLevel.optional(),
 });
 export type RoleConfig = z.infer<typeof RoleConfig>;
 

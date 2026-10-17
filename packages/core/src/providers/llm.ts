@@ -59,6 +59,8 @@ interface Resolved {
   provider: ProviderName;
   target: CallTarget;
   maxInput?: number;
+  /** For the reserve: the role's primary model, whose price is used when the reserve model has none. */
+  primaryModel?: string;
 }
 
 /** One finished model call, successful or not: for progress output in scripts. */
@@ -69,7 +71,8 @@ export interface CallLog {
   model: string;
   durationMs: number;
   costUsd: number;
-  status: 'start' | 'ok' | 'error';
+  /** `invalid` and `truncated`: the answer is being asked for again (shows why the step takes longer). */
+  status: 'start' | 'ok' | 'error' | 'invalid' | 'truncated';
   error?: string;
 }
 
@@ -91,6 +94,8 @@ export class LlmClient {
   private readonly env: NodeJS.ProcessEnv;
   private readonly now: () => number;
   private readonly onCall: ((log: CallLog) => void) | undefined;
+  /** Estimated cost of calls in flight: counted against the budget until they are logged. */
+  private reservedUsd = 0;
 
   constructor({ config, db, providers = {}, env = process.env, now = Date.now, onCall }: LlmClientDeps) {
     this.config = config;
@@ -111,7 +116,7 @@ export class LlmClient {
     const rc = this.config.roles[role];
     return {
       provider: rc.provider,
-      target: { model: rc.model, maxOutput: rc.max_output, refusalFallback: rc.refusal_fallback },
+      target: { model: rc.model, maxOutput: rc.max_output, refusalFallback: rc.refusal_fallback, thinking: rc.thinking },
       maxInput: rc.max_input,
     };
   }
@@ -121,13 +126,14 @@ export class LlmClient {
     const fb = this.config.fallback?.any;
     const model = fb && this.env[fb.model_env];
     if (!fb || !model) return undefined;
-    return { provider: fb.provider, target: { model, maxOutput: this.config.roles[role].max_output } };
+    const rc = this.config.roles[role];
+    return { provider: fb.provider, target: { model, maxOutput: rc.max_output }, primaryModel: rc.model };
   }
 
   async complete(opts: CallOptions): Promise<CallResult> {
     const primary = this.resolve(opts.role);
     this.checkFamily(opts, primary.provider);
-    if (opts.projectId) assertBudget(this.db, this.config, opts.projectId);
+    if (opts.projectId) assertBudget(this.db, this.config, opts.projectId, this.reservedUsd);
 
     // Token counting goes to the provider too: when it is down, the reserve takes over here as well.
     let sent = opts.request;
@@ -164,7 +170,7 @@ export class LlmClient {
       provider: used.provider,
       model: result.model,
       usage: result.usage,
-      costUsd: this.cost(result.model, used.target.model, result.usage).costUsd,
+      costUsd: this.cost(result.model, used, result.usage).costUsd,
       fallbackUsed,
       budget: opts.projectId ? budgetStatus(this.db, this.config, opts.projectId) : undefined,
       request: sent,
@@ -174,15 +180,17 @@ export class LlmClient {
   /**
    * Calls the model and validates the JSON answer with a Zod schema.
    * On failure: one retry with the error text, then an error for the producer.
+   * An answer cut off at the output limit is asked for again once, shorter.
    */
   async completeJson<T extends z.ZodType>(
     schema: T,
     opts: CallOptions,
   ): Promise<CallResult & { data: z.infer<T> }> {
-    const first = await this.complete(opts);
+    const first = await this.completeOrShorter(opts);
     const firstCheck = validate(schema, first.text);
     if (firstCheck.ok) return { ...first, data: firstCheck.data };
     this.markInvalid(first.callId);
+    this.onCall?.({ task: first.request.task, role: opts.role, provider: first.provider, model: first.model, durationMs: 0, costUsd: 0, status: 'invalid' });
 
     // The retry continues the request as it was sent (already shrunk, if it had to be).
     // An empty answer is not echoed back: providers reject empty assistant turns.
@@ -209,6 +217,35 @@ export class LlmClient {
     throw new InvalidOutputError(
       `Модель дважды прислала ответ не по форме (роль ${opts.role}). Ошибки:\n${secondCheck.error}`,
     );
+  }
+
+  /**
+   * One call; when the answer is cut off at the output limit, one more call asking for a
+   * shorter answer. The cut-off text is not sent back: it is useless and costs input tokens.
+   * A second cut-off is an error for the producer.
+   */
+  private async completeOrShorter(opts: CallOptions): Promise<CallResult> {
+    try {
+      return await this.complete(opts);
+    } catch (err) {
+      if (!(err instanceof OutputTruncatedError)) throw err;
+      const primary = this.resolve(opts.role);
+      this.onCall?.({ task: opts.request.task, role: opts.role, provider: primary.provider, model: primary.target.model, durationMs: 0, costUsd: 0, status: 'truncated' });
+      const retry: CallOptions = {
+        ...opts,
+        request: {
+          ...opts.request,
+          messages: [
+            ...opts.request.messages,
+            {
+              role: 'user',
+              content: 'Ответ не поместился в лимит. Пришли тот же ответ короче: меньше слов в каждом поле, без повторов. Только JSON.',
+            },
+          ],
+        },
+      };
+      return this.complete(retry);
+    }
   }
 
   private checkFamily(opts: CallOptions, criticProvider: ProviderName): void {
@@ -252,9 +289,14 @@ export class LlmClient {
       fallbackUsed,
     };
     this.onCall?.({ task: request.task, role: opts.role, provider: resolved.provider, model: resolved.target.model, durationMs: 0, costUsd: 0, status: 'start' });
+    // The check and the reservation happen in one synchronous step, so two parallel calls
+    // cannot both pass with the same spend; the reservation is released once the call is logged.
+    if (opts.projectId) assertBudget(this.db, this.config, opts.projectId, this.reservedUsd);
+    const reserved = this.estimateUsd(resolved);
+    this.reservedUsd += reserved;
     try {
       const result = await this.providers[resolved.provider].complete(request, resolved.target);
-      const { costUsd, priceKnown } = this.cost(result.model, resolved.target.model, result.usage);
+      const { costUsd, priceKnown } = this.cost(result.model, resolved, result.usage);
       const row = this.db
         .insert(llmCalls)
         .values({
@@ -276,7 +318,7 @@ export class LlmClient {
     } catch (err) {
       // A refused or truncated answer is still billed: its tokens count towards the budget.
       const billed = err instanceof RefusalError || err instanceof OutputTruncatedError ? err.billed : undefined;
-      const cost = billed ? this.cost(billed.model, resolved.target.model, billed.usage) : undefined;
+      const cost = billed ? this.cost(billed.model, resolved, billed.usage) : undefined;
       this.db
         .insert(llmCalls)
         .values({
@@ -310,20 +352,31 @@ export class LlmClient {
       // Adapters turn SDK and network failures into LlmError. Anything else is a bug in our
       // code: it must surface, not quietly send the work to the reserve provider.
       throw err;
+    } finally {
+      this.reservedUsd -= reserved;
     }
   }
 
   /**
-   * Prices by the model that served the call; falls back to the requested model's price.
-   * Without a known price the most expensive known one is used, so the budget never
-   * counts an unknown model as free (priceKnown: false marks the estimate).
+   * Prices by the model that served the call; falls back to the requested model's price,
+   * then (for the reserve) to the role's primary model. Without any of those the most
+   * expensive known price is used, so the budget never counts an unknown model as free
+   * (priceKnown: false marks every estimate that is not the served or requested model's).
    */
-  private cost(servedModel: string, requestedModel: string, usage: Usage): { costUsd: number; priceKnown: boolean } {
+  private cost(servedModel: string, resolved: Resolved, usage: Usage): { costUsd: number; priceKnown: boolean } {
     const prices = this.config.prices_usd_per_mtok;
-    const price = prices[servedModel] ?? prices[requestedModel];
+    const price = prices[servedModel] ?? prices[resolved.target.model];
     if (price) return { costUsd: computeCost(price, usage), priceKnown: true };
+    const primary = resolved.primaryModel ? prices[resolved.primaryModel] : undefined;
+    if (primary) return { costUsd: computeCost(primary, usage), priceKnown: false };
     const estimates = Object.values(prices).map((p) => computeCost(p, usage));
     return { costUsd: estimates.length ? Math.max(...estimates) : 0, priceKnown: false };
+  }
+
+  /** The most a call can cost in output: the full max_output at the model's output rate. */
+  private estimateUsd(resolved: Resolved): number {
+    const usage: Usage = { inputTokens: 0, outputTokens: resolved.target.maxOutput, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    return this.cost(resolved.target.model, resolved, usage).costUsd;
   }
 
   private markInvalid(callId: number): void {

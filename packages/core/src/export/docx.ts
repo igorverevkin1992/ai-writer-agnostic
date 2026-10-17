@@ -1,20 +1,21 @@
-import { AlignmentType, BorderStyle, Document, HeadingLevel, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from 'docx';
+import type { Paragraph, Table, TableCell } from 'docx';
 import { bibleText } from '../checks/llm/texts.ts';
 import { renderBlock } from '../text/script.ts';
 import { anchorLabel, cleanText, type ProjectBundle } from './bundle.ts';
 
 const FONT = 'Arial';
-const p = (text: string, opts: { bold?: boolean; size?: number } = {}) =>
-  new Paragraph({ children: [new TextRun({ text: cleanText(text), bold: opts.bold, size: opts.size ?? 22, font: FONT })], spacing: { after: 80 } });
-const h = (text: string, level: (typeof HeadingLevel)[keyof typeof HeadingLevel]) =>
-  new Paragraph({ heading: level, children: [new TextRun({ text: cleanText(text), font: FONT })], spacing: { before: 240, after: 120 } });
-
-function cell(text: string, bold = false): TableCell {
-  return new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: cleanText(text), bold, size: 18, font: FONT })] })] });
-}
 
 /** Word document: logline, bible, season table, scripts. */
 export async function buildDocx(b: ProjectBundle): Promise<Buffer> {
+  // Loaded on demand: `docx` is heavy and prints a Node warning, and most runs never export.
+  const { AlignmentType, BorderStyle, Document, HeadingLevel, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } = await import('docx');
+  const p = (text: string, opts: { bold?: boolean; size?: number } = {}) =>
+    new Paragraph({ children: [new TextRun({ text: cleanText(text), bold: opts.bold, size: opts.size ?? 22, font: FONT })], spacing: { after: 80 } });
+  const h = (text: string, level: (typeof HeadingLevel)[keyof typeof HeadingLevel]) =>
+    new Paragraph({ heading: level, children: [new TextRun({ text: cleanText(text), font: FONT })], spacing: { before: 240, after: 120 } });
+  const cell = (text: string, bold = false): TableCell =>
+    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: cleanText(text), bold, size: 18, font: FONT })] })] });
+
   const body: (Paragraph | Table)[] = [
     new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: cleanText(b.project.title), bold: true, size: 40, font: FONT })] }),
     new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: cleanText(b.kit.genre.title), size: 24, font: FONT })], spacing: { after: 240 } }),

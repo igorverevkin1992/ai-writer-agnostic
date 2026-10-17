@@ -9,6 +9,10 @@ export function progressLogger(write: (line: string) => void = (l) => process.st
       write(`  … ${log.task ?? log.role} · ${log.model} — ждём ответа`);
       return;
     }
+    if (log.status === 'invalid' || log.status === 'truncated') {
+      write(log.status === 'invalid' ? '  ! повтор: ответ не по форме' : '  ! повтор: ответ обрезан');
+      return;
+    }
     calls++;
     totalUsd += log.costUsd;
     const secs = (log.durationMs / 1000).toFixed(0);

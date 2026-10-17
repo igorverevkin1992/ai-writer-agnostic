@@ -7,9 +7,18 @@ import { LlmClient, REPO_ROOT, costSummary, loadDotEnv, loadGolden, loadModelsCo
 import { loadKb } from '@aiw/kb';
 
 const arg = (name: string, fallback: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1] ?? fallback;
+/** A positive number from `--name=`; a typo must not silently turn the budget off. */
+const num = (name: string, fallback: string): number => {
+  const n = Number(arg(name, fallback));
+  if (!Number.isFinite(n) || n <= 0) {
+    console.error(`Параметр --${name} должен быть положительным числом, получено «${arg(name, fallback)}».`);
+    process.exit(1);
+  }
+  return n;
+};
 const project = arg('project', 'muzh_krov');
-const episodes = Number(arg('episodes', '15'));
-const budget = Number(arg('budget', '40'));
+const episodes = num('episodes', '15');
+const budget = num('budget', '40');
 const genreId = arg('genre', 'revenge_thriller');
 
 loadDotEnv();

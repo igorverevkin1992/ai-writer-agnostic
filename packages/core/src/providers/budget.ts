@@ -37,10 +37,16 @@ export function budgetStatus(db: Db, config: ModelsConfig, projectId: string): B
   };
 }
 
-/** Stops work once the project budget is used up: the producer has to decide. */
-export function assertBudget(db: Db, config: ModelsConfig, projectId: string): BudgetStatus {
+/**
+ * Stops work once the project budget is used up: the producer has to decide.
+ * `reservedUsd` is the estimated cost of calls still in flight: they are not in the log yet,
+ * but parallel calls must not all pass the check at once and overspend together.
+ */
+export function assertBudget(db: Db, config: ModelsConfig, projectId: string, reservedUsd = 0): BudgetStatus {
   const status = budgetStatus(db, config, projectId);
-  if (status.exceeded) throw new BudgetExceededError(status.spentUsd, status.limitUsd);
+  if (status.exceeded || status.spentUsd + reservedUsd >= status.limitUsd) {
+    throw new BudgetExceededError(status.spentUsd, status.limitUsd);
+  }
   return status;
 }
 

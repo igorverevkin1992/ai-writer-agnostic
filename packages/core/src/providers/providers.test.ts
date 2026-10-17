@@ -17,7 +17,9 @@ import {
 import { assertCrossFamily } from './family.ts';
 import { extractJson } from './json.ts';
 import { LlmClient } from './llm.ts';
+import { progressLogger } from './progress.ts';
 import { FakeProvider, testConfig } from './testing.ts';
+import type { Provider } from './types.ts';
 
 const ask = { messages: [{ role: 'user' as const, content: 'Привет' }] };
 
@@ -324,11 +326,20 @@ describe('review fixes: providers', () => {
     expect(rows()[0]?.costUsd).toBeCloseTo((1000 * 4 + 500 * 20) / 1e6, 9);
   });
 
-  it('a model without a price is counted at the highest known price, not as free', async () => {
+  it('the reserve without a price is counted at the price of the role\'s main model, not as free', async () => {
     anthropic = new FakeProvider('anthropic', [new ProviderUnavailableError('anthropic', new Error('blocked'))]);
     const res = await client({ RESERVE_MODEL: 'r-1' }).complete({ role: 'architect', request: ask });
-    expect(res.costUsd).toBeCloseTo((1000 * 10 + 500 * 50) / 1e6, 9);
-    expect(rows()[1]).toMatchObject({ priceKnown: false });
+    expect(res.costUsd).toBeCloseTo((1000 * 4 + 500 * 20) / 1e6, 9);
+    expect(rows()[1]).toMatchObject({ priceKnown: false, costUsd: res.costUsd });
+  });
+
+  it('the reserve with its own price is priced by it', async () => {
+    anthropic = new FakeProvider('anthropic', [new ProviderUnavailableError('anthropic', new Error('blocked'))]);
+    const cfg = testConfig();
+    const priced = parseModelsConfig({ ...cfg, prices_usd_per_mtok: { ...cfg.prices_usd_per_mtok, 'r-1': { in: 1, out: 1 } } });
+    const res = await client({ RESERVE_MODEL: 'r-1' }, priced).complete({ role: 'architect', request: ask });
+    expect(res.costUsd).toBeCloseTo((1000 * 1 + 500 * 1) / 1e6, 9);
+    expect(rows()[1]).toMatchObject({ priceKnown: true });
   });
 
   it('the reserve takes over when the main provider cannot even count tokens', async () => {
@@ -388,3 +399,115 @@ describe('review fixes 2: providers', () => {
   });
 });
 
+
+describe('audit fixes: providers and progress', () => {
+  const Answer = z.object({ ok: z.boolean() });
+  const usage = { inputTokens: 1000, outputTokens: 500, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  const truncated = () => new OutputTruncatedError('a-big', 500, { model: 'a-big', usage });
+
+  it('passes the thinking level of the role to the provider', async () => {
+    const cfg = testConfig();
+    const thinking = parseModelsConfig({ ...cfg, roles: { ...cfg.roles, critic_of_architect: { provider: 'google', model: 'g-pro', thinking: 'high' } } });
+    await client({}, thinking).complete({ role: 'critic_of_architect', authorProvider: 'anthropic', request: ask });
+    expect(google.calls[0]?.target.thinking).toBe('high');
+    expect(anthropic.calls).toHaveLength(0);
+  });
+
+  it('rejects an unknown thinking level', () => {
+    const cfg = testConfig();
+    expect(() => parseModelsConfig({ ...cfg, roles: { ...cfg.roles, writer: { provider: 'google', model: 'g-pro', thinking: 'ultra' } } })).toThrow(ConfigError);
+  });
+
+  it('a cut-off answer is asked for again, shorter, without echoing the cut-off text', async () => {
+    anthropic = new FakeProvider('anthropic', [truncated(), '{"ok":true}']);
+    const logs: string[] = [];
+    const c = new LlmClient({ config: testConfig(), db, env: {}, providers: { anthropic, google, openai_compatible: reserve }, onCall: (l) => logs.push(l.status) });
+    const res = await c.completeJson(Answer, { role: 'architect', projectId: 'p1', request: ask });
+    expect(res.data).toEqual({ ok: true });
+    expect(anthropic.calls).toHaveLength(2);
+    const retry = anthropic.calls[1]!.req.messages;
+    expect(retry).toHaveLength(2);
+    expect(retry[0]).toEqual(ask.messages[0]);
+    expect(retry[1]).toEqual({ role: 'user', content: expect.stringMatching(/^Ответ не поместился в лимит\..*Только JSON\.$/u) });
+    expect(retry.some((m) => m.role === 'assistant')).toBe(false);
+    expect(rows().map((r) => r.status)).toEqual(['error', 'ok']);
+    expect(logs).toEqual(['start', 'error', 'truncated', 'start', 'ok']);
+  });
+
+  it('a second cut-off is not retried again', async () => {
+    anthropic = new FakeProvider('anthropic', [truncated(), truncated(), '{"ok":true}']);
+    await expect(client().completeJson(Answer, { role: 'architect', request: ask })).rejects.toThrow(OutputTruncatedError);
+    expect(anthropic.calls).toHaveLength(2);
+  });
+
+  it('a cut-off answer followed by an invalid one still gets the invalid-JSON retry', async () => {
+    anthropic = new FakeProvider('anthropic', [truncated(), 'не json', '{"ok":true}']);
+    const res = await client().completeJson(Answer, { role: 'architect', request: ask });
+    expect(res.data).toEqual({ ok: true });
+    expect(anthropic.calls).toHaveLength(3);
+  });
+
+  it('reports an invalid answer to the progress log before the retry', async () => {
+    anthropic = new FakeProvider('anthropic', ['не json', '{"ok":true}']);
+    const logs: { status: string; task?: string }[] = [];
+    const c = new LlmClient({ config: testConfig(), db, env: {}, providers: { anthropic, google, openai_compatible: reserve }, onCall: (l) => logs.push({ status: l.status, task: l.task }) });
+    await c.completeJson(Answer, { role: 'architect', request: { ...ask, task: 'bible' } });
+    expect(logs.map((l) => l.status)).toEqual(['start', 'ok', 'invalid', 'start', 'ok']);
+    expect(logs[2]?.task).toBe('bible');
+  });
+
+  it('the progress logger prints the retries as one-line notes without counting them', () => {
+    const lines: string[] = [];
+    const log = progressLogger((l) => lines.push(l));
+    const base = { role: 'architect' as const, provider: 'anthropic' as const, model: 'a-big', durationMs: 0, costUsd: 0 };
+    log({ ...base, status: 'invalid' });
+    log({ ...base, status: 'truncated' });
+    log({ ...base, status: 'ok', durationMs: 1000, costUsd: 0.5 });
+    expect(lines).toEqual(['  ! повтор: ответ не по форме', '  ! повтор: ответ обрезан', expect.stringMatching(/^ {2}✓ {3}1\. architect/u)]);
+  });
+
+  it('two parallel calls near the limit: the second is refused while the first is in flight', async () => {
+    db.insert(llmCalls)
+      .values({ projectId: 'p1', role: 'architect', provider: 'anthropic', model: 'a-big', costUsd: 9.9, durationMs: 1, status: 'ok' })
+      .run();
+    let release!: () => void;
+    const gate = new Promise<void>((ok) => (release = ok));
+    const slow: Provider = {
+      name: 'anthropic',
+      async complete(_req, target) {
+        await gate;
+        return { text: '{"ok":true}', model: target.model, usage };
+      },
+      async countTokens() {
+        return 1;
+      },
+    };
+    const c = new LlmClient({ config: testConfig(), db, env: {}, providers: { anthropic: slow, google, openai_compatible: reserve } });
+    // architect: 16000 max_output × $20/Mtok = $0.32 reserved; 9.9 + 0.32 ≥ 10.
+    const first = c.complete({ role: 'architect', projectId: 'p1', request: ask });
+    const second = c.complete({ role: 'architect', projectId: 'p1', request: ask });
+    await expect(second).rejects.toThrow(BudgetExceededError);
+    release();
+    await expect(first).resolves.toMatchObject({ provider: 'anthropic' });
+    // The reservation is released: a later call is judged by the real spend alone (9.9 + 0.014).
+    await expect(c.complete({ role: 'architect', projectId: 'p1', request: ask })).resolves.toBeDefined();
+  });
+
+  it('the reservation is released after a failed call too', async () => {
+    db.insert(llmCalls)
+      .values({ projectId: 'p1', role: 'architect', provider: 'anthropic', model: 'a-big', costUsd: 9.9, durationMs: 1, status: 'ok' })
+      .run();
+    anthropic = new FakeProvider('anthropic', [new ProviderUnavailableError('anthropic', new Error('503')), '{"ok":true}']);
+    await expect(client().complete({ role: 'helper', projectId: 'p1', request: ask })).rejects.toThrow(ProviderUnavailableError);
+    // helper: 16000 × $5/Mtok = $0.08; 9.9 + 0.08 < 10, so the next call passes.
+    await expect(client().complete({ role: 'helper', projectId: 'p1', request: ask })).resolves.toBeDefined();
+  });
+
+  it('a reservation also counts for a spend check made outside the client', () => {
+    db.insert(llmCalls)
+      .values({ projectId: 'p1', role: 'architect', provider: 'anthropic', model: 'a-big', costUsd: 9.5, durationMs: 1, status: 'ok' })
+      .run();
+    expect(() => assertBudget(db, testConfig(), 'p1')).not.toThrow();
+    expect(() => assertBudget(db, testConfig(), 'p1', 0.5)).toThrow(BudgetExceededError);
+  });
+});

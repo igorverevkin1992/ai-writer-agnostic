@@ -2,11 +2,12 @@
  * Contract tests for the SDK adapters against a local fake HTTP server.
  * No real API is called: the SDKs are pointed at 127.0.0.1.
  */
-import { createServer, type IncomingMessage, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { AnthropicProvider } from './anthropic.ts';
-import { OutputTruncatedError, ProviderUnavailableError, RefusalError } from './errors.ts';
+import Anthropic from '@anthropic-ai/sdk';
+import { AnthropicProvider, wrapAnthropicError } from './anthropic.ts';
+import { LlmError, OutputTruncatedError, ProviderUnavailableError, RefusalError } from './errors.ts';
 import { GoogleProvider } from './google.ts';
 import { OpenAiCompatibleProvider } from './openaiCompatible.ts';
 
@@ -20,7 +21,9 @@ interface Seen {
 let server: Server;
 let baseUrl: string;
 let seen: Seen[] = [];
-let respond: (req: Seen) => { status?: number; type?: string; body: string } = () => ({ body: '{}' });
+/** `hold: true` keeps the connection open without an answer: a stalled stream. */
+let respond: (req: Seen) => { status?: number; type?: string; body: string; hold?: boolean } = () => ({ body: '{}' });
+const held: ServerResponse[] = [];
 
 beforeAll(async () => {
   server = createServer((req, res) => {
@@ -31,6 +34,11 @@ beforeAll(async () => {
       seen.push(s);
       const r = respond(s);
       res.writeHead(r.status ?? 200, { 'content-type': r.type ?? 'application/json' });
+      if (r.hold) {
+        res.write(r.body);
+        held.push(res);
+        return;
+      }
       res.end(r.body);
     });
   });
@@ -38,7 +46,10 @@ beforeAll(async () => {
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 
-afterAll(() => new Promise<void>((ok) => server.close(() => ok())));
+afterAll(() => {
+  for (const res of held) res.destroy();
+  return new Promise<void>((ok) => server.close(() => ok()));
+});
 
 beforeEach(() => {
   seen = [];
@@ -163,6 +174,23 @@ describe('AnthropicProvider', () => {
     respond = () => ({ status: 401, body: JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'bad key' } }) });
     await expect(new AnthropicProvider(env).countTokens(request, 'm')).rejects.toThrow(ProviderUnavailableError);
   });
+
+  it('a stalled stream is cut off after the stall timeout as unavailability', async () => {
+    // Headers and the first event arrive, then nothing: without the signal this would hang forever.
+    respond = () => ({ type: 'text/event-stream', body: anthropicStream('{"a":').split('\n\n')[0] + '\n\n', hold: true });
+    const err = await new AnthropicProvider(env, 300).complete(request, { model: 'm', maxOutput: 10 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ProviderUnavailableError);
+    expect((err as Error).message).toMatch(/не пришёл за отведённое время/u);
+  });
+
+  it('maps aborts and timeouts to unavailability, bad requests to a plain error', () => {
+    expect(wrapAnthropicError(new Anthropic.APIUserAbortError())).toBeInstanceOf(ProviderUnavailableError);
+    expect(wrapAnthropicError(new Anthropic.APIConnectionTimeoutError())).toBeInstanceOf(ProviderUnavailableError);
+    expect(wrapAnthropicError(new DOMException('signal timed out', 'TimeoutError'))).toBeInstanceOf(ProviderUnavailableError);
+    const bad = wrapAnthropicError(new Anthropic.BadRequestError(400, { type: 'error', error: { type: 'invalid_request_error', message: 'max_tokens too large' } }, 'max_tokens too large', new Headers()));
+    expect(bad).toBeInstanceOf(LlmError);
+    expect(bad).not.toBeInstanceOf(ProviderUnavailableError);
+  });
 });
 
 describe('GoogleProvider', () => {
@@ -192,6 +220,14 @@ describe('GoogleProvider', () => {
       systemInstruction: { parts: [{ text: 'БАЗА ЗНАНИЙ\n\nБИБЛИЯ\n\nИнструкция шага' }] },
       contents: [{ role: 'user', parts: [{ text: 'Сделай' }] }],
     });
+  });
+
+  it('sends the thinking level of the role, and nothing when the role has none', async () => {
+    respond = () => ({ body: JSON.stringify({ candidates: [{ content: { parts: [{ text: '{}' }] }, finishReason: 'STOP' }] }) });
+    await new GoogleProvider(env).complete(request, { model: 'g-1', maxOutput: 500, thinking: 'high' });
+    expect(seen[0]!.body.generationConfig).toMatchObject({ thinkingConfig: { thinkingLevel: 'HIGH' } });
+    await new GoogleProvider(env).complete(request, { model: 'g-1', maxOutput: 500 });
+    expect((seen[1]!.body.generationConfig as Record<string, unknown>).thinkingConfig).toBeUndefined();
   });
 
   it('reports safety blocks and truncation', async () => {

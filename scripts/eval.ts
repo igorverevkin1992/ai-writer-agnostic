@@ -23,9 +23,18 @@ import { genreKit, loadKb } from '@aiw/kb';
 
 const arg = (name: string, fallback: string) =>
   process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1] ?? fallback;
+/** A positive number from `--name=`; a typo must not silently turn the budget off. */
+const num = (name: string, fallback: string): number => {
+  const n = Number(arg(name, fallback));
+  if (!Number.isFinite(n) || n <= 0) {
+    console.error(`Параметр --${name} должен быть положительным числом, получено «${arg(name, fallback)}».`);
+    process.exit(1);
+  }
+  return n;
+};
 const project = arg('project', 'muzh_krov');
 const heavy = arg('architect', 'default') === 'heavy';
-const budget = Number(arg('budget', '25'));
+const budget = num('budget', '25');
 const seededModel = arg('seeded', 'all') as 'all' | 'missed' | 'none';
 
 loadDotEnv();
@@ -71,6 +80,7 @@ try {
   });
 } catch (err) {
   console.error(`Оценка прервана: ${err instanceof Error ? err.message : String(err)}`);
+  console.error(`Потрачено к этому моменту: $${costSummary(db, config, projectId).totalUsd.toFixed(2)} (проект в базе: ${projectId}).`);
   process.exit(1);
 }
 

@@ -1,5 +1,5 @@
 import type { Kb } from '@aiw/kb';
-import { AlignmentType, Document, HeadingLevel, Packer, PageOrientation, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from 'docx';
+import type { Paragraph, Table } from 'docx';
 import { reviewTables, type ReviewSummary } from '../checks/llm/reviewSummary.ts';
 import type { Finding, ReviewLevel } from '../schemas/finding.ts';
 import { cleanText, type ProjectBundle } from './bundle.ts';
@@ -7,19 +7,6 @@ import { cleanText, type ProjectBundle } from './bundle.ts';
 type Severity = Finding['severity'];
 
 const FONT = 'Arial';
-const p = (text: string, bold = false) =>
-  new Paragraph({ children: [new TextRun({ text: cleanText(text), bold, size: 22, font: FONT })], spacing: { after: 80 } });
-const h = (text: string, level: (typeof HeadingLevel)[keyof typeof HeadingLevel] = HeadingLevel.HEADING_1) =>
-  new Paragraph({ heading: level, children: [new TextRun({ text: cleanText(text), font: FONT })], spacing: { before: 240, after: 120 } });
-const cell = (text: string, bold = false) =>
-  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: cleanText(text), bold, size: 18, font: FONT })] })] });
-
-function table(head: string[], rows: string[][]): Table {
-  return new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    rows: [new TableRow({ tableHeader: true, children: head.map((t) => cell(t, true)) }), ...rows.map((r) => new TableRow({ children: r.map((t) => cell(t)) }))],
-  });
-}
 
 const LEVELS: { level: ReviewLevel; title: string; name: string }[] = [
   { level: 'critical', title: 'Критические дыры', name: 'критическая' },
@@ -43,6 +30,20 @@ export function latestReview(b: ProjectBundle): ReviewSummary | undefined {
  * setups and payoffs, ages, questions for a lawyer.
  */
 export async function buildReviewDocx(b: ProjectBundle, kb: Kb): Promise<Buffer> {
+  // Loaded on demand: `docx` is heavy and prints a Node warning, and most runs never export.
+  const { AlignmentType, Document, HeadingLevel, Packer, PageOrientation, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } = await import('docx');
+  const p = (text: string, bold = false) =>
+    new Paragraph({ children: [new TextRun({ text: cleanText(text), bold, size: 22, font: FONT })], spacing: { after: 80 } });
+  const h = (text: string, level: (typeof HeadingLevel)[keyof typeof HeadingLevel] = HeadingLevel.HEADING_1) =>
+    new Paragraph({ heading: level, children: [new TextRun({ text: cleanText(text), font: FONT })], spacing: { before: 240, after: 120 } });
+  const cell = (text: string, bold = false) =>
+    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: cleanText(text), bold, size: 18, font: FONT })] })] });
+  const table = (head: string[], rows: string[][]): Table =>
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [new TableRow({ tableHeader: true, children: head.map((t) => cell(t, true)) }), ...rows.map((r) => new TableRow({ children: r.map((t) => cell(t)) }))],
+    });
+
   const review = latestReview(b);
   const tables = review?.tables ?? (b.bible ? reviewTables(b.bible) : undefined);
   const open = b.findings.filter((f) => f.status === 'open');

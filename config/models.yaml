@@ -3,11 +3,14 @@
 roles:
   architect:           {provider: anthropic, model: claude-opus-5-5, max_output: 32000, refusal_fallback: default}
   architect_heavy:     {provider: anthropic, model: claude-fable-5-1, max_output: 32000, refusal_fallback: default}  # план сезона, финальный аудит
-  writer:              {provider: google, model: gemini-3.1-pro-preview, max_output: 65536, max_input: 200000}
-  critic_of_architect: {provider: google, model: gemini-3.1-pro-preview, max_output: 65536}
+  writer:              {provider: google, model: gemini-3.1-pro-preview, max_output: 65536, max_input: 200000, thinking: medium}
+  critic_of_architect: {provider: google, model: gemini-3.1-pro-preview, max_output: 65536, thinking: high}
   critic_of_writer:    {provider: anthropic, model: claude-opus-5-5, refusal_fallback: default}
   helper:              {provider: anthropic, model: claude-haiku-4-5-20251001}
 # У Gemini лимит ответа включает токены размышления, поэтому у ролей google запас больше.
+# thinking (только google): сколько Gemini думает перед ответом — minimal, low, medium, high.
+# Автору хватает medium; критику нужен high — он ищет дыры, а не пишет текст. Для ролей
+# anthropic поле не действует.
 fallback:
   any: {provider: openai_compatible, base_url_env: RESERVE_BASE_URL, model_env: RESERVE_MODEL}
 budget:

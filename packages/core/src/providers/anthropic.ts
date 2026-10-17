@@ -3,6 +3,8 @@ import { LlmError, MissingKeyError, OutputTruncatedError, ProviderUnavailableErr
 import type { CallTarget, LlmRequest, Provider, ProviderResult } from './types.ts';
 
 const REFUSAL_FALLBACK_BETA = 'server-side-fallback-2026-07-01';
+/** A whole streamed answer must arrive within this time; a stalled stream then goes to the reserve. */
+const STALL_TIMEOUT_MS = 15 * 60 * 1000;
 
 function systemBlocks(req: LlmRequest): Anthropic.Beta.BetaTextBlockParam[] {
   const prefix: Anthropic.Beta.BetaTextBlockParam[] = (req.cacheablePrefix ?? [])
@@ -19,12 +21,19 @@ export class AnthropicProvider implements Provider {
   readonly name = 'anthropic' as const;
   private client: Anthropic | undefined;
 
-  constructor(private readonly env: NodeJS.ProcessEnv = process.env) {}
+  constructor(
+    private readonly env: NodeJS.ProcessEnv = process.env,
+    private readonly stallTimeoutMs = STALL_TIMEOUT_MS,
+  ) {}
 
   private sdk(): Anthropic {
     if (!this.env.ANTHROPIC_API_KEY) throw new MissingKeyError('ANTHROPIC_API_KEY');
     this.client ??= new Anthropic({
       apiKey: this.env.ANTHROPIC_API_KEY,
+      // The SDK timeout covers the time to the first byte and is retried; the abort signal on
+      // the stream (below) covers the whole answer and is not.
+      timeout: this.stallTimeoutMs,
+      maxRetries: 2,
       ...(this.env.ANTHROPIC_BASE_URL ? { baseURL: this.env.ANTHROPIC_BASE_URL } : {}),
     });
     return this.client;
@@ -35,13 +44,16 @@ export class AnthropicProvider implements Provider {
     let msg: Anthropic.Beta.BetaMessage;
     try {
       msg = await sdk.beta.messages
-        .stream({
-          model,
-          max_tokens: maxOutput,
-          system: systemBlocks(req),
-          messages: req.messages,
-          ...(refusalFallback ? { betas: [REFUSAL_FALLBACK_BETA], fallbacks: refusalFallback } : {}),
-        })
+        .stream(
+          {
+            model,
+            max_tokens: maxOutput,
+            system: systemBlocks(req),
+            messages: req.messages,
+            ...(refusalFallback ? { betas: [REFUSAL_FALLBACK_BETA], fallbacks: refusalFallback } : {}),
+          },
+          { signal: AbortSignal.timeout(this.stallTimeoutMs) },
+        )
         .finalMessage();
     } catch (err) {
       throw wrap(err);
@@ -89,11 +101,22 @@ export class AnthropicProvider implements Provider {
   }
 }
 
-function wrap(err: unknown): Error {
+/** Maps SDK and network failures to our errors. Exported for tests only. */
+export function wrapAnthropicError(err: unknown): Error {
   if (err instanceof LlmError) return err;
+  // A stalled stream (our abort signal) or a timeout: the provider is as good as down.
+  if (err instanceof Anthropic.APIUserAbortError || err instanceof Anthropic.APIConnectionTimeoutError || isTimeout(err)) {
+    return new ProviderUnavailableError('anthropic', new Error(`ответ не пришёл за отведённое время (${(err as Error).message})`));
+  }
   // A 400 about the account (no credit) is not a bad request: another provider can do the work.
   if (err instanceof Anthropic.BadRequestError && !/credit balance|billing/iu.test(err.message)) {
     return new LlmError(`Anthropic отклонил запрос: ${err.message}`);
   }
   return new ProviderUnavailableError('anthropic', err);
+}
+
+const wrap = wrapAnthropicError;
+
+function isTimeout(err: unknown): boolean {
+  return err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
 }

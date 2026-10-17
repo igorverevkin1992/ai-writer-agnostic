@@ -1,4 +1,4 @@
-import type { ProviderName } from './config.ts';
+import type { ProviderName, ThinkingLevel } from './config.ts';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -38,6 +38,8 @@ export interface CallTarget {
   maxOutput: number;
   /** Anthropic only: server-side refusal fallback. */
   refusalFallback?: 'default';
+  /** Google only: thinking level; ignored by other providers. */
+  thinking?: ThinkingLevel;
 }
 
 export interface Provider {

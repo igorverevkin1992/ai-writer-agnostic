@@ -8,7 +8,16 @@ import { genreKit, loadKb } from '@aiw/kb';
 
 const arg = (name: string, fallback: string) =>
   process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1] ?? fallback;
-const seed = Number(arg('seed', '1'));
+/** A positive number from `--name=`; a typo must not silently turn the budget off. */
+const num = (name: string, fallback: string): number => {
+  const n = Number(arg(name, fallback));
+  if (!Number.isFinite(n) || n <= 0) {
+    console.error(`Параметр --${name} должен быть положительным числом, получено «${arg(name, fallback)}».`);
+    process.exit(1);
+  }
+  return n;
+};
+const seed = num('seed', '1');
 const project = arg('project', 'muzh_krov');
 
 const golden = loadGolden(project);
