@@ -1,0 +1,1627 @@
+# Эталон с дырами: «Прима» v1. Копия fixtures/golden/prima/plan.yaml с 27 намеренными смысловыми дырами
+# (см. holes.yaml). Структурные поля не тронуты: код должен молчать, дыры ищет модель.
+episodes:
+- ep: 1
+  title: Крест
+  event: 'Премьера «Жизели». Аплодисменты не кончаются, прима Лика не выходит на поклон: в луче на меловом кресте стоят только её пуанты. Регина выталкивает на поклон Асю — вторую солистку'
+  question: Куда делась Лика между последним па и поклоном?
+  emotions:
+  - растерянность
+  - восторг зала
+  - холод
+  heroine_action: Выходит на поклон в чужой луч и кланяется вместо Лики
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - hook_violation
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'В гримёрке Аси на зеркале помадой: «Теперь ты»'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: true
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 2
+  title: Прима не репетирует одна
+  event: 'Утро: директор Семён объявляет труппе, что Лика «уехала, оставив записку». Регина ставит Асю на партию и называет первое правило театра: прима не репетирует одна. Дима показывает: камера гримёрного коридора молчала с 22:40 до 23:10'
+  question: Кто выключил камеру на полчаса?
+  emotions:
+  - недоверие
+  - надежда
+  heroine_action: Соглашается на партию и просит Диму достать резервную запись
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - first_rule
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: 'В шкафчике Аси — пуанты Лики: имя стёрто, поверх написано «Ася»'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 3
+  title: Афиша
+  event: На афише имя Аси поверх имени Лики. Гримёрку Лики опечатывают и вывозят вещи «по решению театра». Труппа отворачивается от «той, что заняла место»; сестра Кира, студийка, гордится. В новых пуантах Аси — мел с креста
+  question: Почему Лику стёрли за одну ночь?
+  emotions:
+  - стыд
+  - одиночество
+  - страх
+  heroine_action: Забирает из мусора единственную вещь Лики — ленту от пуант
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - first_cost
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: ticking
+  cliffhanger: 'Регина: «Премьера с тобой — через десять дней». На полу гримёрки Аси появляется меловой крест'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: true
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: lie
+- ep: 4
+  title: Она знает
+  event: 'На репетиции Регина дословно повторяет слова, которые Ася сказала Лике наедине перед выходом. Никто их не слышал. Правило второе: на крест не встают до премьеры'
+  question: Откуда Регина знает слова, сказанные наедине?
+  emotions:
+  - ужас
+  - сомнение
+  heroine_action: Пытается вспомнить вечер премьеры и не может
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - threat_personal
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'Регина: «Что ты ей сказала перед выходом?» Ася молчит: она не помнит'
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 5
+  title: Запись
+  event: 'Дима достаёт резервную запись с сервера. 22:51: в гримёрку Лики входит Ася. Лицо в коридоре — её'
+  question: Это я?
+  emotions:
+  - шок
+  - отрицание
+  heroine_action: Смотрит запись трижды и просит Диму никому не показывать
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Стоп-кадр: Ася в коридоре смотрит прямо в камеру'
+  acts_on:
+  - who: Ася
+    fact: f_asya_entered
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  victory: true
+  cost: 'Регина узнаёт, что запись у Аси: «Хорошо, что ты её увидела первой»'
+- ep: 6
+  title: Союзник
+  event: Дима держал файл два дня и молчал. Ася находит у него папку «Лика» с сорока видео. Регина даёт понять, что знает о записи
+  question: Кому Дима служит?
+  emotions:
+  - подозрение
+  - обида
+  heroine_action: Копирует папку Димы себе на флешку, пока он спит, и прячет флешку в пуанте
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - ally_suspect
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: betrayal
+  cliffhanger: На экране Димы — папка «Лика», последнее видео датировано ночью премьеры
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 7
+  title: Таблетка
+  event: 'Дима объясняет: Лика сама просила снимать её репетиции. Регина даёт Асе «таблетку от сцены» — правило третье: за час до выхода, не раньше. Ася принимает её за три часа до прогона — и танцует прогон чисто, без единого провала'
+  question: Что в таблетке?
+  emotions:
+  - облегчение
+  - тревога
+  heroine_action: Принимает таблетку из рук Регины
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: На флаконе — имя Лики и даты. Последняя — ночь премьеры
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: lie
+- ep: 8
+  title: Ложная разгадка
+  event: 'Дима находит: картой Лики платили на вокзале, билет в Петербург, на видео женщина в пальто Лики садится в поезд. Все выдыхают: уехала. Регина: «Она всегда хотела уйти». Ася почти верит'
+  question: Лика просто ушла?
+  emotions:
+  - облегчение
+  - пустота
+  heroine_action: 'Решает прекратить поиски, стирает запись и бросает Регине: «Вы сами резали ту запись — я видела шов»'
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - false_solution
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Сообщение с номера Лики: «На вокзале была не я»'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 9
+  title: Разгадка рушится
+  event: 'Ася смотрит вокзальное видео телом: так ходит не Лика — так ходит Регина. Дима ловит телефон Лики в сети театра: он внутри здания'
+  question: Чей телефон пишет Асе из театра?
+  emotions:
+  - холод
+  - азарт
+  heroine_action: Идёт ночью на сцену искать источник сигнала
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - solution_collapse
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: attack
+  cliffhanger: Из темноты колосников к ногам Аси падает вторая пуанта Лики
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 10
+  title: Теперь ты
+  event: 'Регина ставит Киру на меловой крест — «юная Жизель» в гала через три дня. В шкафчике Аси — телефон Лики: последнее сообщение «Теперь ты» отправлено с номера Аси в 22:53 в ночь премьеры'
+  question: Лика не уехала — и кто писал её сообщения моими словами?
+  emotions:
+  - паника
+  - ярость
+  heroine_action: Прячет телефон Лики и выводит Киру с креста силой
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - paywall_hook
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: ticking
+  cliffhanger: В зеркале за спиной Аси Кира снова стоит на кресте. Свет гаснет. Скрип мела
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: true
+  personal_stake: Кира — сестра, которую Регина ставит на крест
+  strongest_twist: false
+- ep: 11
+  title: Без таблетки
+  event: 'Ася не принимает таблетку и остаётся в театре на ночь: провала нет. Под крестом она находит люк — старый бункер, которого нет в планах. Из-под сцены слышен счёт: «и раз, и два» — голос Лики'
+  question: Кто держит Лику под сценой?
+  emotions:
+  - надежда
+  - ужас
+  heroine_action: Срывает скотч с люка и зовёт Лику по имени
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - paywall_answer
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: attack
+  cliffhanger: Из-под сцены рука хватает Асю за щиколотку
+  acts_on:
+  - who: Ася
+    fact: f_asya_entered
+  knowledge_mode: suspense
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 12
+  title: Пуанты
+  event: 'Ася вытягивает руку — это пуанты Лики на верёвке, кто-то дёрнул снизу. Внутри — свежий мел и записка: «Не ищи меня. Ищи, кто рисует кресты». Лика жива и в театре. Дима находит в записи с камеры семисекундный монтажный шов'
+  question: Кто смонтировал запись, где я вхожу к Лике?
+  emotions:
+  - облегчение
+  - злость
+  heroine_action: Прячет записку и требует у Димы исходник
+  mood: kaif
+  kaif_lines: []
+  anchors:
+  - paywall_answer
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Дима: «Шов сделали с аккаунта Регины»'
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  victory: true
+  cost: 'Регина забирает Киру в свой частный класс: «У девочки дар»'
+- ep: 13
+  title: Цена
+  event: 'Регина забирает Киру в частный класс. На телефон Аси приходит фото: она спит в гримёрке Лики, штамп времени — ночь премьеры. Кто снимал?'
+  question: Кто стоял надо мной, пока я спала?
+  emotions:
+  - страх
+  - стыд
+  heroine_action: Идёт к Регине и требует вернуть сестру и отдать диктофон
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: 'Регина, глядя на фото: «Это я снимала. Спи спокойно». На двери гримёрки Лики — свежий меловой крест'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 14
+  title: Легенда
+  event: 'Вечер памяти Лики. Семён: правило четвёртое — из театра не уходят примой: либо легендой, либо никем. В репетиционном зале Ася находит диктофон Регины'
+  question: Что Регина записывает на репетициях?
+  emotions:
+  - тоска
+  - любопытство
+  heroine_action: Забирает диктофон, не включая
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'Регина: «Ты помнишь, как вернулась в общежитие в ту ночь?» Ася не помнит'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 15
+  title: Ночь
+  event: Ася репетирует одна ночью — нарушает первое правило. В зеркале за ней фигура в костюме Жизели. Погоня по коридорам
+  question: Кто танцует в костюме Лики?
+  emotions:
+  - ужас
+  - азарт
+  heroine_action: Бежит за фигурой до служебной лестницы
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: false_rescue
+  cliffhanger: 'Охранник хватает Асю — выдох. В руке у него шаль Лики: «Регина Павловна велела не пускать»'
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 16
+  title: Ключ
+  event: Дима находит в планах 1942 года бомбоубежище под сценой. Ключ — у директора. Ася снимает слепок с ключа на связке Семёна
+  question: Что под сценой?
+  emotions:
+  - азарт
+  - страх
+  heroine_action: Делает слепок ключа в пластилине для грима
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: decision
+  cliffhanger: Рука Аси на люке. Внизу темно. За спиной — шаги
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 17
+  title: Бункер
+  event: 'Дима за ночь вытачивает ключ по пластилиновому слепку на кухне общежития. Ася спускается: койка, зеркало, станок, на полу десятки меловых крестов. Никого. Люк захлопывается — час взаперти, пока Дима не находит её'
+  question: Сколько человек стояло на этих крестах?
+  emotions:
+  - клаустрофобия
+  - догадка
+  heroine_action: 'Считает кресты на полу: их девять'
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: mystical_shift
+  cliffhanger: 'На зеркале внизу тем же почерком: «Теперь ты». Дата — 2031'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 18
+  title: Диктофон
+  event: 'Ася включает диктофон: голос Регины в ночь премьеры: «Ася, отнеси пуанты в гримёрку Лики. Ты не вспомнишь». Регина предлагает Асе говорить за неё с прессой'
+  question: Что ещё я сделала, не помня?
+  emotions:
+  - тошнота
+  - облегчение
+  heroine_action: Соглашается читать прессе текст Регины, чтобы остаться рядом
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: betrayal
+  cliffhanger: 'Регина: «Я знаю, что диктофон у тебя. Отдай — или Кира узнает, кто её сестра на самом деле»'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: lie
+  victory: true
+  cost: Регина объявляет Асю «наследницей Лики», и труппа окончательно отворачивается
+- ep: 19
+  title: Пресса
+  event: 'Пресс-подход: Регина называет Асю наследницей Лики, Ася читает чужой текст. Кира обожает Регину. Семён кладёт перед Асей папку'
+  question: Что за документ мне подсовывают?
+  emotions:
+  - фальшь
+  - тревога
+  heroine_action: Читает текст Регины и прячет папку, не открыв
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: 'Семён забирает папку: «Это не про тебя» — выдох. Регина, тихо: «Пока не про тебя». На папке — заголовок «Отказ»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: lie
+- ep: 20
+  title: Срыв
+  event: На гала при полном зале Ася от страха принимает таблетку — и теряет сознание на сцене посреди вариации. Врача никто не вызывает, спектакль продолжают. Приходит в себя в опечатанной гримёрке Лики с мелом на руках
+  question: Кто привёл меня сюда?
+  emotions:
+  - провал
+  - ужас
+  heroine_action: Стирает мел с рук и фотографирует комнату
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: attack
+  cliffhanger: 'Дверь открывается — Регина: «Опять ты»'
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 21
+  title: Экспертиза
+  event: 'Дима несёт таблетку знакомому фармацевту: препарат вызывает провалы памяти и внушаемость. Ася бросает таблетки'
+  question: Кто выписал это Лике и мне?
+  emotions:
+  - ярость
+  - ясность
+  heroine_action: Выбрасывает флакон и записывает фармацевта на видео
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'Фармацевт: «Кто вам это выписал?» На рецепте — подпись главврача городской поликлиники, фамилия Асе незнакома'
+  acts_on:
+  - who: Ася
+    fact: f_pills
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 22
+  title: Кира
+  event: 'Кира рассказывает: Регина спрашивала, что Ася делает по ночам, и дала ей такие же таблетки «для сна». Ася отбирает коробку'
+  question: Сколько у Регины времени до Киры?
+  emotions:
+  - страх за сестру
+  - решимость
+  heroine_action: Отбирает у Киры таблетки и ссорится с ней
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ticking
+  cliffhanger: На шкафчике Киры в студии — меловой крест
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 23
+  title: Ловушка
+  event: Ася притворяется, что приняла таблетку. Регина ведёт её к люку. Появляется Семён — «спасает»
+  question: Семён — спаситель или заказчик?
+  emotions:
+  - азарт
+  - разочарование
+  heroine_action: Играет провал и даёт Регине вести себя
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: false_rescue
+  cliffhanger: Семён уводит Регину — выдох — и у люка отдаёт ей ключ
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 24
+  title: Запись вторая
+  event: 'Скрытая камера Димы сняла ловушку: Регина ведёт Асю под таблеткой и говорит «как Юлю, как Марту». Теперь ясно, кто вёл Асю в ночь премьеры'
+  question: Кто такие Юля и Марта?
+  emotions:
+  - триумф
+  - холод
+  heroine_action: Отдаёт запись Диме на три носителя и решает в полицию не идти
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Регина на записи: «Как Юлю. Как Марту. Ты лучше их»'
+  acts_on:
+  - who: Ася
+    fact: f_pills
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  victory: true
+  cost: Семён увольняет Диму за «кражу записей» — Ася остаётся одна
+- ep: 25
+  title: Архив
+  event: 'Дима уволен за «кражу». Ася одна идёт в архив театра: афиши — Инга 2005, Марта 2012, Юля 2019. Все «исчезли после премьеры»'
+  question: Сколько прим исчезло до Лики?
+  emotions:
+  - одиночество
+  - догадка
+  heroine_action: Фотографирует афиши и даты
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: На всех трёх афишах поверх лица — меловой крест
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 26
+  title: Зеркало
+  event: 'Ася пробирается в опечатанную гримёрку Лики и завешивает зеркало. Зеркало двустороннее: за ним — узкий проход вниз'
+  question: Кто смотрел на Лику из зеркала?
+  emotions:
+  - озноб
+  - азарт
+  heroine_action: Отодвигает зеркало и находит проход
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: mystical_shift
+  cliffhanger: В зеркале Ася делает движение, которого не делала
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 27
+  title: Лика
+  event: 'За зеркалом — Лика. Живая, худая, в репетиционном, танцует Жизель. «Ты пришла раньше, чем Юля». Она не исчезала: её «готовят к возвращению», и готовят уже три года'
+  question: Если Лика жива — зачем всё это?
+  emotions:
+  - шок
+  - облегчение
+  - ужас
+  heroine_action: Остаётся с Ликой вместо того, чтобы бежать за помощью
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - reset1
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Лика: «Я подписала. И ты подписала — в ту ночь»'
+  acts_on:
+  - who: Ася
+    fact: f_lika_alive
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: true
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: true
+  arc: truth
+- ep: 28
+  title: Отказ
+  event: 'Лика объясняет: прима подписывает «отказ от имени», театр продаёт легенду исчезнувшей, прима получает деньги и новую жизнь. Лика передумала — и Регина не отпустила. Подписи хранит Семён'
+  question: Что подписала я?
+  emotions:
+  - тошнота
+  - решимость
+  heroine_action: Решает добраться до сейфа Семёна
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: decision
+  cliffhanger: Рука Аси на двери кабинета Семёна. Внутри горит свет
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 29
+  title: Сейф
+  event: 'С помощью Димы по телефону Ася открывает кабинет. В папке: Инга, Марта, Юля, Лика… и Ася. Подписано'
+  question: Как я могла подписать?
+  emotions:
+  - холод
+  - ярость
+  heroine_action: Фотографирует все листы
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: betrayal
+  cliffhanger: 'Семён в дверях протягивает ей папку: «Забери, она твоя. Ты сама подписала — показать запись?»'
+  acts_on:
+  - who: Ася
+    fact: f_asya_signed
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  victory: true
+  cost: 'Семён показывает видео подписи и видео Киры с мелом: Ася теряет уверенность в сестре'
+- ep: 30
+  title: Подпись
+  event: 'Семён показывает видео: Ася после премьеры подписывает с открытыми глазами. Она не помнит. «Это решала не я». — «Тогда кто?» Второе видео: Кира рисует крест на сцене'
+  question: Кира — жертва или инструмент?
+  emotions:
+  - ужас
+  - нежность
+  heroine_action: 'Говорит Семёну: «Решала не я» — и уходит, не подписав ничего'
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: Кира на видео дорисовывает крест и смотрит в камеру
+  acts_on:
+  - who: Ася
+    fact: f_asya_signed
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: truth
+- ep: 31
+  title: Три афиши
+  event: 'Ася и Лика через зеркало сверяют: все примы подписали в одну неделю после премьеры, у всех были таблетки Регины. Дима тайно возвращается'
+  question: Где они теперь?
+  emotions:
+  - азарт
+  - страх
+  heroine_action: Собирает хронологию трёх исчезновений
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'Лика: «Ты знаешь, где они сейчас? Они не уезжали»'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  victory: true
+  cost: Регина переводит Киру «на репетиции» в бункер — Кира идёт сама
+- ep: 32
+  title: Юля
+  event: 'Регина уводит Киру вниз «для репетиций». Ася узнаёт костюмершу Юлию Петровну: руки танцовщицы. Юля — прима 2019 года'
+  question: Прим не стирают — их оставляют?
+  emotions:
+  - озарение
+  - жалость
+  heroine_action: Показывает Юле её афишу
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Юля шёпотом: «Не ходи вниз»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 33
+  title: Костюмерная
+  event: 'Юля рассказывает: её стёрли двенадцать лет назад, после подписи Регина «переучивала» — роль забывалась, имя стиралось; кто остался — стал персоналом. Об Инге Юля молчит. Ася записывает её'
+  question: Что случилось с Ингой?
+  emotions:
+  - сочувствие
+  - тревога
+  heroine_action: Записывает Юлю на диктофон
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ticking
+  cliffhanger: Гала через пять дней. Кира на кресте репетирует вариацию Лики
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 34
+  title: Гардероб
+  event: 'Гардеробщица Марта отказывается говорить. Ася танцует перед ней вариацию Марты 2012 года — Марта ломается: «Инга не ушла. Инга — под сценой»'
+  question: Что под сценой, кроме крестов?
+  emotions:
+  - боль
+  - догадка
+  heroine_action: Танцует чужую вариацию по памяти тела
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: mystical_shift
+  cliffhanger: В стене бункера — замурованная ниша с меловым крестом
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 35
+  title: Ниша
+  event: 'Ася и Лика вскрывают нишу: не тело — коробка с вещами Инги и письмо: «Регина меня сделала, Регина меня стёрла. Ухожу никем». Инга умерла в больнице в 2011-м. В коробке — дневник Лики'
+  question: Почему дневник Лики в нише Инги?
+  emotions:
+  - скорбь
+  - недоумение
+  heroine_action: Читает дневник Лики вслух
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: betrayal
+  cliffhanger: 'Запись в дневнике Лики: «Сделай из Аси меня»'
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 36
+  title: Сколько
+  event: 'Четыре примы, все «сделаны» и стёрты Регина. Лика признаётся: выбрала Асю сама — «ты единственная, кто повторит меня». Вопрос теперь другой: кто это покупает и зачем'
+  question: Кто платит за легенды?
+  emotions:
+  - предательство
+  - решимость
+  heroine_action: 'Прощает Лику при условии: она выйдет наверх'
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'Лика: «А кого выбрала ты?» Ася думает о Кире'
+  acts_on:
+  - who: Ася
+    fact: f_three_primas
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 37
+  title: Без партии
+  event: Регина снимает Асю с гала — «нестабильна». Вариацию получает Кира. Ночью Ася идёт к Регине и просит партию назад. Берёт таблетку из её рук
+  question: Я без неё никто?
+  emotions:
+  - унижение
+  - зависимость
+  heroine_action: Просит Регину вернуть партию и принимает таблетку
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: mystical_shift
+  cliffhanger: Отражение Аси в зеркале подмигивает ей
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: relapse
+- ep: 38
+  title: Утро
+  event: 'Ася просыпается на сцене на кресте. Киры нет в общежитии. Регина: «Ты сама привела её вниз». Ася спускается в бункер с вернувшимся Димой'
+  question: Что я сделала с сестрой?
+  emotions:
+  - ужас
+  - вина
+  heroine_action: Спускается в бункер с Димой
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ticking
+  cliffhanger: 'В бункере телефон Киры, 2% заряда, сообщение Асе: «Не ищи»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 39
+  title: Сестра
+  event: 'Кира в бункере репетирует с Ликой и не хочет уходить: «Лика меня учит. Ты заняла её место — я займу твоё»'
+  question: Как вернуть сестру, которая не хочет возвращаться?
+  emotions:
+  - отчаяние
+  - злость
+  heroine_action: Пытается увести Киру силой
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: betrayal
+  cliffhanger: Кира запирает люк изнутри
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 40
+  title: Охотник
+  event: 'Ася перестаёт спрашивать и начинает собирать: Юля, Марта, Дима. На открытой репетиции при полном зале в две тысячи зрителей, Семёне и трёх телевизионных камерах она танцует вариацию Лики лучше Лики'
+  question: Кого театр теперь выберет?
+  emotions:
+  - сила
+  - триумф
+  heroine_action: Танцует вариацию Лики на открытой репетиции
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: decision
+  cliffhanger: 'Семён: «Прима — ты. Условие — подпиши ещё раз. Сейчас». Ручка в руке Аси'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  victory: true
+  cost: Регина говорит Кире, что Ася «продала» её; Кира выходит на крест при всех
+- ep: 41
+  title: Подпись вторая
+  event: 'Ася не подписывает. Регина говорит Кире, что Ася её «продала». Кира кричит при всех: «Ты подписала согласие на замену — на меня!» — и выходит на крест'
+  question: Что Семён готовит для Киры?
+  emotions:
+  - страх
+  - ярость
+  heroine_action: Отказывается подписывать при прессе
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: 'На столе Семёна новая папка: «Кира»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 42
+  title: Коридор
+  event: Ася, Юля и Марина перекрывают проход за зеркалом. Лика впервые выходит наверх при свете — труппа видит живую легенду
+  question: Что скажет театр, увидев Лику?
+  emotions:
+  - торжество
+  - тревога
+  heroine_action: Выводит Лику на сцену за руку
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Семён созывает прессу: «Лика вернулась — это был перформанс театра»'
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 43
+  title: Перформанс
+  event: 'Семён переписывает всё: исчезновение — искусство, Регина — автор. Он сам раздаёт журналистам полные записи Димы, включая ловушку у люка, «как документацию перформанса». Лика под таблеткой подтверждает на камеру. Союзникам Аси никто не верит'
+  question: Как доказать то, что назвали искусством?
+  emotions:
+  - бессилие
+  - стыд
+  heroine_action: Отказывается стоять рядом с Ликой на пресс-конференции
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'Журналист Асе: «А вы тоже перформанс?»'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 44
+  title: Контракт
+  event: 'Юля отдаёт Асе копию своего контракта: пункт «отказ от имени», подпись Семёна, платежи из «фонда легенды театра»'
+  question: Куда идут деньги фонда?
+  emotions:
+  - ясность
+  - спешка
+  heroine_action: Прячет копию контракта у Димы
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ticking
+  cliffhanger: Гала завтра. Кира на кресте. Под крестом — люк, и защёлка снята
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 45
+  title: Гала
+  event: Кира танцует на кресте. Ася из кулисы видит открытую защёлку люка и сдёргивает сестру с креста посреди вариации
+  question: Кто должен был упасть?
+  emotions:
+  - ужас
+  - облегчение
+  heroine_action: Выдёргивает Киру с креста посреди вариации
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: false_rescue
+  cliffhanger: Кира цела — выдох. На крест ступает Лика, и люк открывается под ней
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 46
+  title: Победа
+  event: 'Полиция по звонку Аси и записям Димы: Регину арестовывают на два месяца по заявлению Аси, Семён «потрясён». Асю объявляют примой. Лика в больнице'
+  question: Всё кончилось?
+  emotions:
+  - победа
+  - усталость
+  heroine_action: Даёт показания и передаёт все записи
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: 'В больнице рука Лики на одеяле: под ногтями мел'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 47
+  title: Правда Лики
+  event: 'Лика в больнице рассказывает всю цепочку: Семён платит, Регина стирает, Лика выбрала Асю. И: «Первый крест для тебя нарисовала я — чтобы ты стала мной»'
+  question: Если крест рисовала Лика — чья я?
+  emotions:
+  - горечь
+  - ясность
+  heroine_action: 'Говорит Лике: «Я не ты» — и уходит из палаты'
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: decision
+  cliffhanger: 'Семён предлагает Асе руководить балетом: «Регины нет. Подпиши»'
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: truth
+- ep: 48
+  title: Ложный финал
+  event: 'Ася не подписывает. Регину отпускают: записи — «перформанс», состава нет. Она возвращается в театр. Кира ушла к Регине домой — добровольно'
+  question: Почему победа не держится?
+  emotions:
+  - крах
+  - страх
+  heroine_action: Едет к дому Регины
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - false_finale
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: betrayal
+  cliffhanger: 'Кира по телефону: «Регина Павловна сказала, что ты подписала меня»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 49
+  title: Квартира
+  event: 'Квартира Регины: зеркала, четыре портрета — Инга, Марта, Юля, Лика — и пятая пустая рамка с именем Аси. Кира здесь. Регина: «Я никого не стираю. Я делаю вас вечными»'
+  question: Чем Регина это оправдывает — и верит ли сама?
+  emotions:
+  - ужас
+  - жалость
+  heroine_action: Спорит с Региной при Кире, не повышая голоса
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: mystical_shift
+  cliffhanger: В пятой рамке появляется фото Киры
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 50
+  title: Кто управляет
+  event: 'Ася находит переводы Семёна Регине и папку «Кира» с первым платежом. Регина — инструмент, который верит; покупает и продаёт Семён. И последнее: подпись Аси — не «отказ», а «согласие на замену»'
+  question: На кого я согласилась — на Киру?
+  emotions:
+  - холод
+  - решимость
+  heroine_action: Забирает переводы и папку
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Лист из папки: «Согласие на замену. Замена — Верба Кира»'
+  acts_on:
+  - who: Ася
+    fact: f_semyon_pays
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 51
+  title: Выбор
+  event: Ася рассказывает Кире всё. Кира не верит. Ася предлагает уйти со сцены сама — ради сестры. «Докажи»
+  question: Чем доказать сестре, что ты её не продавала?
+  emotions:
+  - беспомощность
+  - любовь
+  heroine_action: Предлагает Кире уйти из театра вместе
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'Кира: «Докажи». Дверь закрывается'
+  acts_on:
+  - who: Ася
+    fact: f_asya_signed
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 52
+  title: Телефон Лики
+  event: 'Дима восстанавливает: «Теперь ты» с номера Аси отправила Регина в 23:40 в ночь премьеры — на видео Регина держит телефон Аси. Регина объявляет дебют Киры и «прощание Лики» на закрытии сезона'
+  question: Что Регина готовит на закрытии?
+  emotions:
+  - ясность
+  - тревога
+  heroine_action: Монтирует с Димой доказательства в один ролик
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ticking
+  cliffhanger: 'Афиша закрытия: «Кира Верба — Жизель». До закрытия 24 часа'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 53
+  title: Юля и Марта
+  event: Три дня спустя Юля и Марта соглашаются выйти на сцену и сказать правду. Дима восстанавливает полные записи. На Асю падает противовес с колосников
+  question: Кто перерезал трос?
+  emotions:
+  - страх
+  - благодарность
+  heroine_action: Уговаривает Юлю и Марту выйти на сцену
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: attack
+  cliffhanger: Противовес падает в метре от Аси. Наверху тень уходит
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 54
+  title: Дима
+  event: Дима находит перерезанный трос. Семён обвиняет Диму; следователь берёт у Семёна конверт и за час закрывает дело на Диму
+  question: Дима — с кем?
+  emotions:
+  - сомнение
+  - боль
+  heroine_action: Сидит в общежитии и ждёт, пока полиция сама во всём разберётся
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: betrayal
+  cliffhanger: 'Семён: «Дима работал на меня с первого дня»'
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 55
+  title: Правда Димы
+  event: 'Дима признаётся: Семён нанял его следить за Ликой; он влюбился, потом перешёл на сторону Аси — поэтому у него были файлы. Ася прощает'
+  question: Могу ли я верить тому, кто начинал с лжи?
+  emotions:
+  - обида
+  - нежность
+  heroine_action: Прощает Диму и берёт его в план закрытия
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: decision
+  cliffhanger: 'Рука Аси с мелом над сценой: рисовать свой крест или нет'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 56
+  title: Улики сводятся
+  event: 'На сцене Ася раскладывает всё: таблетки, диктофон, контракты, афиши, телефоны — и за один разговор пересказывает Диме всю схему с 2005 года, по годам. Картина сходится: Регина делает, Семён продаёт. И последнее: первый крест в ночь премьеры нарисовала рука Аси — под таблеткой, по указанию Регины, чтобы Ася считала злодейкой себя'
+  question: Кто я в этой истории — жертва или рука?
+  emotions:
+  - ясность
+  - гнев
+  heroine_action: Складывает улики в порядке серий и фотографирует
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - clues_converge
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'На видео ночи премьеры: рука Аси рисует крест, за кадром голос Регины: «Ровнее»'
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 57
+  title: Потеря
+  event: 'Ночь перед закрытием: Лика подписывает снова и уезжает в Петербург с деньгами фонда: «Я выбрала себя». Ася остаётся без главного свидетеля'
+  question: Без Лики — кто подтвердит?
+  emotions:
+  - предательство
+  - пустота
+  heroine_action: Отпускает Лику, не удерживая
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - ally_cost
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: Пустая больничная койка. На полу меловой крест, на нём пуанты
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 58
+  title: Конфронтация
+  event: 'Закрытие сезона. Во время речи Регины Ася через звуковой пульт Димы включает диктофон из 18-й серии на весь зал. На сцену выходит Юля. Ася встаёт на крест напротив Регины: «Без тебя я — Ася»'
+  question: Кто сильнее — та, что делает, или та, что отказывается быть сделанной?
+  emotions:
+  - триумф
+  - страх
+  heroine_action: Включает диктофон на весь зал и выходит на крест
+  mood: kaif
+  kaif_lines: []
+  anchors:
+  - confrontation
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: attack
+  cliffhanger: Семён гасит свет во всём театре. Темнота. Скрип мела
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 59
+  title: Пиррова победа
+  event: Свет дают. Полиция забирает Семёна по финансовой схеме фонда. Регину не за что взять — но труппа отворачивается от неё. Кира подходит к Асе. Ася — прима театра, который закрывают на сезон
+  question: Что стоит победа, если сцены больше нет?
+  emotions:
+  - облегчение
+  - горечь
+  heroine_action: Обнимает Киру и не идёт на поклон
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - pyrrhic_victory
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'Кира: «А кем теперь буду я?»'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 60
+  title: Финал
+  event: 'Пустой зал. Ася стирает меловой крест ладонями — белые руки крупно. Отдаёт Кире пуанты: «Выбирай сама». Уходит из театра с сестрой и Димой. Последний кадр: сцена другого театра, свежий меловой крест, на него ступает Лика'
+  question: Кто рисует кресты в других театрах?
+  emotions:
+  - покой
+  - тревога
+  heroine_action: Стирает крест, подписывает с Семёном контракт примы на следующий сезон и уходит с сестрой
+  mood: kaif
+  kaif_lines: []
+  anchors:
+  - finale
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: 'Сцена в Петербурге. Свежий меловой крест. На него ступает Лика. Из темноты зала кто-то считает: «и раз, и два» — голосом Регины'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: truth
+deviations: []

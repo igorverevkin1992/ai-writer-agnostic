@@ -1,6 +1,7 @@
 import { genreKit, loadKb, resolveFrameInputs, SeasonFrame as FrameSchema } from '@aiw/kb';
 import { describe, expect, it } from 'vitest';
 import { loadGolden } from '../../fixtures.ts';
+import { loadProducerHoles } from '../../eval/auditEval.ts';
 import { Bible, EpisodeCard, EpisodeOutline, SeasonPlan, Script } from '../../schemas/index.ts';
 import { sampleBible, sampleCard, sampleScript } from '../../schemas/samples.ts';
 import { scoreChecklist } from './checklist.ts';
@@ -272,5 +273,24 @@ describe('golden project «Прима» (vertical thriller)', () => {
     expect(golden.bible.nested).toHaveLength(5);
     expect(golden.bible.nested.map((q) => q.closed_ep)).toEqual([12, 24, 36, 50, 60]);
     expect(golden.plan.episodes.filter((e) => e.ep <= 3 && e.irreversible).length).toBeGreaterThan(0);
+  });
+});
+
+describe('golden project «Прима» v1: the planted holes for the auditor', () => {
+  it('keeps every code check silent, so the holes are the model\'s to find', () => {
+    const kb = loadKb();
+    const kit = genreKit(kb, 'vertical_thriller');
+    const holed = loadGolden('prima_v1');
+    const clean = loadGolden('prima');
+    expect(runCodeChecks({ kit, bible: holed.bible, plan: holed.plan }).findings).toEqual([]);
+    expect(holed.bible).toEqual(clean.bible);
+    const changed = holed.plan.episodes.filter((e, i) => JSON.stringify(e) !== JSON.stringify(clean.plan.episodes[i]));
+    expect(changed.length).toBeGreaterThanOrEqual(20);
+    const holes = loadProducerHoles('prima_v1')!;
+    expect(holes.holes).toHaveLength(28);
+    for (const h of holes.holes) expect(h.holeType, h.id).toBeDefined();
+    // Every hole points at an episode of the plan, and every changed episode is listed by some hole.
+    const listed = new Set(holes.holes.flatMap((h) => [h.episode, ...(h.episodes ?? '').split(/[,\s–-]+/u).map(Number)]).filter(Boolean));
+    for (const e of changed) expect(listed.has(e.ep), `серия ${e.ep}`).toBe(true);
   });
 });
