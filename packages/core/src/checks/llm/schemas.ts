@@ -45,6 +45,8 @@ export const AuthorReply = z
     fact_id: z.string().optional(),
     fact: Fact.optional(),
     knowledge: z.array(KnowledgeEntry).default([]),
+    /** The episode where the viewer sees what the answer relies on. */
+    shown_ep: z.int().min(1).optional(),
     explanation: NonEmpty,
   })
   .superRefine((r, ctx) => {

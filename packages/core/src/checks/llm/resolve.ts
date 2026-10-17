@@ -8,6 +8,7 @@ import type { SeasonPlan } from '../../schemas/season.ts';
 import { checkKnowledge } from '../code/knowledge.ts';
 import { checkTimeline } from '../code/timeline.ts';
 import { AuthorReply, JudgeVerdict } from './schemas.ts';
+import { episodeLine } from './texts.ts';
 
 export interface ResolveDeps {
   llm: LlmClient;
@@ -43,6 +44,17 @@ function consistencyIds(bible: Bible, plan?: SeasonPlan): Set<string> {
 export async function resolveFinding(deps: ResolveDeps, finding: Finding, bible: Bible, plan?: SeasonPlan): Promise<Resolution> {
   const factsList = bible.facts.map((f) => `${f.id}: ${f.text}${f.since_ep ? ` (с ${f.since_ep}-й серии)` : ''}`).join('\n') || 'Фактов нет.';
   const findingText = `${finding.quote}\n${finding.viewerQuestion}${finding.episode ? `\nСерия: ${finding.episode}` : ''}`;
+  const terms = deps.kit.genre.terms;
+  // The plan around the finding: the judge checks that the answer is really on screen there.
+  const around = (ep: number | undefined, span: number) =>
+    plan && ep
+      ? plan.episodes
+          .filter((e) => Math.abs(e.ep - ep) <= span)
+          .sort((a, b) => a.ep - b.ep)
+          .map((e) => episodeLine(e, terms, deps.kit.frame.hook_types))
+          .join('\n')
+      : '';
+  const planText = around(finding.episode, 2) || 'План этих серий не передан.';
 
   const { data: reply, provider: replyProvider } = await deps.llm.completeJson(AuthorReply, {
     role: deps.authorRole,
@@ -50,7 +62,7 @@ export async function resolveFinding(deps: ResolveDeps, finding: Finding, bible:
     step: deps.step,
     request: {
       task: `respond:${finding.id}`,
-      system: renderPrompt(deps.kb, `architect/respond`, { finding: findingText, facts: factsList, schema: schemaText(AuthorReply) }),
+      system: renderPrompt(deps.kb, `architect/respond`, { finding: findingText, facts: factsList, plan: planText, schema: schemaText(AuthorReply) }),
       messages: [{ role: 'user', content: 'Ответь на замечание. Только JSON.' }],
     },
   });
@@ -91,6 +103,8 @@ export async function resolveFinding(deps: ResolveDeps, finding: Finding, bible:
         finding: findingText,
         answer: reply.explanation,
         fact: fact ? `${fact.id}: ${fact.text}` : 'нет',
+        shown: reply.shown_ep ? `${reply.shown_ep}-я серия:\n${around(reply.shown_ep, 0) || 'такой серии в плане нет'}` : 'автор не назвал серию',
+        plan: planText,
         schema: schemaText(JudgeVerdict),
       }),
       messages: [{ role: 'user', content: 'Вынеси решение. Только JSON.' }],

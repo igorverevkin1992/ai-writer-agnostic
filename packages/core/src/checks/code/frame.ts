@@ -7,6 +7,9 @@ import { formatEpisodes, makeFinding } from './finding.ts';
  * Season frame: episode count and anchors on their numbers.
  * An anchor may move by the frame tolerance only with the author's written reason.
  */
+/** This many untagged anchors mean the plan is not marked up, not that the story misses them. */
+const UNTAGGED_IS_A_GAP = 3;
+
 export function checkSeasonFrame(plan: SeasonPlan, frame: SeasonFrame): Finding[] {
   const out: Finding[] = [];
   const eps = plan.episodes.map((e) => e.ep).sort((a, b) => a - b);
@@ -27,6 +30,25 @@ export function checkSeasonFrame(plan: SeasonPlan, frame: SeasonFrame): Finding[
     );
   }
 
+  // A plan that tags almost no anchors is not a plan with a dozen story holes: it is a plan
+  // without anchor marks. Each missing anchor is still reported (the frame metric needs it),
+  // but as major instead of blocker, under one finding that says what is really wrong.
+  const untagged = Object.keys(frame.anchors).filter((a) => !plan.episodes.some((e) => e.anchors.includes(a)));
+  const taggingGap = untagged.length >= UNTAGGED_IS_A_GAP;
+  if (taggingGap) {
+    out.push(
+      makeFinding({
+        check: 'season_frame.anchors_unmarked',
+        controller: 'structure',
+        severity: 'major',
+        holeType: 10,
+        quote: `Не отмечены опорные точки: ${untagged.map((a) => frame.anchor_labels[a] ?? a).join(', ')}`,
+        question: `где в плане опорные точки каркаса? Не отмечено ${untagged.length} из ${Object.keys(frame.anchors).length}.`,
+        fixes: ['Отметить опорные точки каркаса в сериях плана (`anchors`), чтобы код мог проверить их места'],
+      }),
+    );
+  }
+
   for (const [anchor, spec] of Object.entries(frame.anchors)) {
     const { min, max } = episodeRange(spec);
     const tagged = plan.episodes.filter((e) => e.anchors.includes(anchor)).map((e) => e.ep);
@@ -40,7 +62,7 @@ export function checkSeasonFrame(plan: SeasonPlan, frame: SeasonFrame): Finding[
         makeFinding({
           check: code,
           controller: 'structure',
-          severity: 'blocker',
+          severity: taggingGap ? 'major' : 'blocker',
           holeType: 10,
           episode: min,
           quote: `Опорная точка «${name}» не отмечена ни в одной серии`,

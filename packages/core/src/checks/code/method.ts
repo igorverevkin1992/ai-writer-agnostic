@@ -166,7 +166,7 @@ export function checkPromise(plan: SeasonPlan, frame: SeasonFrame, p: PromisePar
       severity: 'major',
       holeType: 10,
       episode: e.ep,
-      quote: e.event,
+      quote: `«${e.title}». ${e.event.split(/(?<=[.!?…])\s+/u)[0] ?? e.event}`,
       question: `это то, что мне обещали? в ${e.ep}-й серии нет: ${names.join(', ')}`,
       fixes: [`Показать в ${e.ep}-й серии то, за чем зритель пришёл в жанр: ${names.join(' или ')}`],
     }),

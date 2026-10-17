@@ -9,6 +9,7 @@ import type { EpisodeOutline } from '../../schemas/season.ts';
 import type { Script } from '../../schemas/script.ts';
 import { renderScript } from '../../text/script.ts';
 import { makeFinding } from '../code/finding.ts';
+import { locateQuote } from './quote.ts';
 import { FindingDrafts } from './schemas.ts';
 import { episodeLine } from './texts.ts';
 
@@ -71,7 +72,6 @@ export interface ControllerDeps {
   criticRole?: RoleName;
 }
 
-const norm = (s: string) => s.replace(/[«»"“”„]/gu, '"').replace(/[ёЁ]/gu, 'е').replace(/\s+/gu, ' ').trim().toLowerCase();
 
 /** Runs model controllers over one script. The critic is from another family than the writer. */
 export async function runScriptControllers(
@@ -104,7 +104,7 @@ export async function runScriptControllers(
       },
     });
     for (const d of data) {
-      if (!norm(text).includes(norm(d.quote))) {
+      if (!locateQuote(text, d.quote)) {
         dropped++;
         continue;
       }

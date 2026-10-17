@@ -16,6 +16,8 @@ import { BudgetExceededError } from '../providers/errors.ts';
 import type { LlmClient } from '../providers/llm.ts';
 import { ReviewCategory, ReviewLevel, type Finding } from '../schemas/finding.ts';
 import { withHole, type SeededHole } from './seed.ts';
+import { concurrencyFromEnv, mapLimit } from '../pipeline/mapLimit.ts';
+import { episodeLine } from '../checks/llm/texts.ts';
 
 export const ProducerHole = z.object({
   id: z.string().min(1),
@@ -43,6 +45,45 @@ export const ProducerHolesFile = z.object({
   checklist_score: z.int().min(0).optional(),
 });
 export type ProducerHolesFile = z.infer<typeof ProducerHolesFile>;
+
+/** Episodes per matching window. */
+const MATCH_WINDOW = 10;
+
+interface MatchWindow {
+  label: string;
+  findings: Finding[];
+  holes: ProducerHole[];
+  plan: string;
+}
+
+/** Episode numbers a hole names: its `episode` and every number in `episodes` («3, 10, 18–19»). */
+function holeEpisodes(h: ProducerHole): number[] {
+  const nums = (h.episodes ?? '').split(/[^\d]+/u).map(Number).filter((n) => n > 0);
+  return [...new Set([...(h.episode ? [h.episode] : []), ...nums])];
+}
+
+/**
+ * Splits findings and holes into windows of episodes (plus one for findings without an
+ * episode); a hole goes into every window it touches, with two episodes of slack.
+ */
+export function matchWindows(findings: Finding[], holes: ProducerHole[], episodes: number, planLines: (ep: number) => string = () => ''): MatchWindow[] {
+  const out: MatchWindow[] = [];
+  for (let a = 1; a <= Math.max(1, episodes); a += MATCH_WINDOW) {
+    const b = Math.min(episodes, a + MATCH_WINDOW - 1);
+    const inWindow = (ep: number) => ep >= a - 2 && ep <= b + 2;
+    out.push({
+      label: `серии ${a}–${b}`,
+      findings: findings.filter((f) => f.episode !== undefined && f.episode >= a && f.episode <= b),
+      holes: holes.filter((h) => {
+        const eps = holeEpisodes(h);
+        return eps.length === 0 || eps.some(inWindow);
+      }),
+      plan: Array.from({ length: b - a + 1 }, (_, i) => planLines(a + i)).filter(Boolean).join('\n'),
+    });
+  }
+  out.push({ label: 'библия', findings: findings.filter((f) => f.episode === undefined), holes, plan: '' });
+  return out;
+}
 
 /** fixtures/golden/<name>/holes.yaml, if the producer has provided it. */
 export function loadProducerHoles(name: string): ProducerHolesFile | undefined {
@@ -80,7 +121,10 @@ export interface EvalReport {
   matches: EvalMatches['matches'];
   producerHoles: number;
   producerFound: number;
+  /** The same without disputed matches. */
+  producerFoundStrict: number;
   realFindings: number;
+  realFindingsStrict: number;
   seeded: SeededResult[];
   /** judged: the agent's score after the model-judge (what the producer's score is compared with). */
   checklist: { code: number; unknown: number; producer?: number; judged?: number; judgedUnknown?: number };
@@ -128,7 +172,9 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
     matches: [],
     producerHoles: input.producer?.holes.length ?? 0,
     producerFound: 0,
+    producerFoundStrict: 0,
     realFindings: 0,
+    realFindingsStrict: 0,
     seeded: [],
     checklist: { code: score.score, unknown: score.unknownPoints, producer: input.producer?.checklist_score },
     anchors: { total: anchorIds.length, onPlace: anchorIds.filter((a) => !misplaced.has(a)).length },
@@ -161,33 +207,50 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
 
     // 2. Match findings with the producer's holes (judge from another family than the auditor).
     // Code findings count towards the producer's holes too: the auditor is code plus model.
+    // Matching goes in windows of episodes, with the plan lines of the window, so the judge
+    // compares a few dozen findings with the holes of the same place, not everything at once.
     const toMatch = [...report.findings, ...code.findings];
     if (toMatch.length) {
       const holes = input.producer?.holes ?? [];
-      const { data } = await llm.completeJson(EvalMatches, {
-        role: judgeFor(llm, [...auditors]),
-        projectId,
-        step: 'eval',
-        authorProvider: [...auditors],
-        request: {
-          task: 'eval_match',
-          system: renderPrompt(kb, 'critic_of_writer/eval_match', {
-            holes: holes.map((h) => `${h.id} | ${h.holeType ? `тип ${h.holeType}` : `категория ${h.category.join(', ') || '—'}`} | серии ${h.episodes ?? h.episode ?? '—'} | ${h.description}`).join('\n') || 'Список продюсера не передан.',
-            findings: toMatch.map((f) => `${f.id} | тип ${f.holeType} | серия ${f.episode ?? '—'} | «${f.quote}» | ${f.viewerQuestion}`).join('\n'),
-            schema: schemaText(EvalMatches),
-          }),
-          messages: [{ role: 'user', content: 'Сопоставь. Только JSON.' }],
-        },
+      const lineOf = (ep: number) => {
+        const e = golden.plan.episodes.find((x) => x.ep === ep);
+        return e ? episodeLine(e, kit.genre.terms, kit.frame.hook_types) : '';
+      };
+      const windows = matchWindows(toMatch, holes, golden.plan.episodes.length, lineOf);
+      const judge = judgeFor(llm, [...auditors]);
+      const matched = await mapLimit(windows, concurrencyFromEnv(), async (w) => {
+        if (!w.findings.length) return [];
+        const { data } = await llm.completeJson(EvalMatches, {
+          role: judge,
+          projectId,
+          step: 'eval',
+          authorProvider: [...auditors],
+          request: {
+            task: `eval_match:${w.label}`,
+            system: renderPrompt(kb, 'critic_of_writer/eval_match', {
+              holes: w.holes.map((h) => `${h.id} | ${h.holeType ? `тип ${h.holeType}` : ''}${h.category.length ? ` категория ${h.category.join(', ')}` : ''} | серии ${h.episodes ?? h.episode ?? '—'} | ${h.description}`).join('\n') || 'Список продюсера не передан.',
+              findings: w.findings.map((f) => `${f.id} | тип ${f.holeType}${f.category?.length ? `, категория ${f.category.join(', ')}` : ''} | серия ${f.episode ?? '—'}${f.episodes ? ` (${f.episodes})` : ''} | «${f.quote}» | ${f.viewerQuestion}`).join('\n'),
+              plan: w.plan || 'Это замечания к библии, без серий.',
+              schema: schemaText(EvalMatches),
+            }),
+            messages: [{ role: 'user', content: 'Сопоставь. Только JSON.' }],
+          },
+        });
+        return data.matches;
       });
-      report.matches = data.matches;
+      report.matches = matched.flat();
       // Only matches to findings the auditor really made count, each finding once.
       const modelIds = new Set(report.findings.map((f) => f.id));
       const allIds = new Set(toMatch.map((f) => f.id));
-      const real = data.matches.filter((m) => m.real && allIds.has(m.finding_id));
+      const real = report.matches.filter((m) => m.real && allIds.has(m.finding_id));
+      const strict = real.filter((m) => !m.disputed);
       report.realFindings = new Set(real.filter((m) => modelIds.has(m.finding_id)).map((m) => m.finding_id)).size;
-      const matched = new Set(real.map((m) => m.hole_id).filter((x): x is string => !!x));
-      report.producerFound = holes.filter((h) => matched.has(h.id)).length;
-      report.producerMissed = holes.filter((h) => !matched.has(h.id)).map((h) => ({ id: h.id, description: h.description }));
+      report.realFindingsStrict = new Set(strict.filter((m) => modelIds.has(m.finding_id)).map((m) => m.finding_id)).size;
+      const found = (ms: typeof real) => new Set(ms.map((m) => m.hole_id).filter((x): x is string => !!x));
+      const matchedIds = found(real);
+      report.producerFound = holes.filter((h) => matchedIds.has(h.id)).length;
+      report.producerFoundStrict = holes.filter((h) => found(strict).has(h.id)).length;
+      report.producerMissed = holes.filter((h) => !matchedIds.has(h.id)).map((h) => ({ id: h.id, description: h.description }));
     }
 
     // 3. Seeded holes: code first, then a targeted model pass. What the golden project
@@ -240,7 +303,9 @@ const mark = (p: number | null, min: number) => (p === null ? '—' : p >= min ?
 /** Russian Markdown report with the spec thresholds (MVP / v1.0). */
 export function renderEvalReport(r: EvalReport, meta: { date: string; project: string; costUsd: number; architectModel: string }): string {
   const recall = pct(r.producerFound, r.producerHoles);
+  const recallStrict = pct(r.producerFoundStrict, r.producerHoles);
   const precision = pct(r.realFindings, r.findings.length);
+  const precisionStrict = pct(r.realFindingsStrict, r.findings.length);
   const seededFound = r.seeded.filter((s) => s.code || s.model).length;
   const seededPct = pct(seededFound, r.seeded.length);
   // The agent's own score (after the judge) against the producer's; unjudged points count as not scored.
@@ -258,8 +323,8 @@ export function renderEvalReport(r: EvalReport, meta: { date: string; project: s
     '',
     '| Метрика | Значение | MVP | v1.0 |',
     '|---|---|---|---|',
-    `| Найдено дыр продюсера | ${r.producerHoles ? `${r.producerFound} из ${r.producerHoles} (${fmt(recall)})` : 'нет списка продюсера'} | ≥70% ${mark(recall, 70)} | ≥85% ${mark(recall, 85)} |`,
-    `| Доля реальных замечаний | ${r.findings.length ? `${r.realFindings} из ${r.findings.length} (${fmt(precision)})` : '—'} | ≥50% ${mark(precision, 50)} | ≥65% ${mark(precision, 65)} |`,
+    `| Найдено дыр продюсера | ${r.producerHoles ? `${r.producerFound} из ${r.producerHoles} (${fmt(recall)}); без спорных ${r.producerFoundStrict} (${fmt(recallStrict)})` : 'нет списка продюсера'} | ≥70% ${mark(recall, 70)} | ≥85% ${mark(recall, 85)} |`,
+    `| Доля реальных замечаний | ${r.findings.length ? `${r.realFindings} из ${r.findings.length} (${fmt(precision)}); без спорных ${r.realFindingsStrict} (${fmt(precisionStrict)})` : '—'} | ≥50% ${mark(precision, 50)} | ≥65% ${mark(precision, 65)} |`,
     `| Найдено посеянных дыр | ${seededFound} из ${r.seeded.length} (${fmt(seededPct)}) | ≥80% ${mark(seededPct, 80)} | ≥90% ${mark(seededPct, 90)} |`,
     `| Расхождение с продюсером по чек-листу | ${divergence === null ? 'нет оценки продюсера' : `${divergence} балл.`} | ≤3 ${divergence === null ? '—' : divergence <= 3 ? '✓' : '✗'} | ≤2 ${divergence === null ? '—' : divergence <= 2 ? '✓' : '✗'} |`,
     '| Сцены «можно снимать после лёгкой правки» | считает `pnpm pilot` | ≥40% | ≥60% |',

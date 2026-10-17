@@ -32,12 +32,12 @@ function reply(req: LlmRequest): string {
   tasks.push(task);
   if (task.startsWith('devil_advocate:А:')) return JSON.stringify([hole]);
   if (task.startsWith('devil_advocate:') || task.startsWith('persona:') || task.startsWith('realism:')) return '[]';
-  if (task === 'eval_match') {
+  if (task.startsWith('eval_match')) {
     const id = /(review\.А\S+) \| тип 3/u.exec(req.system ?? '')?.[1];
     // A code finding is offered to the judge too and counts towards the producer's holes.
     const codeId = /^(\S+) \| тип \d+ \| серия [^|]+\| «[^»]*» \| Зритель спросит: [^\n]*/mu;
     const codeLine = (req.system ?? '').split('\n').find((l) => codeId.test(l) && !l.startsWith('review.') && !l.startsWith('persona.'));
-    const matches = [{ finding_id: id, hole_id: 'p1', real: true, disputed: false, reason: 'Та же дыра' }];
+    const matches = id ? [{ finding_id: id, hole_id: 'p1', real: true, disputed: false, reason: 'Та же дыра' }] : [];
     if (codeLine && matchCode) matches.push({ finding_id: codeLine.split(' | ')[0]!, hole_id: 'p2', real: true, disputed: false, reason: 'Код нашёл' });
     return JSON.stringify({ matches });
   }
@@ -80,8 +80,8 @@ describe('auditor evaluation', () => {
     expect(report.anchors.onPlace).toBe(report.anchors.total);
 
     const md = renderEvalReport(report, { date: '2026-09-29', project: 'muzh_krov', costUsd: 1.5, architectModel: 'a-big' });
-    expect(md).toContain('| Найдено дыр продюсера | 1 из 2 (50%) | ≥70% ✗ | ≥85% ✗ |');
-    expect(md).toContain('| Доля реальных замечаний | 1 из 1 (100%) | ≥50% ✓ | ≥65% ✓ |');
+    expect(md).toContain('| Найдено дыр продюсера | 1 из 2 (50%); без спорных 1 (50%) | ≥70% ✗ | ≥85% ✗ |');
+    expect(md).toContain('| Доля реальных замечаний | 1 из 1 (100%); без спорных 1 (100%) | ≥50% ✓ | ≥65% ✓ |');
     expect(md).toContain('| Опорные точки на своих номерах | 12 из 12 (100%) | 100% ✓ | 100% |');
   });
 
@@ -107,7 +107,7 @@ describe('auditor evaluation', () => {
   it('audits seeded holes with a targeted pass: only the categories of the hole type', async () => {
     const [h] = seedHoles(golden, kit, 1).filter((x) => x.holeType === 11 && x.episode);
     await runAuditEval({ llm: client(), kb, kit, golden, projectId: 'ev', seeded: [h!] });
-    const after = tasks.slice(tasks.lastIndexOf('eval_match') + 1).filter((t) => t.startsWith('devil_advocate:'));
+    const after = tasks.slice(tasks.findLastIndex((t) => t.startsWith('eval_match')) + 1).filter((t) => t.startsWith('devil_advocate:'));
     // Hole type 11 (character knowledge) is covered by category Д only, over the block of the episode.
     expect(after).toHaveLength(1);
     expect(after[0]).toMatch(/^devil_advocate:Д:план, серии \d+–\d+$/u);
@@ -137,7 +137,9 @@ describe('auditor evaluation', () => {
         matches: [{ finding_id: 'f1', hole_id: null, real: true, disputed: false, reason: '' }],
         producerHoles: 0,
         producerFound: 0,
+        producerFoundStrict: 0,
         realFindings: 1,
+        realFindingsStrict: 1,
         seeded: [],
         checklist: { code: 0, unknown: 0 },
         anchors: { total: 1, onPlace: 1 },
