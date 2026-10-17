@@ -150,6 +150,13 @@ function answer(g: Golden, task: string, req: LlmRequest): unknown {
     }
     case 'extract_facts':
       return { facts: G.bible.facts, knowledge: [] };
+    case 'season_plan_fix': {
+      // The golden outlines of the listed episodes: the demo plan is already right.
+      const eps = new Set(a.split(',').map(Number));
+      return G.plan.episodes.filter((e) => eps.has(e.ep));
+    }
+    case 'continuity':
+      return { facts: [], knowledge: [], states: [] };
     case 'devil_advocate': {
       // The planted hole answers in the pass whose text holds its quote (a block pass or the whole season).
       const covers = b.includes(d.audit.block) || (req.system ?? '').includes(d.audit.finding.quote);

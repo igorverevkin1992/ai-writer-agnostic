@@ -32,7 +32,8 @@ import { Logline } from '../schemas/logline.ts';
 import { EpisodeOutline, FrameDeviation, SeasonPlan } from '../schemas/season.ts';
 import type { StepId } from '../steps.ts';
 import { INCOMPLETE_CHECK, Pipeline, PipelineError, type StepStatus } from './machine.ts';
-import { getProject } from './project.ts';
+import { getProject, projectOverrides } from './project.ts';
+import { missingScripts } from './next.ts';
 
 export interface StepDeps {
   db: Db;
@@ -73,7 +74,8 @@ interface Ctx extends StepDeps {
 function context(deps: StepDeps, step: StepId): Ctx {
   const project = getProject(deps.db, deps.projectId);
   if (!project.genreId) throw new PipelineError('У проекта не выбран жанр');
-  const kit = genreKit(deps.kb, project.genreId);
+  // The project's frame inputs (paywall, length) and hero terms apply to every step.
+  const kit = genreKit(deps.kb, project.genreId, projectOverrides(project));
   return {
     ...deps,
     kit,
@@ -155,6 +157,9 @@ export function approveStep(deps: Omit<StepDeps, 'llm'>, step: StepId, opts: { c
   if (step === 'scripts') {
     const outdated = memory.staleEpisodes().scripts;
     if (outdated.length) throw new PipelineError(`Устаревшие или непроверенные сценарии: ${outdated.join(', ')}. Перепишите их`);
+    // «Scripts» means every episode: a season with gaps is not approved.
+    const missing = missingScripts(memory);
+    if (missing.length) throw new PipelineError(`Нельзя утвердить «Сценарии»: нет готовых сценариев у ${missing.length} серий (${missing.join(', ')})`);
   }
   pipeline.approve(step);
 }
@@ -173,13 +178,21 @@ export function cardBlocks(eps: number[]): number[][] {
   return out;
 }
 
-function cardsFor(eps: number[]) {
+function cardsFor(eps: number[], hookKinds: readonly string[] = []) {
   return z
     .array(EpisodeCard)
     .length(eps.length)
     .superRefine((cards, ctx) => {
       cards.forEach((c, i) => {
         if (c.ep !== eps[i]) ctx.addIssue({ code: 'custom', path: [i, 'ep'], message: `Здесь должна быть карточка ${eps[i]}-й серии` });
+        // The HOOK beat names one of the frame's hook kinds, so the answer is corrected at parse time.
+        if (hookKinds.length) {
+          c.beats?.forEach((b, j) => {
+            if (b.type === 'HOOK' && b.hook_kind && !hookKinds.includes(b.hook_kind)) {
+              ctx.addIssue({ code: 'custom', path: [i, 'beats', j, 'hook_kind'], message: `hook_kind — один из: ${hookKinds.join(', ')}` });
+            }
+          });
+        }
       });
     });
 }
@@ -284,8 +297,7 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
       const which = whole ? `${eps[0]}–${eps.at(-1)}` : eps.join(', ');
       const outlines = plan.episodes.filter((e) => eps.includes(e.ep));
       const cards = ctx.memory.cards();
-      // TODO(hook_kind): validate card beat `hook_kind` against the frame once the frame lists hook kinds; it does not yet.
-      const { data } = await ctx.llm.completeJson(cardsFor(eps), {
+      const { data } = await ctx.llm.completeJson(cardsFor(eps, Object.keys(ctx.kit.frame.hook_kinds)), {
         role: 'architect',
         projectId: ctx.projectId,
         step: 'episode_cards',
@@ -294,6 +306,7 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
           cacheablePrefix: [ctx.kbText, `# Библия сериала\n${json(bible)}`, `# План сезона\n${json(plan)}`],
           system: renderPrompt(ctx.kb, 'architect/episode_cards', {
             which,
+            hook_kinds: Object.entries(ctx.kit.frame.hook_kinds).map(([id, label]) => `${id} — ${label}`).join(', ') || 'на усмотрение автора',
             from: eps[0]!,
             to: eps.at(-1)!,
             outlines: outlines.map((e) => episodeLine(e, ctx.kit.genre.terms, f.hook_types)).join('\n'),

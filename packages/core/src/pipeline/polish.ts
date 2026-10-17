@@ -9,7 +9,7 @@ import type { Finding } from '../schemas/finding.ts';
 import { Script, ScriptBlock } from '../schemas/script.ts';
 import { renderBlock, renderScript } from '../text/script.ts';
 import { Pipeline, PipelineError } from './machine.ts';
-import { getProject } from './project.ts';
+import { getProject, projectOverrides } from './project.ts';
 
 export const POLISH_VARIANTS = 5;
 
@@ -35,7 +35,7 @@ interface PolishState extends PolishRequest {
 /** The writer offers 5 variants of a fragment the producer selected. */
 export async function proposePolish(deps: { db: Db; llm: LlmClient; kb: Kb; projectId: string }, req: PolishRequest): Promise<PolishState> {
   const project = getProject(deps.db, deps.projectId);
-  const kit = genreKit(deps.kb, project.genreId ?? '');
+  const kit = genreKit(deps.kb, project.genreId ?? '', projectOverrides(project));
   assertPolishOpen(new Pipeline(deps.db, deps.projectId));
   const memory = new ProjectMemory(deps.db, deps.projectId);
   const script = memory.script(req.ep);
@@ -75,7 +75,7 @@ export async function proposePolish(deps: { db: Db; llm: LlmClient; kb: Kb; proj
  */
 export function choosePolish(deps: { db: Db; kb: Kb; projectId: string }, variant: number): { script: Script; findings: Finding[] } {
   const project = getProject(deps.db, deps.projectId);
-  const kit = genreKit(deps.kb, project.genreId ?? '');
+  const kit = genreKit(deps.kb, project.genreId ?? '', projectOverrides(project));
   assertPolishOpen(new Pipeline(deps.db, deps.projectId));
   const memory = new ProjectMemory(deps.db, deps.projectId);
   const state = memory.latestArtifact('polish') as PolishState | undefined;
