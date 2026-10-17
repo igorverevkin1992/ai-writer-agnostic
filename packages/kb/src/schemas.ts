@@ -34,32 +34,65 @@ export const CheckRun = z.strictObject({
 });
 export type CheckRun = z.infer<typeof CheckRun>;
 
+/** Genre rules are R01…; rules shared by every genre (rules/common.yaml) are C01…. */
+const RuleId = z.string().regex(/^[RC]\d{2}$/, 'Номер правила — вида R05 (жанровое) или C01 (общее)');
+const CommonRuleId = z.string().regex(/^C\d{2}$/, 'Номер общего правила — вида C01');
+
+const RuleCheck = z.strictObject({
+  code: Text.optional(),
+  llm: Text.optional(),
+  /** Code checks (packages/core/checks/code) that enforce the code part of this rule. */
+  run: z.array(CheckRun).default([]),
+});
+
 export const Rule = z.strictObject({
-  id: z.string().regex(/^R\d{2}$/, 'Номер правила — вида R05'),
+  id: RuleId,
   module: Text,
+  /**
+   * Texts (text, check.code, check.llm, fix_hints, string params of check.run) may hold placeholders
+   * `{{limits.max_speakers_per_scene}}`, `{{rhythm.max_same_hook_run}}`, `{{inputs.paywall}}`, `{{L}}`,
+   * `{{anchors.reset1}}`, `{{hero.nom}}`…: genreKit fills them from the kit (see loader.ts, kitVars).
+   */
   text: Text,
   /** code: what code checks (checks/code); llm: what a cross-family judge decides, with a quote. */
-  check: z
-    .strictObject({
-      code: Text.optional(),
-      llm: Text.optional(),
-      /** Code checks (packages/core/checks/code) that enforce the code part of this rule. */
-      run: z.array(CheckRun).default([]),
-    })
-    .refine((c) => c.code || c.llm, 'Нужна хотя бы одна проверка: code или llm'),
+  check: RuleCheck.refine((c) => c.code || c.llm, 'Нужна хотя бы одна проверка: code или llm'),
   severity: Severity,
   checklist: z.strictObject({ item: Text, points: z.int().min(1) }).optional(),
   fix_hints: z.array(Text).default([]),
 });
 export type Rule = z.infer<typeof Rule>;
 
+/**
+ * A genre's override of a common rule (rules/<genre>.yaml, `common: {C04: {...}}`): every field is
+ * optional and replaces the common one; `check.run` replaces the whole list; `check.code: null`
+ * or `check.llm: null` removes that part (e.g. when another genre rule already runs the code check).
+ */
+export const RuleOverride = z.strictObject({
+  text: Text.optional(),
+  check: z
+    .strictObject({
+      code: Text.nullable().optional(),
+      llm: Text.nullable().optional(),
+      run: z.array(CheckRun).optional(),
+    })
+    .optional(),
+  severity: Severity.optional(),
+  fix_hints: z.array(Text).optional(),
+});
+export type RuleOverride = z.infer<typeof RuleOverride>;
+
 export const RulesFile = z.strictObject({
   module: Text,
   title: Text,
   stub: Stub,
   rules: z.array(Rule).min(1),
+  /** Per-genre overrides of rules/common.yaml, keyed by common rule id; needs `common_rules: true` in the genre. */
+  common: z.record(CommonRuleId, RuleOverride).default({}),
 });
 export type RulesFile = z.infer<typeof RulesFile>;
+
+/** File name (module) of the rules shared by every genre that opts in with `common_rules: true`. */
+export const COMMON_RULES_ID = 'common';
 
 /**
  * Ways a villain leaves the story. Revenge: shame, law, status, flight, allies, turned_ally.
@@ -112,6 +145,8 @@ const SeasonFrameShape = z.strictObject({
       response_within: z.int().min(1),
       max_suffering_run: z.int().min(1),
       max_same_hook_run: z.int().min(1),
+      /** Dramatic irony: at most this many suspense episodes in a row before a surprise (thriller). */
+      max_suspense_run: z.int().min(1).optional(),
       emotions_per_episode: z.tuple([z.int().min(1), z.int().min(1)]),
       /** With lines: at most this many episodes in a row without a line's kaif. */
       max_without_line: z.int().min(1).optional(),
@@ -122,6 +157,11 @@ const SeasonFrameShape = z.strictObject({
     tolerance: z.int().min(0),
     /** Optional vocabulary of cliffhanger types (id → name). When set, plans must use these ids. */
     hook_types: z.record(z.string().regex(/^[a-z_]+$/u, 'id типа обрыва — латиница и _'), Text).default({}),
+    /**
+     * Vocabulary of opening hooks (id → name): what the first 3 seconds of an episode do.
+     * Episode cards' HOOK beat uses these ids (hook_kind); prompts render them as {{hook_kinds}}.
+     */
+    hook_kinds: z.record(z.string().regex(/^[a-z_]+$/u, 'id вида хука — латиница и _'), Text).default({}),
   }),
 });
 export const SeasonFrame = z.preprocess((raw) => {
@@ -322,12 +362,15 @@ export const Genre = z.strictObject({
   title: Text,
   platform: Text.optional(),
   rules: Text,
+  /** Also apply rules/common.yaml (C01…), with the overrides in this genre's rules file (`common:`). */
+  common_rules: z.boolean().default(false),
   frame: Text,
   checklist: Text,
   personas: Text,
   constraints: z.strictObject({ legal: Text, production: Text }),
   /** Optional guides/<id>.yaml with craft notes for this genre. */
   guide: Text.optional(),
+  /** Genre defaults of the hero words and the wound name; a project may override them (SPEC, wave 3). */
   terms: GenreTerms.default(DEFAULT_TERMS),
 });
 export type Genre = z.infer<typeof Genre>;

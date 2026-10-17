@@ -8,9 +8,9 @@
 
 export type FrameInputs = Record<string, number>;
 
-const TOKEN = /\s*(\d+(?:\.\d+)?|[A-Za-z_]\w*|[-+*()])\s*/gu;
+const TOKEN = /\s*(\d+(?:\.\d+)?|[A-Za-z_]\w*|[-+*/()])\s*/gu;
 
-/** Evaluates `a*b + c - d` with names from `vars`; the result is rounded to an episode number. */
+/** Evaluates `a*b + c - d` (also `/`) with names from `vars`; the result is rounded to a whole number. */
 export function evalEpisodeExpr(expr: string, vars: FrameInputs): number {
   const tokens: string[] = [];
   let rest = expr;
@@ -39,9 +39,8 @@ export function evalEpisodeExpr(expr: string, vars: FrameInputs): number {
   };
   const product = (): number => {
     let v = atom();
-    while (peek() === '*') {
-      i++;
-      v *= atom();
+    while (peek() === '*' || peek() === '/') {
+      v = tokens[i++] === '*' ? v * atom() : v / atom();
     }
     return v;
   };

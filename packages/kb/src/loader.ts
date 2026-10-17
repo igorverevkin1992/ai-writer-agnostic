@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { LineCounter, isNode, parseDocument, type Document } from 'yaml';
 import type { z } from 'zod';
 import { KbLoadError, type KbIssue } from './errors.ts';
+import { evalEpisodeExpr } from './frameInputs.ts';
 import {
+  COMMON_RULES_ID,
   Case,
   Checklist,
   Genre,
@@ -16,6 +18,8 @@ import {
   Method,
   Personas,
   ProductionConstraints,
+  type Rule,
+  type RuleOverride,
   RulesFile,
   SeasonFrame,
   episodeRange,
@@ -52,7 +56,10 @@ export interface Kb {
   prompts: Record<string, string>;
 }
 
-/** Everything that applies to a project of one genre. */
+/**
+ * Everything that applies to a project of one genre. Rules are the genre's own plus the common
+ * ones (rules/common.yaml) with the genre's overrides; every text has its placeholders filled.
+ */
 export interface GenreKit {
   genre: Genre;
   rules: RulesFile;
@@ -76,15 +83,166 @@ export function genreKit(kb: Kb, genreId: string): GenreKit {
       `Жанр «${genreId}» не найден. Есть: ${Object.keys(kb.genres).join(', ') || 'ни одного'}.`,
     );
   }
-  return {
+  const kit: GenreKit = {
     genre,
-    rules: kb.rules[genre.rules]!,
+    rules: mergeRules(kb.rules[genre.rules]!, genre.common_rules ? kb.rules[COMMON_RULES_ID] : undefined),
     frame: kb.frames[genre.frame]!,
     checklist: kb.checklists[genre.checklist]!,
     personas: kb.personas[genre.personas]!,
     legal: kb.legal[genre.constraints.legal]!,
     production: kb.production[genre.constraints.production]!,
     guide: genre.guide ? kb.guides[genre.guide] : undefined,
+  };
+  return renderKit(kit);
+}
+
+/** The genre's rules followed by the common ones, each with the genre's override applied. */
+export function mergeRules(genre: RulesFile, common: RulesFile | undefined): RulesFile {
+  if (!common) return genre;
+  return { ...genre, rules: [...genre.rules, ...common.rules.map((r) => applyOverride(r, genre.common[r.id]))] };
+}
+
+function applyOverride(rule: Rule, o: RuleOverride | undefined): Rule {
+  if (!o) return rule;
+  const check = { ...rule.check };
+  if (o.check) {
+    if (o.check.code === null) delete check.code;
+    else if (o.check.code !== undefined) check.code = o.check.code;
+    if (o.check.llm === null) delete check.llm;
+    else if (o.check.llm !== undefined) check.llm = o.check.llm;
+    if (o.check.run) check.run = o.check.run;
+  }
+  return { ...rule, text: o.text ?? rule.text, severity: o.severity ?? rule.severity, fix_hints: o.fix_hints ?? rule.fix_hints, check };
+}
+
+/** Values the texts of a kit may refer to by `{{name}}`. */
+export type KitVars = Record<string, string | number>;
+
+/**
+ * One source for every number: the frame (`L`, `free`, `inputs.<name>`, `anchors.<id>` as «a–b»,
+ * `anchors.<id>.min|max`, `blocks.<n>`, `rhythm.<key>`), production limits (`limits.<key>`,
+ * `metrics.<key>`), legal (`age_rating`) and the hero words (`hero.nom|gen|dat`, `wound`).
+ * A project that overrides frame inputs or hero terms rebuilds the kit and renders it with these vars.
+ */
+export function kitVars(kit: Pick<GenreKit, 'genre' | 'frame' | 'production' | 'legal'>): KitVars {
+  const f = kit.frame;
+  const p = kit.production;
+  const t = kit.genre.terms;
+  const range = (min: number, max: number) => (min === max ? min : `${min}–${max}`);
+  const vars: KitVars = {
+    L: f.episodes,
+    episodes: f.episodes,
+    free: f.free,
+    tolerance: f.tolerance,
+    'duration.min': f.duration_s.min,
+    'duration.max': f.duration_s.max,
+    'duration.target': f.duration_s.target,
+    'hero.nom': t.hero.nom,
+    'hero.gen': t.hero.gen,
+    'hero.dat': t.hero.dat,
+    wound: t.wound,
+    age_rating: kit.legal.age_rating,
+  };
+  for (const [k, v] of Object.entries(f.inputs)) vars[`inputs.${k}`] = v;
+  for (const [id, spec] of Object.entries(f.anchors)) {
+    const { min, max } = episodeRange(spec);
+    vars[`anchors.${id}`] = range(min, max);
+    vars[`anchors.${id}.min`] = min;
+    vars[`anchors.${id}.max`] = max;
+  }
+  f.blocks.forEach(([a, b], i) => {
+    vars[`blocks.${i + 1}`] = range(a, b);
+    vars[`blocks.${i + 1}.min`] = a;
+    vars[`blocks.${i + 1}.max`] = b;
+  });
+  const numbers = (prefix: string, obj: Record<string, unknown>) => {
+    for (const [k, v] of Object.entries(obj)) {
+      if (typeof v === 'number') vars[`${prefix}.${k}`] = v;
+      else if (Array.isArray(v) && v.length === 2 && v.every((x) => typeof x === 'number')) vars[`${prefix}.${k}`] = range(v[0] as number, v[1] as number);
+    }
+  };
+  numbers('rhythm', f.rhythm);
+  numbers('limits', p.limits);
+  numbers('metrics', p.script_metrics);
+  if (f.villains) vars['villains.count'] = f.villains.count;
+  return vars;
+}
+
+const PLACEHOLDER = /\{\{\s*([^{}]+?)\s*\}\}/gu;
+
+/**
+ * Fills `{{name}}` from vars. A placeholder with arithmetic (`{{L/30}}`, `{{0.42*L}}`) is
+ * evaluated over the numeric vars and rounded. Unknown names throw: the loader turns that into
+ * an issue naming the file.
+ */
+export function fillPlaceholders(text: string, vars: KitVars): string {
+  return text.replace(PLACEHOLDER, (_, name: string) => {
+    const v = vars[name];
+    if (v !== undefined) return String(v);
+    if (/[-+*/]/u.test(name)) return String(evalVarExpr(name, vars));
+    throw new Error(`Неизвестный параметр «{{${name}}}»`);
+  });
+}
+
+function evalVarExpr(expr: string, vars: KitVars): number {
+  const nums: Record<string, number> = {};
+  const expanded = expr.replace(/[A-Za-z_][\w.]*/gu, (name) => {
+    const v = vars[name];
+    if (typeof v !== 'number') throw new Error(`В выражении «{{${expr}}}» нет числа «${name}»`);
+    const key = `v${Object.keys(nums).length}`;
+    nums[key] = v;
+    return key;
+  });
+  return evalEpisodeExpr(expanded, nums);
+}
+
+const NUMERIC = /^\s*-?\d+(?:\.\d+)?\s*$/u;
+const ARITHMETIC = /^[\d\s.+\-*/()]+$/u;
+
+/** Check params: a string with placeholders becomes a number when what is left is a number or arithmetic. */
+function fillParam(value: unknown, vars: KitVars): unknown {
+  if (typeof value === 'string') {
+    if (!value.includes('{{')) return value;
+    const filled = fillPlaceholders(value, vars);
+    if (NUMERIC.test(filled)) return Number(filled);
+    if (ARITHMETIC.test(filled) && /\d/u.test(filled)) return evalEpisodeExpr(filled, {});
+    return filled;
+  }
+  if (Array.isArray(value)) return value.map((v) => fillParam(v, vars));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, fillParam(v, vars)]));
+  return value;
+}
+
+function renderRule(rule: Rule, vars: KitVars): Rule {
+  const fill = (s: string) => fillPlaceholders(s, vars);
+  return {
+    ...rule,
+    text: fill(rule.text),
+    fix_hints: rule.fix_hints.map(fill),
+    check: {
+      ...rule.check,
+      ...(rule.check.code !== undefined ? { code: fill(rule.check.code) } : {}),
+      ...(rule.check.llm !== undefined ? { llm: fill(rule.check.llm) } : {}),
+      run: rule.check.run.map((r) => ({ ...r, params: fillParam(r.params, vars) as Record<string, unknown> })),
+    },
+  };
+}
+
+/** Fills the placeholders of every text in the kit: rules, checklist, personas, guide. */
+export function renderKit(kit: GenreKit, vars: KitVars = kitVars(kit)): GenreKit {
+  const fill = (s: string) => fillPlaceholders(s, vars);
+  return {
+    ...kit,
+    rules: { ...kit.rules, rules: kit.rules.rules.map((r) => renderRule(r, vars)) },
+    checklist: { ...kit.checklist, items: kit.checklist.items.map((i) => ({ ...i, text: fill(i.text) })) },
+    personas: { ...kit.personas, personas: kit.personas.personas.map((p) => ({ ...p, focus: fill(p.focus) })) },
+    guide: kit.guide
+      ? {
+          ...kit.guide,
+          sections: kit.guide.sections.map((s) => ({ title: fill(s.title), items: s.items.map(fill) })),
+          hole_questions: Object.fromEntries(Object.entries(kit.guide.hole_questions).map(([k, qs]) => [k, qs.map(fill)])),
+        }
+      : undefined,
   };
 }
 
@@ -340,16 +498,31 @@ function crossCheck(
       issues.push({ file, field: 'guide', message: `Нет файла guides/${g.guide}.yaml` });
     }
 
-    const rules = kb.rules.loaded[g.rules];
+    const own = kb.rules.loaded[g.rules];
+    const common = kb.rules.loaded[COMMON_RULES_ID];
+    if (g.common_rules && !common && !kb.rules.failed.has(COMMON_RULES_ID)) {
+      issues.push({ file, field: 'common_rules', message: `Нет файла rules/${COMMON_RULES_ID}.yaml` });
+    }
+    if (own && !g.common_rules && Object.keys(own.common).length) {
+      issues.push({ file, field: 'common_rules', message: `В rules/${g.rules}.yaml есть переопределения общих правил (common), а у жанра нет common_rules: true` });
+    }
+    const rules = own ? mergeRules(own, g.common_rules ? common : undefined) : undefined;
+    /** Where a merged rule lives: the genre file for R.., the override there or common.yaml for C... */
+    const ruleFile = (rule: Rule) => (rule.id.startsWith('C') && !own?.common[rule.id] ? `rules/${COMMON_RULES_ID}.yaml` : `rules/${g.rules}.yaml`);
+    rules?.rules.forEach((rule) => {
+      if (!rule.check.code && !rule.check.llm) {
+        issues.push({ file: `rules/${g.rules}.yaml`, field: `common.${rule.id}.check`, message: `У правила ${rule.id} после переопределения не осталось ни одной проверки: code или llm` });
+      }
+    });
     const checklist = kb.checklists.loaded[g.checklist];
     const frame = kb.frames.loaded[g.frame];
     if (frame) {
       const anchors = new Set(Object.keys(frame.anchors));
       const bad = (where: KbIssue, id: string) =>
         issues.push({ ...where, message: `Нет опорной точки «${id}» в frames/${g.frame}.yaml (жанр ${g.id})` });
-      rules?.rules.forEach((rule, ri) =>
+      rules?.rules.forEach((rule) =>
         rule.check.run.forEach((run, ki) => {
-          const where = { file: `rules/${g.rules}.yaml`, field: `rules[${ri}].check.run[${ki}]`, message: '' };
+          const where = { file: ruleFile(rule), field: `${rule.id}.check.run[${ki}]`, message: '' };
           const named = [
             ...(run.only ?? []).filter((o) => o.startsWith('anchor.')).map((o) => o.slice('anchor.'.length)),
             ...(Array.isArray(run.params.near) ? (run.params.near as unknown[]).map(String) : []),
@@ -378,15 +551,44 @@ function crossCheck(
     }
     if (rules && checklist) {
       const ids = new Set(rules.rules.map((r) => r.id));
+      const where = g.common_rules ? `rules/${g.rules}.yaml и rules/${COMMON_RULES_ID}.yaml` : `rules/${g.rules}.yaml`;
       checklist.items.forEach((item, i) => {
         if (item.rule && !ids.has(item.rule)) {
           issues.push({
             file: `checklist/${g.checklist}.yaml`,
             field: `items[${i}].rule`,
-            message: `Нет правила ${item.rule} в rules/${g.rules}.yaml (жанр ${id})`,
+            message: `Нет правила ${item.rule} в ${where} (жанр ${id})`,
           });
         }
       });
+    }
+
+    // Every placeholder in the kit's texts must resolve against this genre's numbers and words.
+    const personas = kb.personas.loaded[g.personas];
+    const legal = kb.legal[g.constraints.legal];
+    const production = kb.production[g.constraints.production];
+    const guide = g.guide ? kb.guides.loaded[g.guide] : undefined;
+    if (rules && frame && checklist && personas && legal && production && (!g.guide || guide)) {
+      const kit: GenreKit = { genre: g, rules, frame, checklist, personas, legal, production, guide };
+      const vars = kitVars(kit);
+      const tryFill = (where: KbIssue, texts: string[]) => {
+        for (const text of texts) {
+          try {
+            fillPlaceholders(text, vars);
+          } catch (e) {
+            issues.push({ ...where, message: `${e instanceof Error ? e.message : String(e)} (жанр ${g.id})` });
+            return;
+          }
+        }
+      };
+      rules.rules.forEach((rule) => {
+        const params = rule.check.run.flatMap((r) => JSON.stringify(r.params));
+        tryFill({ file: ruleFile(rule), field: rule.id, message: '' }, [rule.text, rule.check.code ?? '', rule.check.llm ?? '', ...rule.fix_hints, ...params]);
+      });
+      checklist.items.forEach((item, i) => tryFill({ file: `checklist/${g.checklist}.yaml`, field: `items[${i}].text`, message: '' }, [item.text]));
+      personas.personas.forEach((p, i) => tryFill({ file: `personas/${g.personas}.yaml`, field: `personas[${i}].focus`, message: '' }, [p.focus]));
+      guide?.sections.forEach((s, i) => tryFill({ file: `guides/${g.guide}.yaml`, field: `sections[${i}]`, message: '' }, [s.title, ...s.items]));
+      for (const [k, qs] of Object.entries(guide?.hole_questions ?? {})) tryFill({ file: `guides/${g.guide}.yaml`, field: `hole_questions.${k}`, message: '' }, qs);
     }
   }
 
@@ -394,13 +596,24 @@ function crossCheck(
     const name = `rules/${id}.yaml`;
     if (file.module !== id) issues.push({ file: name, field: 'module', message: `Модуль должен быть «${id}», как имя файла` });
     const seen = new Set<string>();
+    const prefix = id === COMMON_RULES_ID ? 'C' : 'R';
     file.rules.forEach((rule, ri) => {
       if (seen.has(rule.id)) issues.push({ file: name, field: `rules[${ri}].id`, message: `Правило ${rule.id} встречается дважды` });
       seen.add(rule.id);
       if (rule.module !== file.module) {
         issues.push({ file: name, field: `rules[${ri}].module`, message: `Модуль правила «${rule.module}» не совпадает с модулем файла «${file.module}»` });
       }
+      if (!rule.id.startsWith(prefix)) {
+        issues.push({ file: name, field: `rules[${ri}].id`, message: id === COMMON_RULES_ID ? `Общие правила нумеруются C01, C02…, а не ${rule.id}` : `Правила жанра нумеруются R01, R02…; общие (C…) живут в rules/${COMMON_RULES_ID}.yaml` });
+      }
     });
+    const common = kb.rules.loaded[COMMON_RULES_ID];
+    if (id !== COMMON_RULES_ID && common) {
+      const ids = new Set(common.rules.map((r) => r.id));
+      for (const key of Object.keys(file.common)) {
+        if (!ids.has(key)) issues.push({ file: name, field: `common.${key}`, message: `Нет правила ${key} в rules/${COMMON_RULES_ID}.yaml` });
+      }
+    }
   }
 
   for (const [id, checklist] of Object.entries(kb.checklists.loaded)) {
