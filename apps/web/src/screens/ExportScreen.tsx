@@ -14,12 +14,20 @@ export function ExportScreen({ data, refresh }: { data: Overview; refresh: () =>
   const pid = data.project.id;
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [exclude, setExclude] = useState(false);
+  const scriptsApproved = data.steps.find((s) => s.step === 'scripts')?.status === 'approved';
+  const unready = new Set([
+    ...data.stale.cards,
+    ...data.stale.scripts,
+    ...(scriptsApproved ? [] : data.scripts),
+    ...data.cards.filter((ep) => !data.cardBlocks.some((start) => ep >= start && ep < start + 10)),
+  ]);
 
   const download = async (format: string) => {
     setBusy(format);
     setError('');
     try {
-      const res = await fetch(`/api/projects/${pid}/export?format=${format}`);
+      const res = await fetch(`/api/projects/${pid}/export?format=${format}${exclude ? '&exclude=1' : ''}`);
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? `Ошибка сервера (${res.status})`);
@@ -41,7 +49,13 @@ export function ExportScreen({ data, refresh }: { data: Overview; refresh: () =>
 
   return (
     <section className="export">
-      <p className="muted">В файлы попадает всё, что есть в проекте сейчас. Скачать можно в любой момент.</p>
+      <p className="muted">В файлы попадает всё, что есть в проекте сейчас. Скачать можно в любой момент. Устаревшие и ещё не утверждённые серии помечаются словами «устарело» и «не утверждено».</p>
+      {unready.size > 0 && (
+        <label className="inline">
+          <input type="checkbox" checked={exclude} onChange={(e) => setExclude(e.target.checked)} />
+          Не включать устаревшие и неутверждённые серии ({unready.size})
+        </label>
+      )}
       {error && <p className="error">{error}</p>}
       <div className="export-grid">
         {FORMATS.map(([format, title, text]) => (

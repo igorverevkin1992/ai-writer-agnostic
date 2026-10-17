@@ -20,6 +20,7 @@ export function FindingCard({ f, facts, projectId, onDone, canAddFact = true }: 
   const [factId, setFactId] = useState('');
   const [newText, setNewText] = useState('');
   const [since, setSince] = useState('');
+  const [reason, setReason] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -29,7 +30,7 @@ export function FindingCard({ f, facts, projectId, onDone, canAddFact = true }: 
     setError('');
     try {
       if (mode === 'dismiss') {
-        await post(`/findings/${encodeURIComponent(f.id)}/dismiss`, { projectId, factId });
+        await post(`/findings/${encodeURIComponent(f.id)}/dismiss`, { projectId, ...(factId ? { factId } : {}), ...(reason.trim() ? { reason: reason.trim() } : {}) });
       } else if (factId === '__new') {
         const id = `f_p${Date.now().toString(36)}`;
         await post(`/findings/${encodeURIComponent(f.id)}/resolve`, {
@@ -70,22 +71,29 @@ export function FindingCard({ f, facts, projectId, onDone, canAddFact = true }: 
       {f.agentRule && <p className="muted">Правило для агента: {f.agentRule}</p>}
       {f.status === 'open' && f.check === 'pipeline.incomplete' ? (
         <p className="muted">Закроется, когда шаг будет выполнен заново до конца.</p>
-      ) : f.status === 'open' && facts.length === 0 && !canAddFact ? (
-        <p className="muted">Закрыть фактом можно после того, как появится библия.</p>
       ) : f.status === 'open' ? (
         mode === '' ? (
           <div className="actions">
-            <button onClick={() => setMode('resolve')}>Закрыть фактом</button>
-            {facts.length > 0 && (
-              <button className="ghost" onClick={() => setMode('dismiss')}>
-                Это не дыра
-              </button>
+            {facts.length === 0 && !canAddFact ? (
+              <span className="muted">Закрыть фактом можно после того, как появится библия.</span>
+            ) : (
+              <button onClick={() => setMode('resolve')}>Закрыть фактом</button>
             )}
+            <button className="ghost" onClick={() => setMode('dismiss')}>
+              Это не дыра
+            </button>
           </div>
         ) : (
           <div className="resolve-form">
+            {mode === 'dismiss' && (
+              <label>
+                Почему это не дыра (своими словами; запись останется в журнале правок)
+                <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Например: полиция в этом городе куплена — это показано во 2-й серии" />
+              </label>
+            )}
+            {(mode === 'resolve' || facts.length > 0) && (
             <label>
-              {mode === 'dismiss' ? 'Какой факт уже отвечает на вопрос зрителя' : 'Факт, который закрывает дыру'}
+              {mode === 'dismiss' ? 'Или факт, который уже отвечает на вопрос зрителя (необязательно)' : 'Факт, который закрывает дыру'}
               <select value={factId} onChange={(e) => setFactId(e.target.value)}>
                 <option value="">— выберите —</option>
                 {facts.map((x) => (
@@ -96,6 +104,7 @@ export function FindingCard({ f, facts, projectId, onDone, canAddFact = true }: 
                 {mode === 'resolve' && canAddFact && <option value="__new">+ Новый факт…</option>}
               </select>
             </label>
+            )}
             {factId === '__new' && (
               <>
                 <textarea rows={2} placeholder="Например: следователь без доказательств не может защитить Дашу" value={newText} onChange={(e) => setNewText(e.target.value)} />
@@ -107,7 +116,7 @@ export function FindingCard({ f, facts, projectId, onDone, canAddFact = true }: 
             )}
             {error && <p className="error">{error}</p>}
             <div className="actions">
-              <button className="primary" disabled={busy || !factId || (factId === '__new' && !newText.trim())} onClick={submit}>
+              <button className="primary" disabled={busy || (mode === 'dismiss' ? !factId && !reason.trim() : !factId || (factId === '__new' && !newText.trim()))} onClick={submit}>
                 Готово
               </button>
               <button className="ghost" onClick={() => setMode('')}>

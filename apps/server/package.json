@@ -3,10 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsx src/main.ts",
+    "dev:watch": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "dev:demo": "tsx watch src/main.ts --demo"
+    "dev:demo": "tsx src/main.ts --demo"
   },
   "dependencies": {
     "@aiw/core": "workspace:*",

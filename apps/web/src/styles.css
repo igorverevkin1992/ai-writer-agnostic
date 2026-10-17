@@ -138,6 +138,24 @@ td { border-bottom: 1px solid #efede7; padding: 6px 8px; vertical-align: top; }
 .budget-fill { display: block; height: 100%; background: var(--accent); }
 .budget-fill-warn { background: #c98500; }
 .timeline { list-style: none; padding: 0; }
+
+/* Producer controls: stop, budget, episode picker, hand edits */
+.small { font-size: 13px; padding: 2px 8px; }
+.danger { background: var(--bad-bg); color: var(--bad); border-color: var(--bad-bg); }
+.head-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.rename { display: flex; gap: 8px; align-items: center; }
+.rename input { width: 320px; }
+.progress { color: var(--ink-2); margin: 0 0 8px; }
+.raise-limit { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.raise-limit label { margin: 0; }
+.over-budget { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: var(--warn-bg); }
+.episode-pick { margin-top: 12px; }
+.genre-params { margin: 8px 0 12px; padding: 12px; border: 1px dashed var(--line); border-radius: 8px; }
+.terms-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.edit-row textarea { margin-bottom: 8px; }
+.raw-editor textarea { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; }
+.note { color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); padding: 8px 12px; border-radius: 8px; }
+label.inline input[type="checkbox"] { width: auto; }
 @media (max-width: 800px) {
   .home, .episode-grid, .concepts { grid-template-columns: 1fr; }
 }

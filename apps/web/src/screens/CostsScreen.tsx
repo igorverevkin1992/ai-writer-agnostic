@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { STEP_LABELS, type Doc, type Overview } from '../api.ts';
+import { RaiseLimit } from './NowScreen.tsx';
 
 const ROLE: Record<string, string> = {
   architect: 'Архитектор',
@@ -31,9 +33,10 @@ function Rows({ rows, label }: { rows: Doc[]; label: (r: Doc) => string }) {
   );
 }
 
-export function CostsScreen({ data }: { data: Overview }) {
+export function CostsScreen({ data, refresh }: { data: Overview; refresh: () => Promise<void> }) {
   const b = data.budget;
   const share = b.limitUsd ? Math.min(1, b.totalUsd / b.limitUsd) : 0;
+  const [error, setError] = useState('');
   return (
     <section>
       <div className="panel">
@@ -48,6 +51,9 @@ export function CostsScreen({ data }: { data: Overview }) {
           {data.demo && ' В демо-режиме модели не вызываются и расходов нет.'}
           {b.unknownPriceCalls > 0 && ` У ${b.unknownPriceCalls} вызовов резервного поставщика нет цены в config/models.yaml.`}
         </p>
+        <p className="muted">Лимит — это предел расходов на модели для этого сериала. Дойдя до него, агент останавливается; поднять лимит можно в любой момент.</p>
+        {error && <p className="error">{error}</p>}
+        <RaiseLimit data={data} refresh={refresh} onError={setError} />
       </div>
       <div className="panel">
         <h3>По шагам</h3>
