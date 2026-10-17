@@ -297,7 +297,10 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
     }
 
     const cards = ctx.memory.cards();
-    const findings = [
+    // Genre code checks that need the cards (beats, golden three, knowledge on cards…), then the
+    // step's own checks; a finding both raise is kept once, rule-attributed.
+    const findings = uniqueFindings([
+      ...cardCodeChecks(ctx, bible, plan, cards),
       ...checkLimits(bible, cards, p),
       ...checkKnowledge(cards, bible),
       ...checkLegalMarkers(collectTexts({ cards }), ctx.kit.legal),
@@ -315,7 +318,7 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
             fixes: ['Убрать карточку', 'Добавить серию в план'],
           }),
         ),
-    ];
+    ]);
     ctx.memory.saveFindings(findings, 'episode_cards');
     // These checks cover all cards: what they no longer raise is fixed.
     ctx.memory.closeSuperseded('episode_cards', findings.map((x) => x.id), 'Больше не подтверждается');
@@ -387,10 +390,13 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
       // Who really wrote it (the reserve may have stood in): later critics must be of another family.
       ctx.memory.saveArtifact(`author:scripts:${ep}`, { provider: writer });
       try {
-        const found = [
+        // Genre code checks on the script (linter: talking heads, faces, sound, overlap…), then the
+        // step's own metrics; duplicates are kept once. All of it goes into the fix loop below.
+        const found = uniqueFindings([
+          ...runCodeChecks({ kit: ctx.kit, scripts: [script] }).findings,
           ...checkScriptMetrics(script, p, f),
           ...checkLegalMarkers(collectTexts({ scripts: [script] }), ctx.kit.legal),
-        ];
+        ]);
         const model = await runScriptControllers(
           { llm: ctx.llm, kb: ctx.kb, kit: ctx.kit, projectId: ctx.projectId, step: 'scripts' },
           { script, card, outline: plan?.episodes.find((e) => e.ep === ep), authorProvider: writer },
@@ -453,6 +459,21 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
     return audit(ctx, 'season_plan', [...authors]);
   },
 };
+
+/** Findings deduplicated by id; the first occurrence wins. */
+function uniqueFindings(list: Finding[]): Finding[] {
+  const seen = new Set<string>();
+  return list.filter((f) => !seen.has(f.id) && seen.add(f.id));
+}
+
+/**
+ * Code checks the cards add to what the bible and plan already raise: findings about the plan
+ * alone belong to the season plan step and are not repeated here.
+ */
+function cardCodeChecks(ctx: Ctx, bible: Bible, plan: SeasonPlan, cards: EpisodeCard[]): Finding[] {
+  const withoutCards = new Set(runCodeChecks({ kit: ctx.kit, bible, plan }).findings.map((f) => f.id));
+  return runCodeChecks({ kit: ctx.kit, bible, plan, cards }).findings.filter((f) => !withoutCards.has(f.id));
+}
 
 /** Parts of the season to write the plan in: the frame's blocks, or blocks of 10. */
 export function planParts(episodes: number, blocks: [number, number][]): [number, number][] {
