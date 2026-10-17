@@ -32,6 +32,22 @@ describe('method principles in the knowledge block', () => {
     for (const id of METHOD_IDS) for (const p of kb.methods[id].principles) expect(all).toContain(`${p.id}. `);
   });
 
+  it('keeps principles and glossary terms of other genres out of a genre block', () => {
+    const thriller = genreKit(kb, 'vertical_thriller');
+    const myth = genreKit(kb, 'slavic_myth');
+    const plan = methodsBlock(kb, 'season_plan', thriller.genre.id).join('\n');
+    expect(plan).not.toContain('W9.'); // the midpoint of the positive arc: not for a genre with a reset
+    expect(plan).not.toContain('R06.'); // «a series that lives on its mystery loses viewers»
+    expect(methodsBlock(kb, 'season_plan', myth.genre.id).join('\n')).toContain('W9.');
+    const block = knowledgeBlock(kb, thriller, { step: 'season_plan' });
+    expect(block).toContain('матрёшка —');
+    expect(block).not.toContain('лестница злодеев —');
+    expect(block).toContain('Возрастной рейтинг 16+');
+    const mythBlock = knowledgeBlock(kb, myth, { step: 'season_plan' });
+    expect(mythBlock).toContain('лестница злодеев —');
+    expect(mythBlock).not.toContain('матрёшка —');
+  });
+
   it('narrows the knowledge block by step and keeps its other sections', () => {
     const kit = genreKit(kb, 'slavic_myth');
     const full = knowledgeBlock(kb, kit);

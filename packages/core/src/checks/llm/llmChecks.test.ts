@@ -94,6 +94,29 @@ describe('review fixes: model checks', () => {
     expect(systems[0]).not.toContain('Б. Закон.');
   });
 
+  it('skips categories and catalog questions of other genres for the thriller', async () => {
+    const thriller = genreKit(kb, 'vertical_thriller');
+    const prima = loadGolden('prima');
+    const systems: string[] = [];
+    answer = (req) => {
+      systems.push(`${req.task}\n${req.system ?? ''}`);
+      return [];
+    };
+    const res = await runDevilAdvocate({ llm: client(), kb, kit: thriller }, { bible: prima.bible, plan: prima.plan, authorProvider: 'anthropic' }, { personas: false });
+    const tasks = systems.map((s) => s.split('\n')[0]);
+    expect(tasks).not.toContain('devil_advocate:Ж:план сезона');
+    expect(tasks).not.toContain('devil_advocate:В:план сезона');
+    expect(tasks).not.toContain('devil_advocate:И:план сезона');
+    expect(tasks).toContain('devil_advocate:Р:план сезона');
+    const structure = systems.find((s) => s.startsWith('devil_advocate:М:')) ?? systems.find((s) => s.startsWith('devil_advocate:Р:'))!;
+    expect(structure).not.toContain('Мидпоинт — контрраскрытие');
+    expect(structure).not.toContain('Что стоит на 8-й серии?');
+    // The plan pass reads the bible: world rules, clues, guns and the knowledge table.
+    expect(structure).toContain('ПРАВИЛА МИРА');
+    expect(structure).toContain('УЛИКИ');
+    expect(res.calls).toBe(tasks.length);
+  });
+
   it('one hole seen from two categories is one finding with both, in the review format', async () => {
     const draft = {
       level: 'high', episodes: '1, 8', quote: golden.plan.episodes[0]!.event, viewerQuestion: 'Зритель спросит: почему?',

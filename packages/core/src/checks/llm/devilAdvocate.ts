@@ -209,10 +209,12 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
   // The results are applied in order, so the findings come out the same whatever finishes first.
   const passes = pickCategories(review, deps.kit.genre.id, opts).flatMap((category) => {
     const holes = deps.kb.holes.holes.filter((h) => category.hole_types.includes(h.id));
-    const questions = [
-      ...holes.flatMap((h) => h.questions),
-      ...holes.flatMap((h) => deps.kit.guide?.hole_questions[String(h.id)] ?? []),
-    ];
+    // The genre guide adds its own questions per hole type, or replaces the catalog's.
+    const guide = deps.kit.guide;
+    const questions = holes.flatMap((h) => {
+      const own = guide?.hole_questions[String(h.id)] ?? [];
+      return guide?.replace_hole_questions.includes(String(h.id)) && own.length ? own : [...h.questions, ...own];
+    });
     return blocks.map((block) => {
       const notice = category.with_notice_questions
         ? noticeQuestions(target.bible, block, target.plan).slice(0, MAX_NOTICE_QUESTIONS)

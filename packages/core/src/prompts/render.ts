@@ -35,10 +35,12 @@ export interface KnowledgeOptions {
   step?: MethodStep;
 }
 
-/** Method principles for a step: those addressed to it and those addressed to every step. */
-export function methodsBlock(kb: Kb, step?: MethodStep): string[] {
+/** Method principles for a step and a genre: those addressed to them and those addressed to all. */
+export function methodsBlock(kb: Kb, step?: MethodStep, genreId?: string): string[] {
   return Object.values(kb.methods).flatMap((m) => {
-    const principles = m.principles.filter((p) => !step || !p.for.length || p.for.includes(step));
+    const principles = m.principles.filter(
+      (p) => (!step || !p.for.length || p.for.includes(step)) && (!genreId || !p.genres.length || p.genres.includes(genreId)),
+    );
     return [`### ${m.name} (${m.author})`, m.summary, ...principles.map((p) => `- ${p.id}. ${p.text}`)];
   });
 }
@@ -101,9 +103,9 @@ export function knowledgeBlock(kb: Kb, kit: GenreKit, opts: KnowledgeOptions = {
       ? kit.guide.sections.flatMap((s) => [`## ${s.title}`, list(s.items)])
       : []),
     '## Словарь',
-    list(kb.glossary.terms.map((t) => `${t.term} — ${t.definition}`)),
+    list(kb.glossary.terms.filter((t) => !t.genres.length || t.genres.includes(kit.genre.id)).map((t) => `${t.term} — ${t.definition}`)),
     '## Методики',
-    ...methodsBlock(kb, opts.step),
+    ...methodsBlock(kb, opts.step, kit.genre.id),
     '## Кейсы',
     list(kb.cases.filter((c) => !c.stub && (!c.genres.length || c.genres.includes(kit.genre.id))).map((c) => `${c.id}: ${c.title} — ${c.summary}`)),
   ].join('\n');

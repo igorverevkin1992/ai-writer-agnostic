@@ -172,6 +172,8 @@ export const Method = z.strictObject({
       text: Text,
       /** Steps whose prompts get this principle; empty — every step. */
       for: z.array(z.enum(METHOD_STEPS)).default([]),
+      /** Genres this principle applies to; empty — every genre. */
+      genres: z.array(Text).default([]),
     }),
   ),
 });
@@ -179,7 +181,7 @@ export type Method = z.infer<typeof Method>;
 
 export const Glossary = z.strictObject({
   stub: Stub,
-  terms: z.array(z.strictObject({ term: Text, definition: Text })).min(1),
+  terms: z.array(z.strictObject({ term: Text, definition: Text, genres: z.array(Text).default([]) })).min(1),
 });
 export type Glossary = z.infer<typeof Glossary>;
 
@@ -297,6 +299,8 @@ export const Guide = z.strictObject({
   sections: z.array(z.strictObject({ title: Text, items: z.array(Text).min(1) })).default([]),
   /** Hole type id (1–11) → extra questions for the auditor in this genre. */
   hole_questions: z.record(z.string().regex(/^\d+$/, 'Ключ — номер типа дыры'), z.array(Text).min(1)).default({}),
+  /** Hole types whose catalog questions this genre replaces with its own instead of adding to them. */
+  replace_hole_questions: z.array(z.string().regex(/^\d+$/, 'Номер типа дыры')).default([]),
 });
 export type Guide = z.infer<typeof Guide>;
 
