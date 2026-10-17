@@ -7,6 +7,7 @@ import { runCodeChecks } from '../checks/code/runner.ts';
 import { runScriptControllers } from '../checks/llm/controllers.ts';
 import { episodeLine } from '../checks/llm/texts.ts';
 import type { LlmRequest } from '../providers/types.ts';
+import { InvalidOutputError } from '../providers/errors.ts';
 import { EpisodeCard } from '../schemas/episodeCard.ts';
 import { Script } from '../schemas/script.ts';
 import { ContinuityExtract, ledgerLines } from '../schemas/continuity.ts';
@@ -18,6 +19,7 @@ import { runDevilAdvocate } from '../checks/llm/devilAdvocate.ts';
 import { runReviewSummary } from '../checks/llm/reviewSummary.ts';
 import { resolveFinding } from '../checks/llm/resolve.ts';
 import { ExtractedFacts } from '../checks/llm/schemas.ts';
+import { linterLimits } from './limits.ts';
 import type { Db } from '../db/client.ts';
 import { ProjectMemory } from '../memory/store.ts';
 import { knowledgeBlock, renderPrompt, schemaText } from '../prompts/render.ts';
@@ -29,7 +31,7 @@ import type { Finding } from '../schemas/finding.ts';
 import { Logline } from '../schemas/logline.ts';
 import { EpisodeOutline, FrameDeviation, SeasonPlan } from '../schemas/season.ts';
 import type { StepId } from '../steps.ts';
-import { Pipeline, PipelineError, type StepStatus } from './machine.ts';
+import { INCOMPLETE_CHECK, Pipeline, PipelineError, type StepStatus } from './machine.ts';
 import { getProject } from './project.ts';
 
 export interface StepDeps {
@@ -232,25 +234,29 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
       request: {
         task: 'bible',
         cacheablePrefix: [ctx.kbText],
-        system: renderPrompt(ctx.kb, 'architect/bible', { concept: json(concept ?? {}), logline: json(logline), hero: ctx.kit.genre.terms.hero.nom, schema: schemaText(Bible) }),
+        system: renderPrompt(ctx.kb, 'architect/bible', {
+          concept: json(concept ?? {}),
+          logline: json(logline),
+          hero: ctx.kit.genre.terms.hero.nom,
+          fix_notes: fixNotes(ctx, 'bible'),
+          schema: schemaText(Bible),
+        }),
         messages: [{ role: 'user', content: 'Напиши библию. Только JSON.' }],
       },
     });
-    let bible = written.data;
-    if (bible.facts.length === 0) {
-      const { data: extracted } = await ctx.llm.completeJson(ExtractedFacts, {
-        role: 'helper',
-        projectId: ctx.projectId,
-        step: 'bible',
-        request: {
-          task: 'extract_facts',
-          system: renderPrompt(ctx.kb, 'helper/extract_facts', { bible: json(bible), schema: schemaText(ExtractedFacts) }),
-          messages: [{ role: 'user', content: 'Выпиши факты. Только JSON.' }],
-        },
-      });
-      bible = Bible.parse({ ...bible, facts: extracted.facts, knowledge: [...bible.knowledge, ...extracted.knowledge] });
-    }
-    ctx.memory.importBible(bible);
+    // The helper always extracts the facts the scenes rely on: the architect's own list is rarely
+    // complete. Both lists merge, deduplicated by id and text.
+    const { data: extracted } = await ctx.llm.completeJson(ExtractedFacts, {
+      role: 'helper',
+      projectId: ctx.projectId,
+      step: 'bible',
+      request: {
+        task: 'extract_facts',
+        system: renderPrompt(ctx.kb, 'helper/extract_facts', { bible: json(written.data), schema: schemaText(ExtractedFacts) }),
+        messages: [{ role: 'user', content: 'Выпиши факты. Только JSON.' }],
+      },
+    });
+    ctx.memory.importBible(mergeExtracted(written.data, extracted));
     return audit(ctx, 'bible', [written.provider]);
   },
 
@@ -259,23 +265,39 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
     const plan = need(ctx.memory.currentPlan(), 'план сезона');
     const p = ctx.kit.production;
     const f = ctx.kit.frame;
-    let blocks = cardBlocks(plan.episodes.map((e) => e.ep));
-    if (opts.episodes) blocks = blocks.filter((b) => b.some((ep) => opts.episodes!.includes(ep)));
+    const existing = new Set(ctx.memory.cards().map((c) => c.ep));
+    // First generation goes in blocks. Asked for particular episodes that already have cards, only
+    // those cards are rewritten (with their fix notes), block by block; episodes without a card
+    // still get their whole block.
+    const wanted = opts.episodes?.filter((ep) => plan.episodes.some((e) => e.ep === ep));
+    const groups: number[][] = [];
+    for (const block of cardBlocks(plan.episodes.map((e) => e.ep))) {
+      if (!wanted) groups.push(block);
+      else if (block.some((ep) => wanted.includes(ep) && !existing.has(ep))) groups.push(block);
+      else if (block.some((ep) => wanted.includes(ep))) groups.push(block.filter((ep) => wanted.includes(ep)));
+    }
     const approved = new Set(((ctx.memory.latestArtifact('card_blocks') as { approved: number[] } | undefined)?.approved ?? []));
 
-    for (const eps of blocks) {
+    for (const eps of groups) {
+      const blockStart = cardBlocks(plan.episodes.map((e) => e.ep)).find((b) => b.includes(eps[0]!))![0]!;
+      const whole = eps.length > 1 && eps.at(-1)! - eps[0]! === eps.length - 1;
+      const which = whole ? `${eps[0]}–${eps.at(-1)}` : eps.join(', ');
       const outlines = plan.episodes.filter((e) => eps.includes(e.ep));
+      const cards = ctx.memory.cards();
+      // TODO(hook_kind): validate card beat `hook_kind` against the frame once the frame lists hook kinds; it does not yet.
       const { data } = await ctx.llm.completeJson(cardsFor(eps), {
         role: 'architect',
         projectId: ctx.projectId,
         step: 'episode_cards',
         request: {
-          task: `episode_cards:${eps[0]}-${eps.at(-1)}`,
+          task: `episode_cards:${whole ? `${eps[0]}-${eps.at(-1)}` : eps.join(',')}`,
           cacheablePrefix: [ctx.kbText, `# Библия сериала\n${json(bible)}`, `# План сезона\n${json(plan)}`],
           system: renderPrompt(ctx.kb, 'architect/episode_cards', {
+            which,
             from: eps[0]!,
             to: eps.at(-1)!,
-            outlines: outlines.map((e) => episodeLine(e, ctx.kit.genre.terms)).join('\n'),
+            outlines: outlines.map((e) => episodeLine(e, ctx.kit.genre.terms, f.hook_types)).join('\n'),
+            neighbours: neighbourCards(cards, eps),
             hero: ctx.kit.genre.terms.hero.nom,
             duration: f.duration_s.target,
             duration_range: `${f.duration_s.min}–${f.duration_s.max} с`,
@@ -284,6 +306,7 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
             locations: bible.locations.join(', ') || 'список не задан',
             plants: plantsText(bible, eps),
             nested: nestedText(bible),
+            fix_notes: fixNotes(ctx, 'episode_cards', eps),
             schema: schemaText(cardsFor(eps)),
           }),
           messages: [{ role: 'user', content: 'Напиши карточки. Только JSON.' }],
@@ -293,7 +316,7 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
         ctx.memory.closeObsolete('episode_cards', card.ep, 'Карточка переписана');
         ctx.memory.saveCard(card);
       }
-      approved.delete(eps[0]!);
+      approved.delete(blockStart);
       // Saved after every block: a run that fails later still leaves a consistent state.
       ctx.memory.saveArtifact('card_blocks', { approved: [...approved].sort((a, b) => a - b) });
       ctx.memory.saveArtifact('episode_cards', { episodes: ctx.memory.cards().map((c) => c.ep) });
@@ -384,6 +407,8 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
           max_line_words: p.script_metrics.max_line_words,
           max_overlay_words: p.script_metrics.max_overlay_words,
           max_speakers: p.limits.max_speakers_per_scene,
+          ...linterLimits(ctx.kit),
+          paywall_ep: f.free,
           schema: schemaText(Script),
         }),
         messages: [{ role: 'user', content: 'Напиши сценарий. Только JSON.' }],
@@ -467,9 +492,10 @@ const RUNNERS: Partial<Record<StepId, Runner>> = {
               hero: ctx.kit.genre.terms.hero.nom,
               anchor_ids: Object.keys(f.anchors).join(', '),
               kaif_lines: Object.keys(f.lines).length ? Object.entries(f.lines).map(([id, name]) => `${id} (${name})`).join(', ') : 'в этом жанре линий нет, оставь пустым',
-              villain_roles: Object.values(f.villains?.roles ?? {}).join(', ') || 'в жанре нет лестницы злодеев',
+              villain_block: villainBlock(f),
               hook_types: hookTypesText(f),
               tolerance: f.tolerance,
+              fix_notes: fixNotes(ctx, 'season_plan', Array.from({ length: to - from + 1 }, (_, i) => from + i)),
               schema: schemaText(planPart(from, to, outline)),
             }),
             messages: [{ role: 'user', content: `Составь план серий ${from}–${to}. Только JSON.` }],
@@ -558,29 +584,37 @@ async function reconcilePlan(ctx: Ctx, bible: Bible, plan: SeasonPlan, outline: 
   const f = ctx.kit.frame;
   const eps = [...new Set(serious.map((x) => x.episode!))].sort((a, b) => a - b);
   const schema = outlinesFor(eps, outline);
-  const { data, provider } = await ctx.llm.completeJson(schema, {
-    role: 'architect_heavy',
-    projectId: ctx.projectId,
-    step: 'season_plan',
-    request: {
-      task: `season_plan_fix:${eps.join(',')}`,
-      cacheablePrefix: [ctx.kbText, `# Библия сериала\n${json(bible)}`],
-      system: renderPrompt(ctx.kb, 'architect_heavy/season_plan_fix', {
-        episodes: formatEpisodes(eps),
-        plan: plan.episodes.map((e) => episodeLine(e, ctx.kit.genre.terms, f.hook_types)).join('\n'),
-        findings: serious
-          .map((x) => `- Серия ${x.episode}: «${x.quote}» — ${x.viewerQuestion} Как исправить: ${x.fixes.join(' / ')}`)
-          .join('\n'),
-        hero: ctx.kit.genre.terms.hero.nom,
-        anchor_ids: Object.keys(f.anchors).join(', '),
-        hook_types: hookTypesText(f),
-        schema: schemaText(schema),
-      }),
-      messages: [{ role: 'user', content: `Перепиши серии ${formatEpisodes(eps)}. Только JSON.` }],
-    },
-  });
-  const byEp = new Map(data.map((e) => [e.ep, e]));
-  return { plan: SeasonPlan.parse({ episodes: plan.episodes.map((e) => byEp.get(e.ep) ?? e), deviations: plan.deviations }), provider };
+  let answer: { data: EpisodeOutline[]; provider: ProviderName };
+  try {
+    answer = await ctx.llm.completeJson(schema, {
+      role: 'architect_heavy',
+      projectId: ctx.projectId,
+      step: 'season_plan',
+      request: {
+        task: `season_plan_fix:${eps.join(',')}`,
+        cacheablePrefix: [ctx.kbText, `# Библия сериала\n${json(bible)}`],
+        system: renderPrompt(ctx.kb, 'architect_heavy/season_plan_fix', {
+          episodes: formatEpisodes(eps),
+          plan: plan.episodes.map((e) => episodeLine(e, ctx.kit.genre.terms, f.hook_types)).join('\n'),
+          findings: serious
+            .map((x) => `- Серия ${x.episode}: «${x.quote}» — ${x.viewerQuestion} Как исправить: ${x.fixes.join(' / ')}`)
+            .join('\n'),
+          hero: ctx.kit.genre.terms.hero.nom,
+          anchor_ids: Object.keys(f.anchors).join(', '),
+          hook_types: hookTypesText(f),
+          schema: schemaText(schema),
+        }),
+        messages: [{ role: 'user', content: `Перепиши серии ${formatEpisodes(eps)}. Только JSON.` }],
+      },
+    });
+  } catch (err) {
+    // The extra call is best effort: a malformed answer leaves the plan as assembled, and the
+    // audit records the findings for the producer instead of losing the paid parts.
+    if (err instanceof InvalidOutputError) return { plan };
+    throw err;
+  }
+  const byEp = new Map(answer.data.map((e) => [e.ep, e]));
+  return { plan: SeasonPlan.parse({ episodes: plan.episodes.map((e) => byEp.get(e.ep) ?? e), deviations: plan.deviations }), provider: answer.provider };
 }
 
 /** Findings deduplicated by id; the first occurrence wins. */
@@ -596,6 +630,61 @@ function uniqueFindings(list: Finding[]): Finding[] {
 function cardCodeChecks(ctx: Ctx, bible: Bible, plan: SeasonPlan, cards: EpisodeCard[]): Finding[] {
   const withoutCards = new Set(runCodeChecks({ kit: ctx.kit, bible, plan }).findings.map((f) => f.id));
   return runCodeChecks({ kit: ctx.kit, bible, plan, cards }).findings.filter((f) => !withoutCards.has(f.id));
+}
+
+/**
+ * «Что исправить» for a step that is written again: its open findings (of these episodes, or of
+ * the whole step) and the facts the producer added by hand. Empty on the first run.
+ */
+function fixNotes(ctx: Ctx, step: 'bible' | 'season_plan' | 'episode_cards', eps?: number[]): string {
+  const open = ctx.memory
+    .findingsOf(step, 'open')
+    .filter((x) => x.check !== INCOMPLETE_CHECK && (!eps || x.episode === null || eps.includes(x.episode)));
+  const facts = ctx.memory.factsBy('producer');
+  if (!open.length && !facts.length) return '';
+  const lines = [
+    ...open.map((x) => `- ${x.episode ? `Серия ${x.episode}: ` : ''}«${x.quote}» — ${x.viewerQuestion} Как исправить: ${x.fixes.join(' / ')}`),
+    ...facts.map((x) => `- Факт продюсера ${x.id}${x.since_ep ? ` (с ${x.since_ep}-й серии)` : ''}: ${x.text}. Текст должен ему соответствовать.`),
+  ];
+  return `\nЧто исправить (замечания к прошлой версии и факты продюсера):\n${lines.join('\n')}\n`;
+}
+
+/** Villain instructions of the plan prompt: only for a frame with a villain ladder. */
+function villainBlock(f: GenreKit['frame']): string {
+  if (!f.villains) return '';
+  return [
+    `- Сдвиг снятия злодея объясняется так же: в \`anchor\` — роль злодея из каркаса (${Object.values(f.villains.roles).join(', ')}).`,
+    '- `takedown_rank` — ранг злодея, которого снимают в этой серии; `villains_introduced` — ранги злодеев, впервые появившихся в кадре.',
+  ].join('\n');
+}
+
+/** Hooks and cliffhangers of the cards next to the rewritten episodes: the new card must fit between them. */
+function neighbourCards(cards: EpisodeCard[], eps: number[]): string {
+  const near = cards.filter((c) => !eps.includes(c.ep) && eps.some((ep) => Math.abs(ep - c.ep) === 1));
+  return near.length ? near.map((c) => `Серия ${c.ep}: начало — ${c.hook_0_5s}; обрыв — ${c.cliffhanger}`).join('\n') : 'соседних карточек ещё нет';
+}
+
+const normText = (t: string) => t.replace(/[«»"“”„]/gu, '"').replace(/[ёЁ]/gu, 'е').replace(/[.\s]+$/u, '').replace(/\s+/gu, ' ').trim().toLowerCase();
+
+/** The architect's facts and the helper's, merged: duplicates by id or text are dropped, knowledge follows the kept id. */
+function mergeExtracted(bible: Bible, extracted: ExtractedFacts): Bible {
+  const facts = [...bible.facts];
+  const alias = new Map<string, string>();
+  for (const f of extracted.facts) {
+    const same = facts.find((x) => x.id === f.id || normText(x.text) === normText(f.text));
+    if (same) alias.set(f.id, same.id);
+    else facts.push(f);
+  }
+  const knowledge = [...bible.knowledge];
+  const seen = new Set(knowledge.map((k) => `${k.who}\u0000${k.fact}\u0000${k.since_ep}`));
+  for (const k of extracted.knowledge) {
+    const fact = alias.get(k.fact) ?? k.fact;
+    const key = `${k.who}\u0000${fact}\u0000${k.since_ep}`;
+    if (seen.has(key) || !facts.some((x) => x.id === fact)) continue;
+    seen.add(key);
+    knowledge.push({ ...k, fact });
+  }
+  return Bible.parse({ ...bible, facts, knowledge });
 }
 
 const KNOWLEDGE_MODE_TEXT = { suspense: 'саспенс — зритель знает больше героя', mystery: 'тайна — никто не знает', surprise: 'сюрприз — персонаж в кадре знает больше' } as const;
@@ -636,21 +725,28 @@ function cardPlantsText(bible: Bible, card: EpisodeCard): string {
  * the lines go into the ledger the writer and the critics of the next episodes read.
  */
 async function recordContinuity(ctx: Ctx, bible: Bible, script: Script): Promise<void> {
-  const { data } = await ctx.llm.completeJson(ContinuityExtract, {
-    role: 'helper',
-    projectId: ctx.projectId,
-    step: 'scripts',
-    request: {
-      task: `continuity:${script.ep}`,
-      system: renderPrompt(ctx.kb, 'helper/continuity', {
-        ep: script.ep,
-        script: renderScript(script),
-        facts: bible.facts.map((x) => `${x.id}: ${x.text}`).join('\n') || 'фактов пока нет',
-        schema: schemaText(ContinuityExtract),
-      }),
-      messages: [{ role: 'user', content: 'Выпиши ведомость. Только JSON.' }],
-    },
-  });
+  let data: ContinuityExtract;
+  try {
+    ({ data } = await ctx.llm.completeJson(ContinuityExtract, {
+      role: 'helper',
+      projectId: ctx.projectId,
+      step: 'scripts',
+      request: {
+        task: `continuity:${script.ep}`,
+        system: renderPrompt(ctx.kb, 'helper/continuity', {
+          ep: script.ep,
+          script: renderScript(script),
+          facts: bible.facts.map((x) => `${x.id}: ${x.text}`).join('\n') || 'фактов пока нет',
+          schema: schemaText(ContinuityExtract),
+        }),
+        messages: [{ role: 'user', content: 'Выпиши ведомость. Только JSON.' }],
+      },
+    }));
+  } catch (err) {
+    // The ledger is a help, not a gate: a malformed helper answer leaves this episode's lines out.
+    if (err instanceof InvalidOutputError) return;
+    throw err;
+  }
   ctx.memory.mergeFacts(data.facts, data.knowledge, { author: 'agent', note: `Ведомость непрерывности, ${script.ep}-я серия` });
   ctx.memory.recordContinuity(script.ep, ledgerLines(script.ep, data));
 }

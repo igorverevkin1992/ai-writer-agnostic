@@ -40,6 +40,7 @@ function reply(req: LlmRequest): string {
     return JSON.stringify({ ep, title: `Серия ${ep}`, duration_s: 90, blocks: [{ t0: 0, t1: 5, kind: 'scene', text: 'ИНТ. АРХИВ — НОЧЬ.' }, ...lines, { t0: 85, t1: 90, kind: 'scene', text: 'Темнота.' }] });
   }
   if (kind === 'controller') return '[]';
+  if (kind === 'continuity') return JSON.stringify({ facts: [], knowledge: [], states: [] });
   if (kind === 'checklist_judge') return JSON.stringify(judge ?? confirmChecklist(req.system ?? ''));
   if (kind === 'shootable') return JSON.stringify({ verdict: Number(a) % 3 === 0 ? 'no' : 'light_edit', reason: 'Реплики однообразные' });
   throw new Error(t);

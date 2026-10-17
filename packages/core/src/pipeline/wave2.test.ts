@@ -92,6 +92,7 @@ function reply(req: LlmRequest): string {
 }
 
 function epsOf(range: string): number[] {
+  if (range.includes(',')) return range.split(',').map(Number);
   const [from, to = from] = range.split('-').map(Number);
   return Array.from({ length: to! - from! + 1 }, (_, i) => from! + i);
 }
@@ -229,6 +230,20 @@ describe('season plan in parts (audit item 14)', () => {
     expect(run.findings.filter((f) => f.check?.startsWith('season_frame'))).toEqual([]);
   });
 
+  it('a malformed reconciliation answer leaves the plan as assembled; the audit records the finding', async () => {
+    answers.season_plan = (a) => {
+      const part = planPart(a);
+      return { ...part, episodes: part.episodes.map((e) => (e.ep === 1 ? { ...e, anchors: [] } : e)) };
+    };
+    answers.season_plan_fix = () => [];
+    const run = await runStep(deps(), 'season_plan');
+    // One call plus the client's single retry; then the plan goes on as it is.
+    expect(tasks.filter((t) => t.startsWith('season_plan_fix:'))).toEqual(['season_plan_fix:1', 'season_plan_fix:1']);
+    expect(run.status).toBe('needs_fix');
+    expect(memory().findingsOf('season_plan', 'open').map((f) => f.check)).toContain('season_frame.anchor.hook_violation');
+    expect(memory().currentPlan()?.episodes).toHaveLength(60);
+  });
+
   it('a hook type outside the frame vocabulary is rejected when the answer is parsed', async () => {
     answers.season_plan = (a) => {
       const part = planPart(a);
@@ -308,5 +323,70 @@ describe('writer context and continuity ledger (audit item 16)', () => {
     answers.continuity = () => ({ facts: [], knowledge: [], states: [{ object: 'Ключ', holder: 'Регина', since_ep: 1 }] });
     await runStep(deps(), 'scripts', { episodes: [1] });
     expect(m.continuityDigest(2)).toEqual(['Серия 1: Ключ — у Регина']);
+  });
+});
+
+describe('regeneration with open findings (audit item 17)', () => {
+  it('a plan written again gets the open findings of its episodes and the producer facts as «Что исправить»', async () => {
+    const m = memory();
+    m.saveFindings(
+      [
+        { id: 'plan-open', controller: 'logic', severity: 'major', episode: 7, quote: 'Ася идёт в бункер одна', viewerQuestion: 'Зритель спросит: почему не зовёт Диму?', fixes: ['Дать причину идти одной'], status: 'open' },
+        { id: 'plan-late', controller: 'logic', severity: 'major', episode: 40, quote: 'Регина молчит', viewerQuestion: 'Зритель спросит: почему?', fixes: ['Показать цену'], status: 'open' },
+      ],
+      'season_plan',
+    );
+    m.addFact({ id: 'f_producer', text: 'Дима не заходит в бункер: клаустрофобия', since_ep: 3 }, [], { author: 'producer' });
+    await runStep(deps(), 'season_plan');
+    const first = requests.find((r) => r.task === 'season_plan:1-12')!.system!;
+    expect(first).toContain('Что исправить (замечания к прошлой версии и факты продюсера)');
+    expect(first).toContain('Серия 7: «Ася идёт в бункер одна» — Зритель спросит: почему не зовёт Диму? Как исправить: Дать причину идти одной');
+    expect(first).not.toContain('«Регина молчит»');
+    expect(first).toContain('Факт продюсера f_producer (с 3-й серии): Дима не заходит в бункер: клаустрофобия');
+    expect(requests.find((r) => r.task === 'season_plan:25-45')!.system).toContain('«Регина молчит»');
+  });
+
+  it('a first plan has no «Что исправить», and a genre without a villain ladder gets no villain instructions', async () => {
+    await runStep(deps(), 'season_plan');
+    const first = requests.find((r) => r.task === 'season_plan:1-12')!.system!;
+    expect(first).not.toContain('Что исправить');
+    expect(first).not.toContain('Сдвиг снятия злодея');
+    expect(first).not.toContain('ранг злодея, которого снимают');
+  });
+
+  it('rewrites one card in place with its fix notes and the neighbouring cards', async () => {
+    await runStep(deps(), 'episode_cards', { episodes: [1] });
+    const m = memory();
+    m.saveFindings(
+      [{ id: 'card-5', controller: 'logic', severity: 'major', episode: 5, quote: 'Ася молчит', viewerQuestion: 'Зритель спросит: почему?', fixes: ['Дать реплику'], status: 'open' }],
+      'episode_cards',
+    );
+    requests = [];
+    tasks = [];
+    await runStep(deps(), 'episode_cards', { episodes: [5] });
+    expect(tasks).toEqual(['episode_cards:5']);
+    const sys = requests[0]!.system!;
+    expect(sys).toContain('Напиши карточки серий 5 по плану');
+    expect(sys).toContain('«Ася молчит» — Зритель спросит: почему? Как исправить: Дать реплику');
+    expect(sys).toContain('Серия 4: начало — Продолжение обрыва 3-й');
+    expect(sys).toContain('Серия 6: начало — Продолжение обрыва 5-й');
+    expect(m.cards()).toHaveLength(10);
+    expect(m.finding('card-5')?.status).toBe('resolved');
+    // Episodes without a card still get their whole block.
+    tasks = [];
+    await runStep(deps(), 'episode_cards', { episodes: [5, 12] });
+    expect(tasks).toEqual(['episode_cards:5', 'episode_cards:11-20']);
+  });
+
+  it('the writer prompt states the linter limits from the genre pack', async () => {
+    await runStep(deps(), 'episode_cards', { episodes: [1] });
+    skipStep({ db, kb, projectId }, 'episode_cards');
+    await runStep(deps(), 'scripts', { episodes: [2] });
+    const writer = requests.find((r) => r.task === 'script:2')!.system!;
+    expect(writer).toContain('Диалог не длиннее 10 с подряд');
+    expect(writer).toContain('не чаще 1 раз на серию и не дольше 3 с');
+    expect(writer).toContain('не длиннее 5 с, после барьера — 10-й серии — 3 с');
+    expect(writer).toContain('Говорящих за серию — не больше 4');
+    expect(writer).toContain('не дольше 8 с на серию');
   });
 });
