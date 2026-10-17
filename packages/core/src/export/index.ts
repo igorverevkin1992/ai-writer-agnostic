@@ -1,6 +1,6 @@
 import type { Kb } from '@aiw/kb';
 import type { Db } from '../db/client.ts';
-import { loadBundle } from './bundle.ts';
+import { loadBundle, withoutUnready } from './bundle.ts';
 import { buildDocx } from './docx.ts';
 import { renderMarkdown } from './markdown.ts';
 import { buildReviewDocx } from './review.ts';
@@ -30,8 +30,14 @@ function slug(title: string): string {
   return s || 'project';
 }
 
-export async function exportProject(db: Db, kb: Kb, projectId: string, format: ExportFormat): Promise<ExportFile> {
-  const b = loadBundle(db, kb, projectId);
+export interface ExportOptions {
+  /** Leave out cards and scripts that are outdated or not approved; by default they are included and marked. */
+  excludeUnready?: boolean;
+}
+
+export async function exportProject(db: Db, kb: Kb, projectId: string, format: ExportFormat, opts: ExportOptions = {}): Promise<ExportFile> {
+  const loaded = loadBundle(db, kb, projectId);
+  const b = opts.excludeUnready ? withoutUnready(loaded) : loaded;
   const name = slug(b.project.title);
   switch (format) {
     case 'docx':

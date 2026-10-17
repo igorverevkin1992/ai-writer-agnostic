@@ -1,6 +1,6 @@
 import { bibleText, episodeLine } from '../checks/llm/texts.ts';
 import { renderScript } from '../text/script.ts';
-import { anchorLabel, type ProjectBundle } from './bundle.ts';
+import { anchorLabel, cardMark, markSuffix, scriptMark, type ProjectBundle } from './bundle.ts';
 
 export function renderMarkdown(b: ProjectBundle): string {
   const out: string[] = [`# ${b.project.title}`, '', `Жанр: ${b.kit.genre.title}.`];
@@ -15,11 +15,11 @@ export function renderMarkdown(b: ProjectBundle): string {
   }
   if (b.cards.length) {
     out.push('', '## Карточки серий', '');
-    for (const c of b.cards) out.push(`**Серия ${c.ep}.** ${c.event} Клиффхэнгер: ${c.cliffhanger} Локация: ${c.location}. В кадре: ${c.cast.join(', ')}.`, '');
+    for (const c of b.cards) out.push(`**Серия ${c.ep}${markSuffix(cardMark(b, c.ep))}.** ${c.event} Клиффхэнгер: ${c.cliffhanger} Локация: ${c.location}. В кадре: ${c.cast.join(', ')}.`, '');
   }
   if (b.scripts.length) {
     out.push('', '## Сценарии', '');
-    for (const s of b.scripts) out.push('```', renderScript(s), '```', '');
+    for (const s of b.scripts) out.push(`### Серия ${s.ep}${markSuffix(scriptMark(b, s.ep))}`, '', '```', renderScript(s), '```', '');
   }
   if (b.plan && !b.scripts.length && !b.cards.length) out.push('', ...b.plan.episodes.map((e) => episodeLine(e, b.kit.genre.terms)));
   return `${out.join('\n')}\n`;

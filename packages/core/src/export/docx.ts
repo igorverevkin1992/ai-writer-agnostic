@@ -1,7 +1,7 @@
 import type { Paragraph, Table, TableCell } from 'docx';
 import { bibleText } from '../checks/llm/texts.ts';
 import { renderBlock } from '../text/script.ts';
-import { anchorLabel, cleanText, type ProjectBundle } from './bundle.ts';
+import { anchorLabel, cleanText, markSuffix, scriptMark, type ProjectBundle } from './bundle.ts';
 
 const FONT = 'Arial';
 
@@ -48,7 +48,7 @@ export async function buildDocx(b: ProjectBundle): Promise<Buffer> {
   if (b.scripts.length) {
     body.push(h('Сценарии', HeadingLevel.HEADING_1));
     for (const s of b.scripts) {
-      body.push(h(`Серия ${s.ep}. «${s.title}» (${s.duration_s} с)`, HeadingLevel.HEADING_2));
+      body.push(h(`Серия ${s.ep}. «${s.title}» (${s.duration_s} с)${markSuffix(scriptMark(b, s.ep))}`, HeadingLevel.HEADING_2));
       for (const block of s.blocks) body.push(p(renderBlock(block), { bold: block.kind === 'scene' }));
     }
   }
