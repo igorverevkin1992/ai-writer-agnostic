@@ -30,8 +30,8 @@ const hole = {
 function reply(req: LlmRequest): string {
   const task = req.task ?? '';
   tasks.push(task);
-  if (task.startsWith('devil_advocate:А:план сезона')) return JSON.stringify([hole]);
-  if (task.startsWith('devil_advocate:') || task.startsWith('persona:')) return '[]';
+  if (task.startsWith('devil_advocate:А:')) return JSON.stringify([hole]);
+  if (task.startsWith('devil_advocate:') || task.startsWith('persona:') || task.startsWith('realism:')) return '[]';
   if (task === 'eval_match') {
     const id = /(review\.А\S+) \| тип 3/u.exec(req.system ?? '')?.[1];
     // A code finding is offered to the judge too and counts towards the producer's holes.
@@ -108,8 +108,9 @@ describe('auditor evaluation', () => {
     const [h] = seedHoles(golden, kit, 1).filter((x) => x.holeType === 11 && x.episode);
     await runAuditEval({ llm: client(), kb, kit, golden, projectId: 'ev', seeded: [h!] });
     const after = tasks.slice(tasks.lastIndexOf('eval_match') + 1).filter((t) => t.startsWith('devil_advocate:'));
-    // Hole type 11 (character knowledge) is covered by category Д only.
-    expect(after).toEqual(['devil_advocate:Д:план сезона']);
+    // Hole type 11 (character knowledge) is covered by category Д only, over the block of the episode.
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatch(/^devil_advocate:Д:план, серии \d+–\d+$/u);
   });
 
   it('stops on the budget limit and still returns a report', async () => {

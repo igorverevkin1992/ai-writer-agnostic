@@ -1,5 +1,5 @@
 import { DEFAULT_TERMS, type GenreTerms } from '@aiw/kb';
-import type { Bible } from '../../schemas/bible.ts';
+import { heroOf, type Bible } from '../../schemas/bible.ts';
 import type { EpisodeOutline, SeasonPlan } from '../../schemas/season.ts';
 import { knowledgeIndex } from '../code/knowledge.ts';
 
@@ -113,6 +113,46 @@ const dot = (t: string) => (/[.!?…»)]$/u.test(t.trim()) ? t.trim() : `${t.tri
 const ARC_LABEL = { lie: 'лжи', truth: 'правде', relapse: 'откату ко лжи' } as const;
 const MODE_LABEL = { suspense: 'саспенс', mystery: 'тайна', surprise: 'сюрприз' } as const;
 
+/** Smallest audit block: frame blocks are merged until they hold this many episodes. */
+export const MIN_AUDIT_BLOCK = 12;
+
+/**
+ * Audit blocks from the frame's blocks, merged so that each holds at least MIN_AUDIT_BLOCK
+ * episodes: a pass over a block sees setups and payoffs of one movement together, and the
+ * model's answer is not asked to cover the whole season at once.
+ */
+export function auditRanges(frameBlocks: readonly (readonly [number, number])[] | undefined, episodes: number, min = MIN_AUDIT_BLOCK): [number, number][] {
+  const out: [number, number][] = [];
+  if (frameBlocks?.length) {
+    let start: number | undefined;
+    for (const [a, b] of frameBlocks) {
+      start ??= a;
+      if (b - start + 1 >= min) {
+        out.push([start, b]);
+        start = undefined;
+      }
+    }
+    if (start !== undefined) {
+      if (out.length) out[out.length - 1]![1] = frameBlocks.at(-1)![1];
+      else out.push([start, frameBlocks.at(-1)![1]]);
+    }
+    return out;
+  }
+  for (let a = 1; a <= episodes; a += min + 3) out.push([a, Math.min(episodes, a + min + 2)]);
+  return out;
+}
+
+/** The plan split into the given episode ranges. */
+export function planBlocksByRanges(plan: SeasonPlan, ranges: readonly (readonly [number, number])[], terms: GenreTerms = DEFAULT_TERMS, hookTypes: Record<string, string> = {}): AuditBlock[] {
+  const eps = [...plan.episodes].sort((a, b) => a.ep - b.ep);
+  return ranges
+    .map(([a, b]) => {
+      const chunk = eps.filter((e) => e.ep >= a && e.ep <= b);
+      return { label: `план, серии ${a}–${b}`, text: chunk.map((e) => episodeLine(e, terms, hookTypes)).join('\n'), episodes: [a, b] as [number, number] };
+    })
+    .filter((b) => b.text.length > 0);
+}
+
 /** The plan split into blocks of `size` episodes. */
 export function planBlocks(plan: SeasonPlan, size: number, terms: GenreTerms = DEFAULT_TERMS, hookTypes: Record<string, string> = {}): AuditBlock[] {
   const eps = [...plan.episodes].sort((a, b) => a.ep - b.ep);
@@ -144,9 +184,11 @@ export function factsText(b: Bible): string {
 /**
  * Type-2 questions («почему никто не заметил?»): code pairs each event with the characters
  * next to it — people named in the episode text, or participants of a timeline event.
+ * One compact line per episode, without the protagonist: the model has the episode text already.
  */
 export function noticeQuestions(b: Bible, block: AuditBlock, plan?: SeasonPlan): string[] {
-  const names = [...new Set([...b.characters.map((c) => c.name), ...b.villains.map((v) => v.name)])];
+  const hero = heroOf(b).name;
+  const names = [...new Set([...b.characters.map((c) => c.name), ...b.villains.map((v) => v.name)])].filter((n) => n !== hero);
   if (block.episodes && plan) {
     const [a, z] = block.episodes;
     return plan.episodes
@@ -154,7 +196,7 @@ export function noticeQuestions(b: Bible, block: AuditBlock, plan?: SeasonPlan):
       .flatMap((e) => {
         const text = `${e.event} ${e.heroine_action}`;
         const near = names.filter((n) => text.includes(n) || text.includes(n.slice(0, -1)));
-        return near.map((n) => `Серия ${e.ep}: «${e.event}». Рядом ${n} — почему ${n} ничего не заметил(а) или не вмешал(ась)?`);
+        return near.length ? [`Серия ${e.ep}: рядом ${near.join(', ')} — кто из них должен был заметить или вмешаться, и почему не вмешался?`] : [];
       });
   }
   return b.timeline.events.flatMap((e) =>

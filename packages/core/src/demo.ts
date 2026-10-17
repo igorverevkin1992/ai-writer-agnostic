@@ -28,7 +28,7 @@ const DemoScript = z.object({
   polish_line: z.string(),
   concepts: z.array(z.unknown()).length(3),
   logline: z.record(z.string(), z.unknown()),
-  audit: z.object({ category: z.string(), block: z.string(), finding: z.unknown() }),
+  audit: z.object({ category: z.string(), block: z.string(), finding: z.object({ quote: z.string() }).loose() }),
   respond: z.unknown(),
   judge: z.unknown(),
   summary: z.unknown(),
@@ -150,8 +150,11 @@ function answer(g: Golden, task: string, req: LlmRequest): unknown {
     }
     case 'extract_facts':
       return { facts: G.bible.facts, knowledge: [] };
-    case 'devil_advocate':
-      return a === d.audit.category && b.includes(d.audit.block) ? [d.audit.finding] : [];
+    case 'devil_advocate': {
+      // The planted hole answers in the pass whose text holds its quote (a block pass or the whole season).
+      const covers = b.includes(d.audit.block) || (req.system ?? '').includes(d.audit.finding.quote);
+      return a === d.audit.category && covers ? [d.audit.finding] : [];
+    }
     case 'persona':
       return [];
     case 'respond':

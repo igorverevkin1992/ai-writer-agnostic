@@ -47,7 +47,7 @@ describe('review fixes: model checks', () => {
     plan.episodes[10]!.heroine_action = 'следит за мужем';
     plan.episodes[13]!.heroine_action = 'следит за мужем';
     answer = (req) =>
-      req.task === 'devil_advocate:Б:план сезона'
+      req.task?.startsWith('devil_advocate:Б:')
         ? [11, 14].map((episode) => ({ level: 'medium', episode, quote: 'следит за мужем', viewerQuestion: 'Зритель спросит: как?', whyNoticed: 'видно', fixes: ['a'], agentRule: 'правило' }))
         : [];
     const res = await runDevilAdvocate({ llm: client(), kb, kit }, { bible: golden.bible, plan, authorProvider: 'anthropic' }, { categories: ['Б'], personas: false });
@@ -62,7 +62,8 @@ describe('review fixes: model checks', () => {
     };
     const myth = genreKit(kb, 'slavic_myth');
     const res = await runDevilAdvocate({ llm: client(), kb, kit: myth }, { bible: golden.bible, plan: golden.plan, authorProvider: 'anthropic' }, { personas: false });
-    expect(res.calls).toBe(14);
+    // 14 categories × 3 blocks + 4 cross-season passes + the realism pass.
+    expect(res.calls).toBe(14 * 3 + 4 + 1);
     expect(systems.some((s) => s.includes('Любовная линия'))).toBe(false);
     expect(systems[0]).toContain('Главный персонаж этого сериала — герой');
   });
@@ -103,11 +104,13 @@ describe('review fixes: model checks', () => {
       return [];
     };
     const res = await runDevilAdvocate({ llm: client(), kb, kit: thriller }, { bible: prima.bible, plan: prima.plan, authorProvider: 'anthropic' }, { personas: false });
-    const tasks = systems.map((s) => s.split('\n')[0]);
-    expect(tasks).not.toContain('devil_advocate:Ж:план сезона');
-    expect(tasks).not.toContain('devil_advocate:В:план сезона');
-    expect(tasks).not.toContain('devil_advocate:И:план сезона');
+    const tasks = systems.map((s) => s.split('\n')[0] ?? '');
+    expect(tasks.some((t) => t.startsWith('devil_advocate:Ж:'))).toBe(false);
+    expect(tasks.some((t) => t.startsWith('devil_advocate:В:'))).toBe(false);
+    expect(tasks.some((t) => t.startsWith('devil_advocate:И:'))).toBe(false);
     expect(tasks).toContain('devil_advocate:Р:план сезона');
+    expect(tasks).toContain('devil_advocate:Р:план, серии 1–12');
+    expect(tasks).toContain('realism:план сезона');
     const structure = systems.find((s) => s.startsWith('devil_advocate:М:')) ?? systems.find((s) => s.startsWith('devil_advocate:Р:'))!;
     expect(structure).not.toContain('Мидпоинт — контрраскрытие');
     expect(structure).not.toContain('Что стоит на 8-й серии?');
@@ -122,9 +125,9 @@ describe('review fixes: model checks', () => {
       level: 'high', episodes: '1, 8', quote: golden.plan.episodes[0]!.event, viewerQuestion: 'Зритель спросит: почему?',
       whyNoticed: 'Это первая серия', fixes: ['Один', 'Два', 'Три'], agentRule: 'Проверять мотив на момент хода',
     };
-    answer = (req) => (req.task === 'devil_advocate:А:план сезона' || req.task === 'devil_advocate:З:план сезона' ? [draft] : []);
+    answer = (req) => (req.task?.startsWith('devil_advocate:А:') || req.task?.startsWith('devil_advocate:З:') ? [draft] : []);
     const res = await runDevilAdvocate({ llm: client(), kb, kit }, { bible: golden.bible, plan: golden.plan, authorProvider: 'anthropic' }, { categories: ['А', 'З'], personas: false });
-    expect(res.calls).toBe(2);
+    expect(res.calls).toBe(2 * 3);
     expect(res.findings).toHaveLength(1);
     expect(res.findings[0]).toMatchObject({
       category: ['А', 'З'], level: 'high', severity: 'major', episode: 1, episodes: '1, 8',

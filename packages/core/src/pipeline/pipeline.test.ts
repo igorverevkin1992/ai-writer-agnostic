@@ -56,6 +56,7 @@ function reply(req: LlmRequest): string {
       return JSON.stringify(confirmChecklist(req.system ?? ''));
     case 'devil_advocate':
       return JSON.stringify(b === 'библия' ? (script.auditBible?.(a) ?? []) : (script.auditPlan?.(a, b) ?? []));
+    case 'realism':
     case 'persona':
       return '[]';
     case 'respond':
@@ -149,15 +150,19 @@ describe('steps 1–4 end to end', () => {
     expect(states).toEqual(['approved', 'approved', 'approved', 'approved']);
   });
 
-  it('audits the whole plan once per review category А–П + 5 personas', async () => {
+  it('audits the plan per review category over three blocks, cross-block categories once more over the season, + 5 personas + realism', async () => {
     await throughLogline();
     await runStep(deps(), 'bible');
     approveStep(deps(), 'bible');
     calls = [];
     await runStep(deps(), 'season_plan');
-    expect(calls.filter((c) => c.startsWith('devil_advocate:'))).toHaveLength(15);
+    // 15 categories × 3 blocks (season60 blocks merged to ≥12 episodes) + 4 cross-season passes (Г, Д, Е, О).
+    expect(calls.filter((c) => c.startsWith('devil_advocate:'))).toHaveLength(15 * 3 + 4);
     expect(calls.filter((c) => c.startsWith('persona:'))).toHaveLength(5);
+    expect(calls.filter((c) => c.startsWith('realism:'))).toHaveLength(1);
     expect(calls).toContain('devil_advocate:Г:план сезона');
+    expect(calls).toContain('devil_advocate:Г:план, серии 1–20');
+    expect(calls).not.toContain('devil_advocate:А:план сезона');
     // Then one closing call: verdict and dangers, saved with the code tables.
     expect(calls.filter((c) => c === 'review_summary')).toHaveLength(1);
     const review = new ProjectMemory(db, projectId).latestArtifact('review:season_plan') as { summary?: { verdict: string }; tables: { guns: unknown[] } };

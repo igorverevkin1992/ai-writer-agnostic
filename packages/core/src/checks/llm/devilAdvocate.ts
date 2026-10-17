@@ -9,8 +9,8 @@ import { knowledgeBlock, renderPrompt, schemaText } from '../../prompts/render.t
 import { makeFinding } from '../code/finding.ts';
 import { concurrencyFromEnv, mapLimit } from '../../pipeline/mapLimit.ts';
 import { FindingDraft, FindingDrafts, ReviewDraft, ReviewDrafts } from './schemas.ts';
-import { lineHasFragment, locateQuote } from './quote.ts';
-import { bibleText, factsText, noticeQuestions, planBlocks, type AuditBlock } from './texts.ts';
+import { lineHasFragment, locateQuote, wordsOf } from './quote.ts';
+import { auditRanges, bibleText, factsText, noticeQuestions, planBlocks, planBlocksByRanges, type AuditBlock } from './texts.ts';
 
 const MAX_NOTICE_QUESTIONS = 30;
 
@@ -46,6 +46,8 @@ export interface AuditOptions {
   blockSize?: number;
   /** Model calls in flight at once; by default AIW_CONCURRENCY or 4. */
   concurrency?: number;
+  /** The realism pass (law, police procedure, medicine, everyday logistics) over the plan; on by default. */
+  realism?: boolean;
 }
 
 export interface AuditResult {
@@ -60,6 +62,16 @@ export interface AuditResult {
 }
 
 const MAX_DROPPED_SAMPLES = 10;
+
+/** Two viewer questions about the same thing: most of their words coincide. */
+function sameQuestion(a: string, b: string): boolean {
+  const wa = new Set(wordsOf(a).filter((w) => w.length > 3));
+  const wb = new Set(wordsOf(b).filter((w) => w.length > 3));
+  if (wa.size < 3 || wb.size < 3) return false;
+  let common = 0;
+  for (const w of wa) if (wb.has(w)) common++;
+  return common / Math.min(wa.size, wb.size) >= 0.6;
+}
 
 const normalize = (s: string) => s.replace(/[«»"“”„]/gu, '"').replace(/[ёЁ]/gu, 'е').replace(/\s+/gu, ' ').trim().toLowerCase();
 
@@ -165,12 +177,21 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
   const bible = bibleText(target.bible, terms);
   const facts = target.plan ? bible : factsText(target.bible) || 'Фактов пока нет.';
   const review = deps.kb.review;
+  // Plan passes go block by block (the frame's blocks merged to a dozen episodes or more), so one
+  // answer is never asked to list every hole of a season; categories whose holes cross blocks
+  // get one more pass over the whole season.
   let blocks: AuditBlock[] = target.plan
-    ? planBlocks(target.plan, opts.blockSize ?? target.plan.episodes.length, terms, deps.kit.frame.hook_types)
+    ? opts.blockSize !== undefined
+      ? planBlocks(target.plan, opts.blockSize, terms, deps.kit.frame.hook_types)
+      : planBlocksByRanges(target.plan, auditRanges(deps.kit.frame.blocks, target.plan.episodes.length), terms, deps.kit.frame.hook_types)
     : [{ label: 'библия', text: bible }];
   if (opts.episodes && target.plan) {
     blocks = blocks.filter((b) => opts.episodes!.some((ep) => b.episodes && ep >= b.episodes[0] && ep <= b.episodes[1]));
   }
+  const season: AuditBlock | undefined =
+    target.plan && blocks.length > 1
+      ? { label: 'план сезона', text: planBlocks(target.plan, target.plan.episodes.length, terms, deps.kit.frame.hook_types)[0]!.text, episodes: [blocks[0]!.episodes![0], blocks.at(-1)!.episodes![1]] }
+      : undefined;
 
   const found = new Map<string, Finding>();
   let dropped = 0;
@@ -181,12 +202,18 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
   };
   let calls = 0;
   const providers = new Set<ProviderName>();
+  // One hole may be quoted with slightly different spans by two passes, and two different holes
+  // may share one sentence (an episode is one line): a duplicate is the same episode and either
+  // the same quote or a question about the same thing.
   const keep = (f: Finding) => {
     const key = `${f.episode ?? 0}|${normalize(f.quote)}`;
-    const prev = found.get(key);
+    const prev =
+      found.get(key) ??
+      [...found.values()].find((g) => (g.episode ?? 0) === (f.episode ?? 0) && sameQuestion(g.viewerQuestion, f.viewerQuestion));
     if (!prev) found.set(key, f);
     // The same hole seen from another category: one finding with both categories.
     else if (f.category && prev.category) prev.category = [...new Set([...prev.category, ...f.category])];
+    else if (f.category && !prev.category) prev.category = f.category;
   };
 
   const ask = async <T>(task: string, system: string, schema: ZodType<T[]>) => {
@@ -215,7 +242,8 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
       const own = guide?.hole_questions[String(h.id)] ?? [];
       return guide?.replace_hole_questions.includes(String(h.id)) && own.length ? own : [...h.questions, ...own];
     });
-    return blocks.map((block) => {
+    const targets = category.cross_season && season ? [...blocks, season] : blocks;
+    return targets.map((block) => {
       const notice = category.with_notice_questions
         ? noticeQuestions(target.bible, block, target.plan).slice(0, MAX_NOTICE_QUESTIONS)
         : [];
@@ -250,9 +278,9 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
   });
 
   if (opts.personas !== false) {
-    const whole: AuditBlock = target.plan
+    const whole: AuditBlock = season ?? (target.plan
       ? { label: 'план сезона', text: blocks.map((b) => b.text).join('\n'), episodes: [blocks[0]?.episodes?.[0] ?? 1, blocks.at(-1)?.episodes?.[1] ?? 1] }
-      : blocks[0]!;
+      : blocks[0]!);
     const personas = deps.kit.personas.personas.map((p) => ({
       p,
       system: renderPrompt(deps.kb, `${role}/persona`, {
@@ -273,6 +301,25 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
         else drop(d.quote);
       }
     });
+  }
+
+  // The realism pass: a lawyer, an investigator and a physician read the whole season for the
+  // moves that do not work in life — procedure, documents, medicine, money, logistics.
+  if (opts.realism !== false && target.plan && !opts.categories && !opts.holeTypes) {
+    const whole = season ?? blocks[0]!;
+    const system = renderPrompt(deps.kb, `${role}/realism`, {
+      hero: terms.hero.nom,
+      target: whole.label,
+      legal: deps.kit.legal.principles.map((x) => `- ${x.text}`).join('\n'),
+      text: whole.text,
+      facts,
+      schema: schemaText(FindingDrafts),
+    });
+    for (const d of await ask('realism:план сезона', system, FindingDrafts)) {
+      const f = personaFinding(d, whole, facts, 'review.Б.realism');
+      if (f) keep({ ...f, category: ['Б'] });
+      else drop(d.quote);
+    }
   }
 
   return { findings: [...found.values()], dropped, droppedSamples, calls, providers: [...providers] };
