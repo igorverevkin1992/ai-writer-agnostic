@@ -1,6 +1,6 @@
 import { loadKb, genreKit, METHOD_IDS, METHOD_STEPS } from '@aiw/kb';
 import { describe, expect, it } from 'vitest';
-import { knowledgeBlock, methodsBlock } from './render.ts';
+import { KNOWLEDGE_CAP, knowledgeBlock, methodsBlock } from './render.ts';
 
 const kb = loadKb();
 
@@ -59,5 +59,48 @@ describe('method principles in the knowledge block', () => {
     expect(review).not.toContain('M43.'); // script format: not for the auditor
     expect(review).toContain('## Правила жанра');
     expect(review).toContain('## Кейсы');
+  });
+});
+
+describe('«Что проверит критик» in the knowledge block', () => {
+  const thriller = genreKit(kb, 'vertical_thriller');
+
+  it('gives concept and logline only the categories with their checks', () => {
+    const text = knowledgeBlock(kb, thriller, { step: 'concept' });
+    expect(text).toContain('## Что проверит критик');
+    expect(text).toContain('- А. Мотивы:');
+    expect(text).not.toContain('### Вопросы судьи к правилам жанра');
+    expect(text).not.toContain('### Каталог дыр');
+    // Categories of other genres (the villain ladder) stay out.
+    expect(text).not.toMatch(/^- Ж\. /mu);
+  });
+
+  it('gives the author of a bible or plan the category rules, the judge questions with fix hints, and the hole questions as the genre asks them', () => {
+    const text = knowledgeBlock(kb, thriller, { step: 'bible' });
+    expect(text).toContain('  - Злодей не действует против своей выгоды');
+    expect(text).toContain('- R01: Стоп-кадр на 3-й секунде понятен случайному зрителю');
+    expect(text).toContain('Как исправить: Начать с нарушения нормы или посреди действия');
+    // Hole type 10: the thriller guide replaces the catalog's questions with its own.
+    expect(text).toContain('Стоит ли на серии барьера поворот вопроса');
+    expect(text).not.toContain('Переворачивает ли середина сезона то, во что зритель верил?');
+    // Hole type 3: the guide adds to the catalog's.
+    expect(text).toContain('Почему героиня не уходит? Почему не идёт в полицию? Почему злодей не действует быстрее? Есть ли у героини «окно спасения»');
+  });
+
+  it('stays under the size cap for every genre and step; the methods section gives way first', () => {
+    for (const id of Object.keys(kb.genres)) {
+      const kit = genreKit(kb, id);
+      for (const step of METHOD_STEPS) {
+        const text = knowledgeBlock(kb, kit, { step });
+        expect(text.length, `${id}/${step}`).toBeLessThanOrEqual(KNOWLEDGE_CAP);
+        expect(text, `${id}/${step}`).toContain('## Что проверит критик');
+        expect(text, `${id}/${step}`).toContain('## Методики');
+      }
+    }
+    // The thriller season plan is the largest: it keeps the principles addressed to the step and drops the general ones.
+    const plan = knowledgeBlock(kb, thriller, { step: 'season_plan' });
+    expect(plan).toContain('M17.');
+    expect(plan).not.toContain('M02.');
+    expect(methodsBlock(kb, 'season_plan', 'vertical_thriller', 'all').join('\n')).not.toContain('M17.');
   });
 });
