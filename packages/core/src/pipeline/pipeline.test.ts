@@ -63,6 +63,7 @@ function reply(req: LlmRequest): string {
     case 'devil_advocate':
       return JSON.stringify(b === 'библия' ? (script.auditBible?.(a) ?? []) : (script.auditPlan?.(a, b) ?? []));
     case 'realism':
+    case 'confirm':
     case 'persona':
       return '[]';
     case 'respond':

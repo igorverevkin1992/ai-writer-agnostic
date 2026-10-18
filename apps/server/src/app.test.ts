@@ -48,7 +48,7 @@ function reply(req: { task?: string; system?: string }): string {
   }
   if (t === 'checklist_judge') return JSON.stringify(confirmChecklist(req.system ?? ''));
   if (t.startsWith('devil_advocate:А:')) return JSON.stringify([hole]);
-  if (t.startsWith('devil_advocate:') || t.startsWith('persona:') || t.startsWith('realism:')) return '[]';
+  if (t.startsWith('devil_advocate:') || t.startsWith('persona:') || t.startsWith('realism:') || t.startsWith('confirm:')) return '[]';
   if (t.startsWith('respond:')) return JSON.stringify({ action: 'cite', fact_id: 'f_dasha_target', explanation: 'Даша' });
   if (t === 'review_summary') return JSON.stringify({ verdict: 'Сезон почти готов.', dangers: [{ where: 'Серия 1', why: 'Первая серия' }], legal: [] });
   if (t.startsWith('judge:')) return JSON.stringify({ closed: false, reason: 'Не видно в кадре' });

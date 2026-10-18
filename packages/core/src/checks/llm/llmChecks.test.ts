@@ -147,3 +147,39 @@ describe('a malformed pass does not lose the audit', () => {
     expect(res.failedPasses.every((t) => t.startsWith('devil_advocate:Б:'))).toBe(true);
   });
 });
+
+describe('the senior-editor pass', () => {
+  it('drops a non-hole, merges a duplicate into the finding it repeats, keeps the rest', async () => {
+    const ep = (n: number) => golden.plan.episodes[n - 1]!;
+    const draft = (e: number, q: string, quote = ep(e).event) => ({ level: 'high', episode: e, quote, viewerQuestion: q, whyNoticed: 'видно', fixes: ['a'], agentRule: 'правило' });
+    let seen: string[] = [];
+    answer = (req) => {
+      const t = req.task ?? '';
+      if (t.startsWith('devil_advocate:А:')) return [draft(3, 'Зритель спросит: зачем он пришёл?'), draft(5, 'Зритель спросит: откуда ключ?'), draft(7, 'Зритель спросит: почему молчит?')];
+      // The same hole quoted from another sentence of the episode: not caught by the exact key, caught by the editor.
+      if (t.startsWith('devil_advocate:Б:')) return [draft(3, 'Зритель спросит: с какой целью он явился?', ep(3).heroine_action)];
+      if (t.startsWith('confirm:')) {
+        const ids = [...(req.system ?? '').matchAll(/^(\S+) \| серия (\d+)/gmu)].map((m) => ({ id: m[1]!, ep: Number(m[2]) }));
+        seen.push(...ids.map((x) => x.id));
+        const a3 = ids.find((x) => x.ep === 3)!;
+        const dup = ids.filter((x) => x.ep === 3)[1];
+        const five = ids.find((x) => x.ep === 5);
+        return [
+          ...(five ? [{ id: five.id, verdict: 'drop', reason: 'ключ объяснён в 4-й' }] : []),
+          ...(dup ? [{ id: dup.id, verdict: 'duplicate', duplicate_of: a3.id, reason: 'то же' }] : []),
+        ];
+      }
+      return [];
+    };
+    const res = await runDevilAdvocate({ llm: client(), kb, kit }, { bible: golden.bible, plan: golden.plan, authorProvider: 'anthropic' }, { personas: false, realism: false });
+    expect(seen.length).toBeGreaterThanOrEqual(3);
+    expect(res.confirmDropped).toBe(1);
+    expect(res.confirmMerged).toBe(1);
+    expect(res.findings.map((f) => f.episode).sort()).toEqual([3, 7]);
+    expect(res.findings.find((f) => f.episode === 3)?.category).toEqual(expect.arrayContaining(['А', 'Б']));
+    seen = [];
+    const off = await runDevilAdvocate({ llm: client(), kb, kit }, { bible: golden.bible, plan: golden.plan, authorProvider: 'anthropic' }, { personas: false, realism: false, confirm: false });
+    expect(seen).toEqual([]);
+    expect(off.findings).toHaveLength(4);
+  });
+});

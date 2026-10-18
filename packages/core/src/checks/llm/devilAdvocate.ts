@@ -9,9 +9,9 @@ import { knowledgeBlock, renderPrompt, schemaText } from '../../prompts/render.t
 import { makeFinding } from '../code/finding.ts';
 import { InvalidOutputError, OutputTruncatedError } from '../../providers/errors.ts';
 import { concurrencyFromEnv, mapLimit } from '../../pipeline/mapLimit.ts';
-import { FindingDraft, FindingDrafts, ReviewDraft, ReviewDrafts } from './schemas.ts';
+import { ConfirmVerdicts, FindingDraft, FindingDrafts, ReviewDraft, ReviewDrafts } from './schemas.ts';
 import { lineHasFragment, locateQuote, wordsOf } from './quote.ts';
-import { auditRanges, bibleText, factsText, noticeQuestions, planBlocks, planBlocksByRanges, type AuditBlock } from './texts.ts';
+import { auditRanges, bibleText, episodeLine, factsText, noticeQuestions, planBlocks, planBlocksByRanges, type AuditBlock } from './texts.ts';
 
 const MAX_NOTICE_QUESTIONS = 30;
 
@@ -49,6 +49,8 @@ export interface AuditOptions {
   concurrency?: number;
   /** The realism pass (law, police procedure, medicine, everyday logistics) over the plan; on by default. */
   realism?: boolean;
+  /** The senior-editor pass that drops non-holes and merges duplicates; on by default. */
+  confirm?: boolean;
 }
 
 export interface AuditResult {
@@ -60,11 +62,16 @@ export interface AuditResult {
   calls: number;
   /** Passes whose answer stayed malformed after the retries: their part of the text went unchecked. */
   failedPasses: string[];
+  /** Candidates the senior-editor pass dropped as non-holes, and those merged into another finding. */
+  confirmDropped: number;
+  confirmMerged: number;
   /** Providers that really answered (the reserve may have stood in): a judge of the audit must differ. */
   providers: ProviderName[];
 }
 
 const MAX_DROPPED_SAMPLES = 10;
+/** Episodes per senior-editor window. */
+const CONFIRM_WINDOW = 10;
 
 /** Two viewer questions about the same thing: most of their words coincide. */
 function sameQuestion(a: string, b: string): boolean {
@@ -334,5 +341,62 @@ export async function runDevilAdvocate(deps: AuditDeps, target: AuditTarget, opt
     }
   }
 
-  return { findings: [...found.values()], dropped, droppedSamples, calls, failedPasses, providers: [...providers] };
+  // The senior-editor pass: every candidate is read again next to the plan of its window and
+  // the bible, so stated mysteries the season answers, genre premises and repeats go away
+  // before the producer sees the list. The same critic family reads it with more context.
+  let confirmDropped = 0;
+  let confirmMerged = 0;
+  if (opts.confirm !== false && found.size > 0 && !opts.categories && !opts.holeTypes) {
+    const all = [...found.values()];
+    const windows: { label: string; items: Finding[]; plan: string }[] = [];
+    if (target.plan) {
+      const eps = target.plan.episodes.map((e) => e.ep);
+      const last = Math.max(...eps);
+      for (let a = 1; a <= last; a += CONFIRM_WINDOW) {
+        const b = Math.min(last, a + CONFIRM_WINDOW - 1);
+        const items = all.filter((f) => f.episode !== undefined && f.episode >= a && f.episode <= b);
+        const lines = target.plan.episodes
+          .filter((e) => e.ep >= a - 2 && e.ep <= b + 2)
+          .sort((x, y) => x.ep - y.ep)
+          .map((e) => episodeLine(e, terms, deps.kit.frame.hook_types))
+          .join('\n');
+        if (items.length) windows.push({ label: `серии ${a}–${b}`, items, plan: lines });
+      }
+    }
+    const noEpisode = all.filter((f) => f.episode === undefined);
+    if (noEpisode.length) windows.push({ label: 'библия', items: noEpisode, plan: 'Замечания к библии, без серий.' });
+    const verdicts = await mapLimit(windows, limit, (w) =>
+      ask(
+        `confirm:${w.label}`,
+        renderPrompt(deps.kb, `${role}/confirm`, {
+          hero: terms.hero.nom,
+          plan: w.plan,
+          facts,
+          findings: w.items.map((f) => `${f.id} | серия ${f.episode ?? '—'} | «${f.quote}» | ${f.viewerQuestion} | ${f.category?.join(', ') ?? ''}`).join('\n'),
+          schema: schemaText(ConfirmVerdicts),
+        }),
+        ConfirmVerdicts,
+      ),
+    );
+    const byId = new Map(all.map((f) => [f.id, f]));
+    for (const v of verdicts.flat()) {
+      const f = byId.get(v.id);
+      if (!f) continue;
+      if (v.verdict === 'drop') {
+        confirmDropped++;
+        byId.delete(v.id);
+      } else if (v.verdict === 'duplicate') {
+        const into = v.duplicate_of ? byId.get(v.duplicate_of) : undefined;
+        if (into && into !== f) {
+          if (f.category) into.category = [...new Set([...(into.category ?? []), ...f.category])];
+          confirmMerged++;
+          byId.delete(v.id);
+        }
+      }
+    }
+    found.clear();
+    for (const f of byId.values()) found.set(f.id, f);
+  }
+
+  return { findings: [...found.values()], dropped, droppedSamples, calls, failedPasses, confirmDropped, confirmMerged, providers: [...providers] };
 }

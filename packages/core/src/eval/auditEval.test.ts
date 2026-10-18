@@ -32,7 +32,7 @@ function reply(req: LlmRequest): string {
   const task = req.task ?? '';
   tasks.push(task);
   if (task.startsWith('devil_advocate:А:')) return JSON.stringify([hole]);
-  if (task.startsWith('devil_advocate:') || task.startsWith('persona:') || task.startsWith('realism:')) return '[]';
+  if (task.startsWith('devil_advocate:') || task.startsWith('persona:') || task.startsWith('realism:') || task.startsWith('confirm:')) return '[]';
   if (task.startsWith('eval_match')) {
     const id = /(review\.А\S+) \| тип 3/u.exec(req.system ?? '')?.[1];
     // A code finding is offered to the judge too and counts towards the producer's holes.
@@ -174,6 +174,8 @@ describe('auditor evaluation', () => {
         anchors: { total: 1, onPlace: 1 },
         resolved: { tried: 0, closed: 0, architect: 'architect', failed: 0, of: 0 },
         failed: [],
+        confirmDropped: 0,
+        confirmMerged: 0,
       },
       { date: 'd', project: 'p', costUsd: 0, architectModel: 'm' },
     );

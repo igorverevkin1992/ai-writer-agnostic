@@ -51,19 +51,36 @@ function longestRun(text: string[], quote: string[]): string[] {
  */
 export function locateQuote(text: string, quote: string): string | undefined {
   const t = wordsOf(text);
-  const q = wordsOf(quote);
+  const cleaned = stripAnnotations(quote);
+  const q = wordsOf(cleaned);
   if (q.length === 0) return undefined;
   if (hasRun(t, q)) return q.join(' ');
 
-  const parts = quote
-    .split(/…|\.\.\./u)
+  // A stitched quote: fragments joined by an ellipsis, «[...]», a slash or a line break.
+  // It counts when every fragment is there, or when at least two real fragments are.
+  const parts = cleaned
+    .split(/…|\.\.\.|\[\.{3}\]|\[…\]|\s\/\/?\s|\n+/u)
     .map(wordsOf)
     .filter((p) => p.length > 0);
-  if (parts.length > 1 && parts.every((p) => hasRun(t, p))) return parts[0]!.join(' ');
+  if (parts.length > 1) {
+    const found = parts.filter((p) => hasRun(t, p) || longestRun(t, p).length >= Math.min(p.length, MIN_RUN_WORDS));
+    if (found.length === parts.length || (found.length >= 2 && found.length >= Math.ceil(parts.length / 2))) {
+      const first = found[0]!;
+      return (hasRun(t, first) ? first : longestRun(t, first)).join(' ');
+    }
+  }
 
   const run = longestRun(t, q);
   const need = Math.min(q.length, Math.max(MIN_RUN_WORDS, Math.ceil(q.length * MIN_RUN_SHARE)));
   return run.length >= need ? run.join(' ') : undefined;
+}
+
+/** Drops the model's own labels inside a quote: «(Серия 12)», «(Библия)», «(из серий 58-59)», field names. */
+function stripAnnotations(quote: string): string {
+  return quote
+    .replace(/\((?:из )?сери[яий]\s*[\d–\-, ]+\)/giu, ' ')
+    .replace(/\(библия\)/giu, ' ')
+    .replace(/(?<!\p{L})(?:Крючок|Героиня|Герой|Вопрос серии)\s*(?:\((?:[^()]|\([^()]*\))*\))?:\s*/gu, ' ');
 }
 
 /** Whether a line of the text contains the located fragment. */

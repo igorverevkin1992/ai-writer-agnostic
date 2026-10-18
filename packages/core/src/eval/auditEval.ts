@@ -140,6 +140,9 @@ export interface EvalReport {
   resolved: { tried: number; closed: number; architect: RoleName; failed: number; of: number };
   /** Model calls whose answers stayed malformed: what they would have said is missing from the report. */
   failed: string[];
+  /** What the senior-editor pass removed: non-holes and duplicates. */
+  confirmDropped: number;
+  confirmMerged: number;
   /** Set when the budget ran out: the report is partial. */
   stopped?: string;
 }
@@ -190,6 +193,8 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
     anchors: { total: anchorIds.length, onPlace: anchorIds.filter((a) => !misplaced.has(a)).length },
     resolved: { tried: 0, closed: 0, architect: architectRole, failed: 0, of: 0 },
     failed: [],
+    confirmDropped: 0,
+    confirmMerged: 0,
   };
 
   const auditors = new Set<ProviderName>([criticProvider]);
@@ -212,6 +217,8 @@ export async function runAuditEval(input: EvalInput): Promise<EvalReport> {
       const res = await runDevilAdvocate(deps, { ...target, authorProvider: llm.resolve(authorRole).provider });
       report.findings.push(...res.findings);
       report.failed.push(...res.failedPasses);
+      report.confirmDropped += res.confirmDropped;
+      report.confirmMerged += res.confirmMerged;
       report.dropped += res.dropped;
       report.droppedSamples.push(...res.droppedSamples.slice(0, 5));
       for (const p of res.providers) auditors.add(p);
@@ -360,7 +367,7 @@ export function renderEvalReport(r: EvalReport, meta: { date: string; project: s
     `| Опорные точки на своих номерах | ${r.anchors.onPlace} из ${r.anchors.total} (${fmt(anchorsPct)}) | 100% ${mark(anchorsPct, 100)} | 100% |`,
     '',
     `Чек-лист: код — ${r.checklist.code} баллов, с судьёй — ${agentScore}${r.checklist.judgedUnknown ? ` (не подтверждено ${r.checklist.judgedUnknown})` : ''}${r.checklist.producer !== undefined ? `, у продюсера — ${r.checklist.producer}` : ''}.`,
-    `Замечаний аудитора: ${r.findings.length}; отброшено без точной цитаты: ${r.dropped}.`,
+    `Замечаний аудитора: ${r.findings.length}; отброшено без точной цитаты: ${r.dropped}; старший редактор отсеял ${r.confirmDropped} и склеил ${r.confirmMerged}.`,
     `Архитектор ответил на ${r.resolved.tried} реальных замечаний (выборка из ${r.resolved.of}), судья закрыл ${r.resolved.closed}${r.resolved.failed ? `, без ответа по форме — ${r.resolved.failed}` : ''}.`,
     ...(r.failed.length ? [`Вызовов без ответа по форме (их часть не проверена): ${r.failed.length} — ${r.failed.slice(0, 8).join(', ')}${r.failed.length > 8 ? '…' : ''}.`] : []),
     '',
@@ -379,12 +386,16 @@ export function renderEvalReport(r: EvalReport, meta: { date: string; project: s
     // One line per hole: the same hole seen from several categories is one question for the producer.
     const byHole = new Map<string, typeof disputed>();
     for (const m of disputed) byHole.set(m.hole_id ?? m.finding_id, [...(byHole.get(m.hole_id ?? m.finding_id) ?? []), m]);
+    const MAX_UNMATCHED = 12;
+    let unmatched = 0;
     for (const [key, ms] of byHole) {
       const m = ms[0]!;
+      if (!m.hole_id && ++unmatched > MAX_UNMATCHED) continue;
       const f = r.findings.find((x) => x.id === m.finding_id);
       const more = ms.length > 1 ? ` (ещё ${ms.length - 1} замеч. о том же)` : '';
       lines.push(`- «${f?.quote ?? m.finding_id}» → ${m.hole_id ? key : 'не сопоставлено'}: ${m.reason}${more}`);
     }
+    if (unmatched > MAX_UNMATCHED) lines.push(`- … и ещё ${unmatched - MAX_UNMATCHED} спорных без пары среди дыр продюсера.`);
   }
   if (r.producerMissed.length) {
     lines.push('', '## Не найденные дыры продюсера', '');

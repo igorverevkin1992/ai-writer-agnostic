@@ -56,6 +56,16 @@ export const AuthorReply = z
 export type AuthorReply = z.infer<typeof AuthorReply>;
 
 export const JudgeVerdict = z.object({ closed: z.boolean(), reason: NonEmpty });
+
+/** The senior editor's verdict on one candidate finding. */
+export const ConfirmVerdict = z.object({
+  id: NonEmpty,
+  verdict: z.enum(['keep', 'drop', 'duplicate']),
+  duplicate_of: z.string().optional(),
+  reason: NonEmpty,
+});
+export const ConfirmVerdicts = z.array(ConfirmVerdict);
+export type ConfirmVerdict = z.infer<typeof ConfirmVerdict>;
 export type JudgeVerdict = z.infer<typeof JudgeVerdict>;
 
 export const ExtractedFacts = z.object({ facts: z.array(Fact), knowledge: z.array(KnowledgeEntry) });

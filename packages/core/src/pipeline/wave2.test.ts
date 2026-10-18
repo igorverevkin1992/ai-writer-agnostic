@@ -111,6 +111,7 @@ function defaultAnswers(): typeof answers {
     devil_advocate: () => [],
     persona: () => [],
     realism: () => [],
+    confirm: () => [],
     review_summary: () => ({ verdict: 'Сезон почти готов.', dangers: [{ where: 'Серия 1', why: 'Первая серия' }], legal: [] }),
     episode_cards: (a) => epsOf(a).map(card),
     script: (a) => script(Number(a)),

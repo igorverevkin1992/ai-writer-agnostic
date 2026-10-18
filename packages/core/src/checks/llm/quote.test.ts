@@ -18,6 +18,14 @@ describe('locateQuote', () => {
     expect(locateQuote(text, 'Лика исчезает')).toBeUndefined();
     expect(locateQuote(text, '')).toBeUndefined();
   });
+  it('accepts a stitched quote with the model\'s own labels and «[...]» when its fragments are there', () => {
+    expect(locateQuote(text, 'Уля находит шаль Лики в гримёрке (Серия 3) [...] Снаружи — меловой крест (Серия 4)')).toBe('уля находит шаль лики в гримерке');
+    expect(locateQuote(text, 'Героиня: Уля находит шаль Лики / Крючок (Удар (attack)): Регина запирает дверь')).toBeDefined();
+    // Two of three fragments real, the third invented: still the majority, accepted; one of three: not.
+    expect(locateQuote(text, 'Уля находит шаль Лики в гримёрке... Регина запирает дверь... Лика уезжает в Петербург')).toBeDefined();
+    expect(locateQuote(text, 'Лика уезжает в Петербург... Семён платит фонду... Регина запирает дверь')).toBeUndefined();
+  });
+
   it('finds the line of a fragment', () => {
     const fragment = locateQuote(text, 'Снаружи — меловой крест')!;
     expect(lineHasFragment('Серия 4. Регина запирает дверь. Снаружи — меловой крест.', fragment)).toBe(true);
