@@ -82,6 +82,7 @@ try {
   });
 } catch (err) {
   console.error(`Оценка прервана: ${err instanceof Error ? err.message : String(err)}`);
+  console.error('Запустите ту же команду ещё раз: уже полученные ответы возьмутся из кэша бесплатно.');
   console.error(`Потрачено к этому моменту: $${costSummary(db, config, projectId).totalUsd.toFixed(2)} (проект в базе: ${projectId}).`);
   process.exit(1);
 }

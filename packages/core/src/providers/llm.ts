@@ -87,10 +87,24 @@ export interface LlmClientDeps {
    * pays only for what it had not got yet. Off in the app: «переделать» must ask the model again.
    */
   cache?: boolean;
+  /** Pauses between attempts after a network failure, in ms; tests pass an empty list. */
+  retryDelaysMs?: readonly number[];
+  sleep?: (ms: number) => Promise<void>;
   /** Injected in tests. Defaults to the real SDK-backed providers. */
   providers?: Partial<Record<ProviderName, Provider>>;
   env?: NodeJS.ProcessEnv;
   now?: () => number;
+}
+
+/**
+ * A dropped connection is usually gone in seconds: two more tries before the reserve or an
+ * error. AIW_RETRY_DELAYS_MS (comma-separated ms, empty — no retries) overrides it; tests set it empty.
+ */
+function defaultRetryDelays(env: NodeJS.ProcessEnv): number[] {
+  const raw = env.AIW_RETRY_DELAYS_MS;
+  if (raw === undefined) return [5_000, 20_000];
+  if (raw.trim() === '') return [];
+  return raw.split(',').map((x) => Number(x.trim())).filter((n) => Number.isFinite(n) && n >= 0);
 }
 
 export class LlmClient {
@@ -104,7 +118,22 @@ export class LlmClient {
   private reservedUsd = 0;
   private readonly cache: boolean;
 
-  constructor({ config, db, providers = {}, env = process.env, now = Date.now, onCall, cache = false }: LlmClientDeps) {
+  private readonly retryDelaysMs: readonly number[];
+  private readonly sleep: (ms: number) => Promise<void>;
+
+  constructor({
+    config,
+    db,
+    providers = {},
+    env = process.env,
+    now = Date.now,
+    onCall,
+    cache = false,
+    retryDelaysMs,
+    sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  }: LlmClientDeps) {
+    this.retryDelaysMs = retryDelaysMs ?? defaultRetryDelays(process.env);
+    this.sleep = sleep;
     this.config = config;
     this.db = db;
     this.env = env;
@@ -154,7 +183,7 @@ export class LlmClient {
     let used = primary;
     let fallbackUsed = false;
     try {
-      result = await attempt(primary, false);
+      result = await this.withRetries(() => attempt(primary, false));
     } catch (err) {
       const fallback = this.resolveFallback(opts.role);
       const canFallback = err instanceof ProviderUnavailableError || err instanceof MissingKeyError;
@@ -394,6 +423,18 @@ export class LlmClient {
   private estimateUsd(resolved: Resolved): number {
     const usage: Usage = { inputTokens: 0, outputTokens: resolved.target.maxOutput, cacheReadTokens: 0, cacheWriteTokens: 0 };
     return this.cost(resolved.target.model, resolved, usage).costUsd;
+  }
+
+  /** The same call again after a network failure (fetch failed, timeout, 5xx after the SDK's own retries). */
+  private async withRetries<R>(call: () => Promise<R>): Promise<R> {
+    for (let i = 0; ; i++) {
+      try {
+        return await call();
+      } catch (err) {
+        if (!(err instanceof ProviderUnavailableError) || i >= this.retryDelaysMs.length) throw err;
+        await this.sleep(this.retryDelaysMs[i]!);
+      }
+    }
   }
 
   /** A cached answer that still passes the schema, logged as a free call. */

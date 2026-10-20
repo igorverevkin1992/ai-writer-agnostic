@@ -544,3 +544,26 @@ describe('answer cache and wrapped answers', () => {
     expect(anthropic.calls).toHaveLength(2);
   });
 });
+
+describe('network failures', () => {
+  it('a dropped connection is tried again before the reserve or an error', async () => {
+    const db = openDb(':memory:');
+    const anthropic = new FakeProvider('anthropic', [new ProviderUnavailableError('anthropic', new Error('fetch failed')), '{"ok":true}']);
+    const waits: number[] = [];
+    const llm = new LlmClient({ config: testConfig(), db, env: {}, providers: { anthropic }, retryDelaysMs: [5, 20], sleep: async (ms) => void waits.push(ms) });
+    const res = await llm.completeJson(z.object({ ok: z.boolean() }), { role: 'architect', request: { messages: [{ role: 'user', content: 'go' }] } });
+    expect(res.data.ok).toBe(true);
+    expect(waits).toEqual([5]);
+    expect(anthropic.calls).toHaveLength(2);
+  });
+
+  it('gives up after the last pause', async () => {
+    const db = openDb(':memory:');
+    const anthropic = new FakeProvider('anthropic', [new ProviderUnavailableError('anthropic', new Error('fetch failed'))]);
+    const waits: number[] = [];
+    const llm = new LlmClient({ config: testConfig(), db, env: {}, providers: { anthropic }, retryDelaysMs: [5, 20], sleep: async (ms) => void waits.push(ms) });
+    await expect(llm.completeJson(z.object({ ok: z.boolean() }), { role: 'architect', request: { messages: [{ role: 'user', content: 'go' }] } })).rejects.toThrow(ProviderUnavailableError);
+    expect(waits).toEqual([5, 20]);
+    expect(anthropic.calls).toHaveLength(3);
+  });
+});
