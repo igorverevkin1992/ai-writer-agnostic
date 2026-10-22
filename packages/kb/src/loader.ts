@@ -510,7 +510,8 @@ function readPrompts(root: string, issues: KbIssue[]): Record<string, string> {
         issues.push({ file: rel, message: 'Промпт должен быть файлом .md' });
         continue;
       }
-      const text = readFileSync(join(roleDir, file), 'utf8').trim();
+      // Prompts are parsed line by line downstream: a Windows checkout must not leave «\r» in them.
+      const text = readFileSync(join(roleDir, file), 'utf8').replace(/\r\n/gu, '\n').trim();
       if (!text) issues.push({ file: rel, message: 'Промпт пустой' });
       prompts[`${role}/${file.slice(0, -3)}`] = text;
     }

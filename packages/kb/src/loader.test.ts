@@ -20,7 +20,8 @@ function kbCopy(): string {
 
 function edit(dir: string, file: string, change: (text: string) => string): void {
   const path = join(dir, file);
-  writeFileSync(path, change(readFileSync(path, 'utf8')));
+  // A Windows checkout may hold CRLF: the edits below look for LF.
+  writeFileSync(path, change(readFileSync(path, 'utf8').replace(/\r\n/gu, '\n')));
 }
 
 function loadError(dir: string): KbLoadError {
