@@ -266,7 +266,7 @@ describe('writer context and continuity ledger (audit item 16)', () => {
   it('the architect sees the clues, guns and nested questions of the block', () => {
     const cards = requests.find((r) => r.task === 'episode_cards:1-10')!.system!;
     expect(cards).toContain('c1_shoes (улика, заложена в 2-й, окупается в 12-й)');
-    expect(cards).toContain('g_flask (ружьё, показано в 7-й, стреляет в 20-й)');
+    expect(cards).toContain('g_flask (ружьё, показано в 7-й, стреляет в 56-й)');
     expect(cards).toContain('уровень 1:');
     expect(memory().cards().find((c) => c.ep === 2)).toMatchObject({ plants: ['c1_shoes', 'g_lika_shoes'], closes_question: 1, opens_question: 2 });
   });
@@ -278,8 +278,8 @@ describe('writer context and continuity ledger (audit item 16)', () => {
     expect(writer).toContain('Серия 4.');
     expect(writer).not.toContain('Серия 5.');
     expect(writer).toContain('Следующая серия начинается с: Продолжение обрыва 2-й');
-    expect(writer).toContain('c1_shoes — улика: Пуанты Лики с именем Аси в её шкафчике (визуальная, без комментария)');
-    expect(writer).toContain('g_lika_shoes — ружьё: Пуанты Лики (читается без звука)');
+    expect(writer).toContain('c1_shoes — улика: Старые пуанты Лики с именем Аси в её шкафчике (визуальная, без комментария)');
+    expect(writer).toContain('g_lika_shoes — ружьё: Пуанты Лики с креста (читается без звука)');
     expect(writer).toContain('Режим знания в серии: ');
     // The whole bible: nothing is compressed while the input fits.
     expect(writer).toContain('"world_rules"');
