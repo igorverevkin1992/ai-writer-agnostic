@@ -281,16 +281,14 @@ describe('golden project «Прима» v1: the planted holes for the auditor', 
     const kb = loadKb();
     const kit = genreKit(kb, 'vertical_thriller');
     const holed = loadGolden('prima_v1');
-    const clean = loadGolden('prima');
     expect(runCodeChecks({ kit, bible: holed.bible, plan: holed.plan }).findings).toEqual([]);
-    expect(holed.bible).toEqual(clean.bible);
-    const changed = holed.plan.episodes.filter((e, i) => JSON.stringify(e) !== JSON.stringify(clean.plan.episodes[i]));
-    expect(changed.length).toBeGreaterThanOrEqual(20);
+    // The benchmark is frozen at the Prima of 17.10.2026: the clean Prima keeps evolving.
     const holes = loadProducerHoles('prima_v1')!;
     expect(holes.holes).toHaveLength(28);
-    for (const h of holes.holes) expect(h.holeType, h.id).toBeDefined();
-    // Every hole points at an episode of the plan, and every changed episode is listed by some hole.
-    const listed = new Set(holes.holes.flatMap((h) => [h.episode, ...(h.episodes ?? '').split(/[,\s–-]+/u).map(Number)]).filter(Boolean));
-    for (const e of changed) expect(listed.has(e.ep), `серия ${e.ep}`).toBe(true);
+    for (const h of holes.holes) {
+      expect(h.holeType, h.id).toBeDefined();
+      const eps = [h.episode, ...(h.episodes ?? '').split(/[,\s–-]+/u).map(Number)].filter((n): n is number => !!n);
+      for (const ep of eps) expect(holed.plan.episodes.some((e) => e.ep === ep), `${h.id}: серия ${ep}`).toBe(true);
+    }
   });
 });
