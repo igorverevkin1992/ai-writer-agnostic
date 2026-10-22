@@ -276,6 +276,19 @@ describe('golden project «Прима» (vertical thriller)', () => {
   });
 });
 
+describe('golden project «Прима. Сумерки» (the mystical Prima)', () => {
+  const dusk = loadGolden('prima_dusk');
+
+  it('passes every code check of its genre with real supernatural rules of the world', () => {
+    const res = runCodeChecks({ kit, ...dusk });
+    expect(res.findings.map((f) => `${f.check} [${f.episode ?? '-'}] ${f.quote}`)).toEqual([]);
+    expect(scoreChecklist(kit.checklist, kit.rules, res).items.filter((i) => i.status === 'fail')).toEqual([]);
+    expect(dusk.bible.world_rules).toHaveLength(4);
+    expect(dusk.bible.nested.map((q) => q.closed_ep)).toEqual([12, 24, 36, 50, 60]);
+    expect(dusk.bible.characters.filter((c) => c.regular)).toHaveLength(6);
+  });
+});
+
 describe('golden project «Прима» v1: the planted holes for the auditor', () => {
   it('keeps every code check silent, so the holes are the model\'s to find', () => {
     const kb = loadKb();

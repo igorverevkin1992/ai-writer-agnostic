@@ -1,0 +1,1747 @@
+# План сезона «Прима. Сумерки» — 60 серий по 90 с, барьер после 10-й (каркас thriller60).
+# Мистическая версия по брейнсторму продюсера (22.10.2026): «Покровка. Театр», спектакль «Москва. Сумерки»,
+# бабка-хранительница и снадобье. Корректный: проходит все кодовые проверки жанра.
+episodes:
+- ep: 1
+  title: Поклон
+  event: 'Открытие сезона в «Покровке»: «Москва. Сумерки», финал. Марго, 52 года, лицо тридцатилетней, — последний монолог,
+    зал встаёт. Поклон, цветы: «Спасибо, спасибо». Свет гаснет на поклонный срез. Свет дают — у люка-склепа лежит Лена, актриса
+    первого состава: нога сломана, кровь по доскам. Над ней на коленях старуха-уборщица промокает кровь тряпкой и убирает
+    тряпку в банку'
+  question: Кто эта старуха, что собирает кровь, пока все смотрят на Марго?
+  emotions:
+  - восторг зала
+  - ужас
+  - холод
+  heroine_action: Первая бросается к Лене и зажимает рану своим шарфом
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - hook_violation
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Семён — Асе, не глядя на Лену: «Завтра играешь ты»'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: true
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 2
+  title: На чай
+  event: 'Утро. Лена в больнице. Асю вводят в спектакль за один день; Марго берёт её под крыло — ласково, как сестру. Первое
+    правило театра от Марго: «Нюру днём не ищи. Она приходит на чай, когда зажигают сцену». В гримёрке Марго на зеркале —
+    тёмная бутылочка без этикетки. Марк, историк, пишет книгу о доме и фотографирует лестницу у люка'
+  question: Что в бутылочке на зеркале Марго?
+  emotions:
+  - недоверие
+  - надежда
+  heroine_action: Вводится в роль за день и учит текст ночью с Викой
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - first_rule
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: В стакане, который Марго допивает перед выходом, — красноватый осадок
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 3
+  title: Провал
+  event: 'Первый спектакль Аси: зажим, забытый текст, партнёр Лёва вытаскивает сцену на себе; в зале критик. После спектакля
+    Ася пьёт в гримёрке водку из бутафорского графина. Семён: «Ещё один такой — и ты в студии, за кулисами». Марго с добрым
+    лицом: «Я знаю, чем помочь». Зритель видит то, чего не видит Ася: в костюмерной Нюра вынимает из её корсета иглу и снимает
+    с подкладки каплю крови на ватку. Шарф Аси возвращается на крючок чистым — кровь Лены отстирана'
+  question: Кто и зачем воткнул иглу в мой корсет?
+  emotions:
+  - стыд
+  - одиночество
+  - страх
+  heroine_action: Принимает помощь Марго, не спросив, чего она стоит
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - first_cost
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: ticking
+  cliffhanger: 'Семён: «Прогон с критиками — через десять дней. Или ты, или Лена, когда срастётся»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: true
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: lie
+- ep: 4
+  title: Чай с рецептом
+  event: 'Марго приносит Асе чай «по своему рецепту» — с каплей из бутылочки. Спектакль: Ася играет так, что в финале зал
+    молчит, а потом встаёт. Лёва впервые смотрит на неё как на партнёршу'
+  question: Что было в чае?
+  emotions:
+  - полёт
+  - сомнение
+  heroine_action: Пьёт чай Марго и выходит на сцену
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - threat_personal
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'Вика в общежитии: кровь из носа не останавливается. «Это ты? Ты сегодня была другая»'
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 5
+  title: Игла
+  event: 'Ася находит в своей сценической туфле осколок стекла, в корсете — вторую иглу. Кто-то хочет её крови. Она идёт к
+    Семёну и добивается: костюмершу меняют, костюмы под замок. Вечером Лена из больницы просит не возвращать ей роль: «Я туда
+    больше не выйду»'
+  question: Кому нужна моя кровь?
+  emotions:
+  - шок
+  - ярость
+  heroine_action: Приносит Семёну стекло и иглу и добивается замка на костюмерной
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'На вахте у Нюры — банка с ватками. На каждой карандашом: «Ася»'
+  acts_on:
+  - who: Ася
+    fact: f_blood_taken
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  victory: true
+  cost: 'Вика слабеет: впервые пропускает занятие студии и спит днём'
+- ep: 6
+  title: Историк
+  event: 'Марк показывает Асе снимки поклонов: 1936, 1966, 1996 — у кулисы на всех одна и та же старуха. Пока он выходит,
+    Ася находит у него папку «Инга, 1996»: медицинские выписки, фото молодой актрисы — он что-то скрывает. Марк: «Я думал,
+    ты — следующая. Пока не увидел, как ты смотришь на бутылочку»'
+  question: Зачем Марку этот театр?
+  emotions:
+  - подозрение
+  - обида
+  heroine_action: Фотографирует папку Марка, пока он выходит за кофе
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - ally_suspect
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: betrayal
+  cliffhanger: 'На снимке 1996 года в кулисе — не только старуха: за ней молодая Марго держит стакан'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 7
+  title: Правило второе
+  event: 'Марго даёт Асе свою бутылочку «на один раз» и правило второе: «Пьют перед выходом. Глоток — не больше. И не делятся».
+    Зритель видит: на вахте Нюра переливает в бутылочку отжатое из банки с ватками. Ася пьёт глоток — и играет легко, как
+    во сне'
+  question: Почему глоток — и почему не делятся?
+  emotions:
+  - лёгкость
+  - тревога
+  heroine_action: Пьёт из бутылочки Марго перед выходом
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: 'Вика на лестнице общежития: ноги не держат, она садится на ступеньку и улыбается, как пьяная'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: lie
+- ep: 8
+  title: Витамины
+  event: 'Семён показывает Асе чеки: капельницы Марго у частного врача — «вот и вся молодость»; бутылочка — настойка от того
+    же врача. Стекло насыпала Лена — «из зависти, она призналась». Все выдыхают. Ночью Ася и Вика красят друг другу волосы
+    и смеются: «Ты теперь прима, а я твоя Вика»'
+  question: Это просто витамины и зависть?
+  emotions:
+  - облегчение
+  - нежность
+  heroine_action: Решает забыть о бутылочке и стирает фото папки Марка
+  mood: kaif
+  kaif_lines: []
+  anchors:
+  - false_solution
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Сообщение от Лены из больницы: «Я не сыпала стекло. Это сыпали мне»'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 9
+  title: Банка
+  event: 'Ася возвращается в театр ночью за забытым телефоном. Зритель видит: Нюра над раковиной отжимает ватки в стакан,
+    туда же — волосы с расчёски Вики. Ася видит, как Марго в тёмной гримёрке допивает бутылочку перед репетицией — ночью'
+  question: Чья кровь в бутылочке Марго?
+  emotions:
+  - холод
+  - азарт
+  heroine_action: Идёт за Марго по тёмному коридору к вахте
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - solution_collapse
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: attack
+  cliffhanger: 'Нюра оборачивается прямо на Асю и хватает её за запястье — рука ледяная: «Ты много хочешь, девочка»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 10
+  title: Теперь и тебе
+  event: 'Утром на зеркале Аси — такая же бутылочка и записка: «Теперь и тебе». Вика падает в обморок на уроке студии; врач:
+    «истощение, как после донорства». Семён: прогон с критиками через три дня, играет Ася. Зритель видел ночью руку Нюры у
+    этого зеркала'
+  question: Кто платит за мой успех — и уже платит?
+  emotions:
+  - паника
+  - ярость
+  heroine_action: Выливает бутылочку в раковину и уводит Вику с урока силой
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - paywall_hook
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: ticking
+  cliffhanger: Из крана вслед за снадобьем идёт красная вода. В зеркале за спиной Аси Нюра качает головой. Три дня
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: true
+  personal_stake: Вика — подруга и соседка по общежитию, которая слабеет с каждого глотка Аси
+  strongest_twist: false
+- ep: 11
+  title: Без бутылочки
+  event: 'Ася репетирует без снадобья — зажим вернулся. Марк: на снимках 1936, 1966 и 1996 старуха одна и та же, не постаревшая;
+    в ведомостях театра её нет: «Её зовут Нюра, и она не в штате». Зритель видит: Нюра ставит на зеркало Аси новую бутылочку.
+    Ночью Ася идёт на вахту с вопросом'
+  question: Кто такая Нюра, если её нет ни в одном списке?
+  emotions:
+  - надежда
+  - ужас
+  heroine_action: Идёт ночью на вахту к Нюре
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - paywall_answer
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: attack
+  cliffhanger: 'За столом вахты никого, чай горячий. Свет на сцене гаснет — и в темноте чьи-то руки обнимают Асю сзади: «Выпей.
+    Иначе девочка отдаст зря»'
+  acts_on:
+  - who: Ася
+    fact: f_blood_taken
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 12
+  title: Нюра
+  event: 'Свет дают — Нюра стоит перед Асей, маленькая, в платке: «Я варю. Для той, кто держит свет». Бутылочки ставит она;
+    живёт здесь «давно»; днём «спит». Ася делает вид, что согласна, берёт бутылочку — и выливает её за кулисой. Утром Вика
+    встаёт здоровая, и они смеются на кухне общежития'
+  question: Если варит Нюра — из чего и за чей счёт?
+  emotions:
+  - облегчение
+  - злость
+  heroine_action: Берёт бутылочку из рук Нюры и выливает её
+  mood: kaif
+  kaif_lines: []
+  anchors:
+  - paywall_answer
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Марк: «Хочешь знать, что в ней? Спроси, куда делись волосы Вики с расчёски»'
+  acts_on:
+  - who: Ася
+    fact: f_nyura_brews
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  victory: true
+  cost: 'Семён снимает Асю с прогона: «Критики придут на Марго»'
+- ep: 13
+  title: Прядь
+  event: 'Ася снята, Марго снова первая. На телефон Аси с незнакомого номера приходит фото: она спит в общежитии, на тумбочке
+    бутылочка. Зритель видит: Нюра у постели спящей Вики срезает прядь волос и уходит, не отражаясь в зеркале шкафа'
+  question: Кто стоял над нами, пока мы спали?
+  emotions:
+  - страх
+  - стыд
+  heroine_action: Переселяет Вику в свою комнату и запирает дверь на ночь
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: 'На зеркале Аси помадой — одна дата: «1996»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 14
+  title: Книга
+  event: 'Марк читает Асе главу: дом купца Покровского, 1898; жена Анна — актриса домашнего театра; пожар 1906 года — Анна
+    погибла на сцене; с тех пор в доме «на чай» приходит уборщица, которой нет ни в одной ведомости. Марго — Асе, правило
+    третье: «Каждый глоток — чей-то день. Хочешь блистать — кто-то гаснет»'
+  question: Что Марго знает о цене — и сколько уже заплатила?
+  emotions:
+  - тоска
+  - любопытство
+  heroine_action: Записывает слова Марго на телефон
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'Марк: «Инга, 1996, — моя мать. Она умерла в ту осень? Нет. Хуже»'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 15
+  title: Днём
+  event: 'Ася нарушает первое правило — ищет Нюру днём: комната вахты пуста, кружка горячая, в шкафу платья начала века. В
+    тёмном зале за ней фигура в костюме из «Сумерек» — погоня по коридорам до служебной лестницы'
+  question: Кто ходит днём по театру в костюме Марго?
+  emotions:
+  - ужас
+  - азарт
+  heroine_action: Бежит за фигурой до служебной лестницы
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: false_rescue
+  cliffhanger: 'Лёва хватает Асю — выдох. Он в костюме: репетирует. «Марго послала за тобой. Сказала: вы теперь одной крови»'
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 16
+  title: Договор
+  event: 'Марго предлагает Асе договор: бутылочка каждый вечер на двоих — «Я тебя сделаю. Донор найдётся». Зритель видит:
+    Семён за стеклом кабинета слушает и кивает. Ася соглашается на словах — чтобы увидеть, как это устроено'
+  question: Кто такой «донор» и кто его находит?
+  emotions:
+  - омерзение
+  - азарт
+  heroine_action: Соглашается на словах и просит показать, как это устроено
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: decision
+  cliffhanger: 'Марго кладёт перед Асей список студии: имена и галочки. «Выбирай»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 17
+  title: Подвал
+  event: 'Ася и Марк спускаются в подвал: комната Нюры — фотографии прим 1936, 1966, 1996, поцелованные помадой с бурыми следами;
+    банки с ватками по годам. Дверь захлопывается; свет гаснет — в темноте на стене проступает портрет Анны Покровской: лицо
+    Нюры. Час взаперти, пока Лёва не открывает снаружи'
+  question: Сколько лет Нюра собирает кровь в этом подвале?
+  emotions:
+  - клаустрофобия
+  - догадка
+  heroine_action: 'Считает банки на полках: по году на банку, с 1936-го'
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: mystical_shift
+  cliffhanger: На нижней полке — свежая банка с надписью «Вика». Полная
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 18
+  title: Критик
+  event: 'Прогон с критиками: Марго «больна», выходит Ася — и перед выходом пьёт. Играет гениально; критик пишет в ночь: «Новая
+    прима Покровки». Ася договаривается с Семёном: второй состав получает премьеру'
+  question: Чем я заплатила за этот вечер?
+  emotions:
+  - триумф
+  - вина
+  heroine_action: Пьёт перед выходом и забирает у Семёна премьеру второго состава
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: betrayal
+  cliffhanger: 'Марго, здоровая, в ложе: «Я не болела. Я отдала тебе вечер. Теперь ты мне должна». Ночью Вика не просыпается
+    — скорая'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: lie
+  victory: true
+  cost: 'Вика в больнице: «как после потери литра крови, ран нет»'
+- ep: 19
+  title: Список
+  event: 'Марго требует долг: Ася должна привести в студию «свою» девочку — донора взамен Вики. Ася идёт в студию и смотрит
+    на первокурсниц. Зритель видит: Семён подписывает приказ о зачислении в студию «по списку Марго». Ася тянется к списку'
+  question: Смогу ли я выбрать чужую девочку, чтобы спасти свою?
+  emotions:
+  - фальшь
+  - тревога
+  heroine_action: Идёт в студию выбирать и не может назвать имя
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: 'Марго забирает список раньше, чем Ася дочитывает: «Не сейчас. Сначала докажи, что хочешь»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: lie
+- ep: 20
+  title: Глоток
+  event: 'Спектакль. Ася от страха перед критиком выпивает за кулисой всю бутылочку — не глоток. На сцене она летит; в кулисе
+    Лёва, её партнёр, оседает на пол: без донора снадобье берёт с ближайшего'
+  question: Кто упал, пока я летала?
+  emotions:
+  - полёт
+  - ужас
+  heroine_action: Доигрывает сцену одна и бросается к Лёве за кулисой
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: attack
+  cliffhanger: 'Над Лёвой — Нюра с тряпкой: «Опять ты. Жадная»'
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 21
+  title: Анализ
+  event: 'Марк тайно отдаёт бутылочку в лабораторию: кровь человеческая, несколько доноров, спирт и травы — и одно не бьётся:
+    часть крови старше тридцати лет. Ася отбирает у Марго список студии'
+  question: Чья кровь в бутылочке тридцатилетней давности?
+  emotions:
+  - ярость
+  - ясность
+  heroine_action: Отбирает у Марго список и фотографирует каждую страницу
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'В списке — имя Вики с галочкой и датой: 2025. Её выбрали до того, как Ася пришла в театр'
+  acts_on:
+  - who: Ася
+    fact: f_blood_taken
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 22
+  title: Вика
+  event: 'Вика выписана и признаётся: Нюра поила её чаем «для сил» и срезала прядь; Вика хочет остаться в студии — «Марго
+    обещала мне роль». Зритель видит: Нюра на вахте над списком ставит галочку против имени Вики — ещё одну'
+  question: Сколько у Нюры времени до Вики?
+  emotions:
+  - страх за подругу
+  - решимость
+  heroine_action: Запрещает Вике ходить на вахту и прячет её расчёску
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ticking
+  cliffhanger: Вика сама идёт на вахту пить чай — и смотрит на Асю с вызовом
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 23
+  title: Ловушка
+  event: 'Ася притворяется, что пьёт, — сливает в платок. На сцене провал. Марго за кулисой ведёт её вниз, в подвал: «Переучим».
+    Появляется Семён — «спасает»'
+  question: Семён — спаситель или заказчик?
+  emotions:
+  - азарт
+  - разочарование
+  heroine_action: Играет провал и даёт Марго вести себя вниз
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: false_rescue
+  cliffhanger: 'Семён уводит Марго — выдох. У лестницы, за спиной «пьяной» Аси, он говорит ей одними губами: «Не сегодня.
+    Критики в субботу». Ася не слышит — зритель видит'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 24
+  title: Запись
+  event: 'Скрытая камера Марка в подвале сняла ночь: Нюра отжимает ватки, добавляет волосы и слёзы — «за каждый её вечер —
+    день девочки»; Марго пьёт при ней. Теперь ясно: снадобье — кровь и молодость тех, кто рядом; донор платит днями жизни;
+    стекло и игла в первую неделю были для Аси — она была донором Марго, а Вика теперь донор Аси. Ася — Марку: «В полицию?
+    С записью, где старуха варит чай?»'
+  question: Как Вера и Инга — сколько их было?
+  emotions:
+  - триумф
+  - холод
+  heroine_action: Отдаёт запись Марку на три носителя и забирает у Вики всё, что та пила
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Нюра на записи оборачивается в камеру: «Третья за тридцать лет. Как Вера. Как Инга»'
+  acts_on:
+  - who: Ася
+    fact: f_potion
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  victory: true
+  cost: 'Семён закрывает Марку доступ в архив и выставляет из театра: «Книги о нашем доме пишем мы»'
+- ep: 25
+  title: Архив
+  event: 'Марк выставлен. Ася одна идёт в архив: афиши — Зоя Ланская, 1936; Вера Снег, 1966; Марго — с 1996. Каждая прима
+    ровно тридцать лет, потом «ушла из профессии по болезни». Ася звонит в поликлинику при театре: «Инга Петровна Орлова?
+    Такой пациентки нет»'
+  question: Сколько прим было до Марго — и куда они ушли?
+  emotions:
+  - одиночество
+  - догадка
+  heroine_action: Фотографирует афиши и даты
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: На всех трёх афишах рядом с датой последнего спектакля — сердце помадой с бурым следом
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 26
+  title: Вахта
+  event: 'Ночью у вахты сидит сменщица Нюры — Инга Петровна, 56 лет, лицо на восемьдесят. Она смотрит на сцену и шевелит губами:
+    текст Марго слово в слово, на такт раньше. Зритель видит: Нюра за спиной Инги гладит её по седым волосам'
+  question: Откуда вахтёрша знает роль Марго наизусть?
+  emotions:
+  - озноб
+  - жалость
+  heroine_action: Садится рядом с Ингой и договаривает монолог вместе с ней
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: mystical_shift
+  cliffhanger: 'Инга, не глядя: «Я играла это. В девяносто шестом. Одну осень — и всё»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 27
+  title: Инга
+  event: 'Инга — ясная, в первом лице: в 1996-м она и Марго были первокурсницами и подругами; Нюра выбрала Марго, а Инга стала
+    её донором — за одну осень постарела на тридцать лет. Марк — её сын, родился в 1997-м. Марго сделала с Ингой то же, что
+    Ася делает с Викой. Ася понимает: угроза — не Марго. Угроза выбирает, и она уже выбрала'
+  question: Если Нюра уже выбрала меня — кто мой донор?
+  emotions:
+  - шок
+  - жалость
+  - ужас
+  heroine_action: Остаётся с Ингой вместо того, чтобы бежать к Марку
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - reset1
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Инга: «Тридцать лет Марго кончаются этой осенью. Нюра выбрала следующую. Это ты»'
+  acts_on:
+  - who: Ася
+    fact: f_inga
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: true
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: true
+  arc: truth
+- ep: 28
+  title: Тридцать лет
+  event: 'Инга объясняет механику дома: прима держит свет тридцать лет; потом дом за одну ночь возвращает ей всё, что она
+    взяла; новую выбирает Нюра; директора всех поколений знали — вахта и костюмерная для списанных. Если никто не выпьет —
+    свет гаснет, и Нюра с ним. «Поэтому никто не гасит»'
+  question: А если никто не выпьет?
+  emotions:
+  - тошнота
+  - решимость
+  heroine_action: Спрашивает, что будет, если никто не выпьет, — и получает ответ
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: decision
+  cliffhanger: 'Инга: «Тогда гаснет свет. И она — вместе с ним». Ася смотрит на бутылочку на своём зеркале'
+  acts_on:
+  - who: Ася
+    fact: f_cycle
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 29
+  title: Сейф
+  event: 'С помощью Марка по телефону Ася открывает кабинет Семёна. Папка «Традиция»: договоры студии с пунктом о ежемесячных
+    «медосмотрах», справки Веры 1996 года и Инги, фото Семёна-отца в кулисе 1996-го. Семён в дверях: «Это законные бумаги.
+    Ты думаешь, кто платил за твоё общежитие?» Забирает её телефон. Ася уходит с пустыми руками'
+  question: Семён знает — или Семён ведёт?
+  emotions:
+  - холод
+  - ярость
+  heroine_action: 'Говорит Семёну: «Решала не я» — и выходит без телефона'
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: betrayal
+  cliffhanger: 'Семён вслед: «Тебе ещё выбирать. Или ты, или она»'
+  acts_on:
+  - who: Ася
+    fact: f_semyon_knows
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: truth
+  victory: true
+  cost: Семён переводит Вику в первый состав студии — «на капельницы»
+- ep: 30
+  title: Подруга
+  event: 'Ася идёт к Вике: «Что ты пила? Кто тебе наливал?» Вика: «Марго сказала — ты пьёшь мою кровь. Это правда?» Ася молчит.
+    Вика показывает видео на телефоне: ночь, Ася спит, Нюра срезает у Вики прядь — и Вика сама подставляет голову'
+  question: Вика — жертва или уже соучастница?
+  emotions:
+  - ужас
+  - нежность
+  heroine_action: Пробует говорить с подругой как со взрослой — и слышит чужие слова
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: 'Вика: «Меня выбрала Марго. Значит, я чего-то стою». Прядь на её виске — седая'
+  acts_on:
+  - who: Ася
+    fact: f_vika_donor
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 31
+  title: Три афиши
+  event: 'Марк возвращается тайно. Втроём с Ингой сверяют цикл: 1936, 1966, 1996, 2026 — и Инга впервые смеётся, вспоминая
+    роль. У каждой примы была подруга, которая гасла'
+  question: Где теперь те, кто гас?
+  emotions:
+  - азарт
+  - тепло
+  heroine_action: Собирает хронологию трёх циклов с датами и именами
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'Инга: «Ты знаешь, где Зоя и Вера? Они не ушли из дома»'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  victory: true
+  cost: Марго переводит Вику к себе «ассистенткой» — Вика идёт сама
+- ep: 32
+  title: Костюмерная
+  event: 'Зритель видит: Марго уводит Вику в подвал. Ася находит в костюмерной журнал вахты за 1996 год: ночь, когда Вера
+    Снег «заболела», записана почерком Инги; на полях — сердце помадой. Инга: «Не ходи вниз»'
+  question: Что случилось с Верой в ту ночь 1996 года?
+  emotions:
+  - озарение
+  - жалость
+  heroine_action: Забирает журнал вахты и прячет у Марка
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Инга шёпотом: «Не ходи вниз. Вера — внизу»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 33
+  title: Правило четвёртое
+  event: 'Инга рассказывает 1996-й: Вера, прима тридцати лет, вышла на сцену без бутылочки — Нюра не поставила — и за монолог
+    поседела и согнулась; умерла через год, в костюмерной, никем. Правило четвёртое: «Дом не отпускает: пропустила бутылочку
+    или ушла — долг возвращают за одну ночь». Ася записывает Ингу'
+  question: Что станет с Марго, когда тридцать лет кончатся?
+  emotions:
+  - сочувствие
+  - тревога
+  heroine_action: Записывает рассказ Инги на телефон Марка
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ticking
+  cliffhanger: 'Афиша: закрытие сезона через пять дней — вечер «30 лет на сцене. Марго»'
+  acts_on:
+  - who: Ася
+    fact: f_cycle
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 34
+  title: Ниша
+  event: 'Ася играет Инге её монолог 1996 года по архивной записи — слово в слово, жест в жест. Инга ломается: «Зоя не ушла.
+    Зоя — в стене». Зритель видит: в подвале Нюра поит Вику из бутылочки и считает глотки'
+  question: Что в стене подвала, кроме банок?
+  emotions:
+  - боль
+  - догадка
+  heroine_action: Играет чужой монолог по памяти — и получает ответ
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: mystical_shift
+  cliffhanger: В стене подвала — ниша, заложенная кирпичом без раствора. На кирпиче — отпечаток губ помадой
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 35
+  title: Дневник
+  event: 'Ася и Марк разбирают нишу: платье 1936 года, афиша Зои и её дневник: «Анна сказала: пока горит сцена, я жива. Гаси
+    — и я уйду». Внизу письмо Веры 1996 года: «Она не хозяйка. Она — свет, который кормят». Инга: Зоя умерла в этой нише,
+    в 1967-м, одна'
+  question: Кого кормит свет этого дома?
+  emotions:
+  - скорбь
+  - недоумение
+  heroine_action: Читает дневник Зои вслух при Инге
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: betrayal
+  cliffhanger: 'Последняя запись Зои, 1966: «Сделай из Веры меня» — и сердце помадой'
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 36
+  title: Сколько
+  event: 'Три примы по тридцать лет — Зоя, Вера, Марго — и десятки доноров: все «сделаны» и погашены одним и тем же домом.
+    Инга: «Легенда — для афиши. Никем — для себя. Это одно и то же». Вопрос теперь другой: кто такая Нюра и кто ей помогает'
+  question: Кто такая Нюра — и кто подаёт ей чай?
+  emotions:
+  - предательство
+  - решимость
+  heroine_action: Складывает три цикла в одну таблицу и видит четвёртый — свой
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'Инга: «А кого выбрала ты?» Ася думает о Вике'
+  acts_on:
+  - who: Ася
+    fact: f_three_primas
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 37
+  title: Рецензия
+  event: 'Критик объявляет разбор закрытия сезона. Марго снимает Асю с вечера — «нестабильна». Ночью Ася приходит на вахту
+    и просит бутылочку. Нюра бьёт в призрак: «Упадёшь, как в двадцать четвёртом, на выпускном». Зритель видит: Нюра наливает
+    полную, не глоток. Ася пьёт'
+  question: Я без неё никто?
+  emotions:
+  - унижение
+  - зависимость
+  heroine_action: Просит у Нюры бутылочку и пьёт из её рук
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: mystical_shift
+  cliffhanger: В зеркале за спиной Аси — Вика, бледная, в костюме из «Сумерек». Смотрит и не подходит
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: relapse
+- ep: 38
+  title: Утро
+  event: 'Ася просыпается на сцене, под дежурным светом. Ночью Вика упала с лестницы общежития — больница, «как после потери
+    литра крови, ран нет». Зритель видел: пока Ася спала, Нюра вынула из её кармана бутылочку — своё. Марго — Асе: «Ты сама
+    её выбрала»'
+  question: Что я сделала с подругой?
+  emotions:
+  - ужас
+  - вина
+  heroine_action: Едет в больницу, не заходя в гримёрку
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ticking
+  cliffhanger: 'Телефон Вики на тумбочке, 2% заряда, черновик Асе: «Не иш…»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 39
+  title: Реанимация
+  event: 'Вика в сознании и не хочет видеть Асю: «Я сама пила чай. Марго обещала роль. Ты заняла её место — я займу твоё».
+    Говорит о себе в третьем лице — как Инга в 1996-м'
+  question: Как вернуть подругу, которая не хочет возвращаться?
+  emotions:
+  - отчаяние
+  - злость
+  heroine_action: Пытается забрать Вику из больницы домой силой
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: betrayal
+  cliffhanger: 'Вика закрывает глаза: «Не приходи. Вика сама решит»'
+  acts_on:
+  - who: Ася
+    fact: f_vika_donor
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 40
+  title: Охотница
+  event: 'Ася перестаёт пить и начинает собирать: Инга, Марк, Лёва, который помнит свой обморок. На открытом прогоне закрытия
+    при Семёне и попечителях Ася без снадобья играет монолог лучше Марго — своей работой'
+  question: Кого театр теперь выберет?
+  emotions:
+  - сила
+  - триумф
+  heroine_action: Играет монолог Марго на открытом прогоне — без снадобья
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: decision
+  cliffhanger: 'Семён: «Прима — ты. Условие: пей при мне. Сейчас». На столе бутылочка'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  victory: true
+  cost: Марго показывает Вике список студии и говорит, что Ася сама выбрала её донором
+- ep: 41
+  title: Отказ
+  event: 'Ася не пьёт: «Голос — мой». Зритель видит: Марго показывает Вике список — только лицо Вики в кадре. «Подруга тебя
+    выбрала». Вика при всех выходит на сцену в костюме Марго'
+  question: Что Семён готовит для Вики?
+  emotions:
+  - страх
+  - ярость
+  heroine_action: Отказывается пить при Семёне и попечителях
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: 'На столе Семёна новая папка: «Студия-2027»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 42
+  title: Свет
+  event: После папки ждать нельзя. Ася, Марк и Лёва выводят Ингу на сцену при полном свете — Инга читает монолог 1996 года;
+    труппа видит живую списанную приму и узнаёт голос с архивной записи
+  question: Что скажет театр, увидев Ингу?
+  emotions:
+  - торжество
+  - тревога
+  heroine_action: Выводит Ингу на сцену за руку
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Семён собирает труппу: «Инга Петровна больна много лет. А Марго продлевает контракт — на тридцать лет»'
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 43
+  title: Юбилей
+  event: 'Семён переписывает всё — для труппы и попечителей, без прессы: «традиция дома», «тридцать лет на сцене», юбилейный
+    вечер Марго. Марка он возвращает «снимать юбилей»: ему нужен свой человек с камерой. Лёва после чая Нюры подтверждает
+    на камеру: «Ничего не было». Союзникам Аси никто не верит'
+  question: Как доказать то, что назвали традицией?
+  emotions:
+  - бессилие
+  - стыд
+  heroine_action: Отказывается стоять рядом с Марго перед попечителями
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'Попечитель — Асе: «А вы из студии? Тоже на капельницах?»'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 44
+  title: Журнал
+  event: 'Инга отдаёт Асе список доноров с 1996 года с подписями Семёна-отца и Семёна и журнал вахты. Зритель видит: ночью
+    Нюра не ставит бутылочку на зеркало Марго — убирает её: «Твои тридцать лет вышли. Завтра — последний»'
+  question: Что будет с Марго без бутылочки?
+  emotions:
+  - ясность
+  - спешка
+  heroine_action: Прячет список и журнал у Марка
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ticking
+  cliffhanger: Юбилей завтра. Вика выйдет в номере студии. На зеркале Марго пусто
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 45
+  title: Тридцать лет на сцене
+  event: 'Юбилей Марго. Вика в номере студии бледнеет на глазах — Ася из кулисы видит, как подруга гаснет, и сдёргивает её
+    со сцены посреди номера. Марго выходит на финальный монолог без бутылочки — и на глазах зала седеет: за один монолог тридцать
+    лет'
+  question: Кто должен был погаснуть?
+  emotions:
+  - ужас
+  - облегчение
+  heroine_action: Выдёргивает Вику со сцены посреди номера
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: false_rescue
+  cliffhanger: Вика цела — выдох. Марго договаривает монолог и падает. Лицо — на восемьдесят
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 46
+  title: Победа
+  event: 'Скорая при полном зале — не замять. Марго жива, но старуха; Семён — прессе: «инсульт». Ася отдаёт Марку запись юбилея
+    на три носителя. Труппа смотрит на Асю как на приму; Семён объявляет её примой — ему нужна тишина. На вахте Нюра пьёт
+    чай и улыбается'
+  question: Всё кончилось?
+  emotions:
+  - победа
+  - усталость
+  heroine_action: Передаёт Марку запись юбилея и принимает партию
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: 'На зеркале Аси — бутылочка и записка: «Теперь ты держишь свет»'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 47
+  title: Правда Марго
+  event: 'Марго в больнице — старая, ясная, в первом лице: в 1996-м она выпила первой по совету Нюры, когда Вера вышла без
+    бутылочки; Инга была её донором; Семён-отец знал. «Я выбрала тебя, потому что ты как я: боишься». Просит: «Без телефона».
+    Ася не записывает и говорит: «Я не ты»'
+  question: Если Марго была мной — кем стану я?
+  emotions:
+  - горечь
+  - ясность
+  heroine_action: 'Говорит Марго: «Я не ты» — и уходит из палаты'
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: decision
+  cliffhanger: 'Семён в коридоре: «Контракт примы. Подпиши — и пей. Сегодня»'
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: truth
+- ep: 48
+  title: Ложный финал
+  event: 'Ася не подписывает и не пьёт. Но пьёт Вика: Нюра поставила бутылочку ей, и Вика выходит на вечерний спектакль вместо
+    Аси — блистает. Ася в кулисе чувствует, как уходят силы: она теперь донор Вики. Зритель видит: в комнате Нюры фото Вики
+    встаёт в ряд с примами'
+  question: Почему победа не держится?
+  emotions:
+  - крах
+  - страх
+  heroine_action: Пытается увести Вику со сцены — и не может встать
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - false_finale
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: betrayal
+  cliffhanger: 'Вика по телефону: «Нюра сказала: ты меня продала. Теперь моя очередь»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 49
+  title: Комната
+  event: 'Ася в комнате Нюры: портреты — Зоя, Вера, Марго, рамка «Ася» зачёркнута, вписано «Вика»; шестая, самая старая, —
+    Анна Покровская на сцене, 1906. Нюра: «Я никого не стираю. Я держу свет. Ты бы его гасила». Спор при Марке — тихо'
+  question: Чем Нюра это оправдывает — и верит ли сама?
+  emotions:
+  - ужас
+  - жалость
+  heroine_action: Спорит с Нюрой, не повышая голоса, и не пьёт
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: mystical_shift
+  cliffhanger: В окне подвала рассвет. Нюра договаривает фразу — и её нет; на столе горячая кружка
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 50
+  title: Кто держит свет
+  event: 'Архив Марка и папка Семёна сходятся: Анна Покровская, хозяйка дома, сгорела на своей сцене в 1906-м — и с тех пор
+    живёт, пока горит свет; студия при театре с 1936 года — донорский пункт, медосмотры — забор крови, Семёны трёх поколений
+    подписывали; Нюра верит, Семён торгует. И последнее: в папке «Студия-2027» первое имя — «Верба Ася. Донор»'
+  question: Я теперь донор — или ещё могу решать?
+  emotions:
+  - холод
+  - решимость
+  heroine_action: Фотографирует папку при Семёне — он больше не отбирает телефон
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'Лист «Студия-2027», крупно: «Верба Ася. Донор». Рукой Нюры на полях: «Пока»'
+  acts_on:
+  - who: Ася
+    fact: f_anna
+  - who: Ася
+    fact: f_semyon_knows
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 51
+  title: Выбор
+  event: 'Ася слабеет: седая прядь, дрожат руки. Марк предлагает уехать сегодня. Инга: «Уйдёшь — долг заберут сразу, за ночь».
+    Ася рассказывает Вике всё. Вика: «Докажи»'
+  question: Чем доказать подруге, что ты её не продавала?
+  emotions:
+  - беспомощность
+  - любовь
+  heroine_action: Предлагает Вике уйти из театра вместе
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'Вика: «Докажи». Дверь закрывается; на зеркале Вики — бутылочка'
+  acts_on:
+  - who: Ася
+    fact: f_vika_donor
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 52
+  title: Лаборатория
+  event: 'Повторный анализ Марка: в бутылочке Вики — кровь Аси. Зритель видит: ночью Нюра ставит Вику перед зеркалом: «Ты
+    держишь свет. Закрытие — твоё». Ася собирает с Марком: для труппы — ролик, для полиции — оригиналы и список студии'
+  question: Что Нюра готовит на закрытии?
+  emotions:
+  - ясность
+  - тревога
+  heroine_action: Собирает с Марком ролик и оригиналы
+  mood: neutral
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: ticking
+  cliffhanger: 'Афиша закрытия: «Москва. Сумерки» — В. Орлова в главной роли. Инга читает и считает: «Девяносто шесть плюс
+    тридцать. Снова». До закрытия 48 часов'
+  acts_on:
+  - who: Ася
+    fact: f_potion
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 53
+  title: Люк
+  event: 'Инга и Лёва соглашаются выйти на сцену на закрытии и сказать правду; Инга называет цену: «Выйду — и долг заберут».
+    Зритель видит: ночью свет сцены зажигается сам. Днём под ногой Аси на пустой сцене открывается люк-склеп — она висит на
+    руках над трюмом'
+  question: Дом это сделал — или человек?
+  emotions:
+  - страх
+  - благодарность
+  heroine_action: Уговаривает Ингу и Лёву выйти на сцену
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: true
+  villains_introduced: []
+  hook_type: attack
+  cliffhanger: 'Из люка — холод и голос Нюры: «Гаси — и уйдёшь со мной»'
+  acts_on: []
+  knowledge_mode: suspense
+  threat_seen_by_viewer: true
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 54
+  title: Марк
+  event: 'Семён вызывает Асю: «Марк пришёл сюда мстить. Стекло в твою туфлю в первый вечер насыпал он — чтобы Нюра выбрала
+    тебя, а не Лену, и показала себя». Ася смотрит на Марка'
+  question: Марк — с кем?
+  emotions:
+  - сомнение
+  - боль
+  heroine_action: Идёт к Марку с осколком стекла из 5-й серии
+  mood: suffering
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: betrayal
+  cliffhanger: Марк не отрицает
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 55
+  title: Правда Марка
+  event: 'Марк признаётся: он подстроил стекло, чтобы Нюра показала себя — ради матери; потом влюбился и остался; книга дописана.
+    Ася прощает — и берёт его в план закрытия'
+  question: Могу ли я верить тому, кто начал с осколка?
+  emotions:
+  - обида
+  - нежность
+  heroine_action: Прощает Марка и берёт его в план закрытия
+  mood: kaif
+  kaif_lines: []
+  anchors: []
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: decision
+  cliffhanger: 'Рука Аси на рубильнике сцены: гасить или нет'
+  acts_on:
+  - who: Ася
+    fact: f_mark_glass
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 56
+  title: Улики сводятся
+  event: 'Ася убирает руку с рубильника. На сцене она раскладывает всё: бутылочки, два анализа, список студии, журнал 1996-го,
+    дневник Зои — «гаси — и я уйду», запись подвала. Картина сходится: Нюра держит свет чужой кровью, Семёны поставляют доноров,
+    дом гаснет вместе с ней. И последнее — с камеры Марка на юбилее: Нюра в кулисе шепчет Вике: «Твоя очередь»'
+  question: Гасить свет — убить Нюру или отпустить?
+  emotions:
+  - ясность
+  - гнев
+  heroine_action: Складывает улики в порядке серий — и видит, где рубильник
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - clues_converge
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: true
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: revelation
+  cliffhanger: 'На записи — шёпот Нюры Вике: «Твоя очередь». Вика кивает'
+  acts_on:
+  - who: Ася
+    fact: f_anna
+  - who: Ася
+    fact: f_potion
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 57
+  title: Инга
+  event: 'Ночь перед закрытием. Инга выходит на пустую сцену при полном свете и читает свой монолог 1996 года до конца — впервые.
+    Долг забирают: она садится на край люка и не встаёт. Ася держит её руку. Нюра в кулисе не подходит'
+  question: Без Инги — кто подтвердит?
+  emotions:
+  - скорбь
+  - благодарность
+  heroine_action: Держит Ингу за руку и не зовёт Нюру
+  mood: suffering
+  kaif_lines: []
+  anchors:
+  - ally_cost
+  strike_by_villain: true
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: Пустой стул на вахте. Кружка холодная — впервые за сезон
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 58
+  title: Закрытие
+  event: 'Закрытие сезона. Вика выходит с бутылочкой и блистает. Ася выходит к ней на сцену без снадобья — седая прядь, дрожащий
+    голос — и читает монолог Марго 1996 года: своим голосом, с запинкой, до конца. Зал молчит. На экран над залом — запись
+    подвала и шёпот «Твоя очередь». Лёва выходит и говорит про обморок. Ася идёт к рубильнику сцены'
+  question: Кто сильнее — та, кто держит свет, или та, кто его гасит?
+  emotions:
+  - триумф
+  - страх
+  heroine_action: Читает монолог своим голосом и идёт к рубильнику
+  mood: kaif
+  kaif_lines: []
+  anchors:
+  - confrontation
+  strike_by_villain: false
+  strike_by_heroine: true
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: attack
+  cliffhanger: Ася рубит свет — остаётся зелёное «Выход» над дверями. В темноте — звон разбитого стекла
+  acts_on: []
+  knowledge_mode: surprise
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 59
+  title: Пиррова победа
+  event: 'Свет дают. Вика стоит с окровавленной ладонью: бутылочку разбила она сама. На вахте — холодная кружка, стул пуст:
+    Нюры нет. Марго умерла ночью в больнице — восьмидесятилетняя в пятьдесят два. Полиция, которую вызвал Марк, увозит Семёна
+    для объяснений: студия, «медосмотры», люк; «про традицию — завтра». Пробки театра горят одна за другой: свет не держится
+    — сезон закрыт, труппу распускают. Ася в зеркале: лицо тридцатилетней в двадцать четыре — долг возвращён, сколько взяла.
+    Вика подходит к Асе'
+  question: Что стоит победа, если свет больше не держится?
+  emotions:
+  - облегчение
+  - горечь
+  heroine_action: Обнимает Вику и не идёт на поклон
+  mood: neutral
+  kaif_lines: []
+  anchors:
+  - pyrrhic_victory
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: unanswered_question
+  cliffhanger: 'Вика: «А кем теперь буду я?»'
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+- ep: 60
+  title: Финал
+  event: 'Пустой зал днём. Ася стирает с зеркала Марго помадное сердце — ладонью, крупно. Отдаёт Вике свой шарф из 1-й серии:
+    «Выбирай сама». Уходит из театра с Викой и Марком — своим лицом. Последний кадр: вечер; в тёмной «Покровке» сам загорается
+    дежурный свет; на зеркале в пустой гримёрке — новая бутылочка; на вахте — горячая кружка'
+  question: Для кого поставлена новая бутылочка?
+  emotions:
+  - покой
+  - тревога
+  heroine_action: Стирает сердце с зеркала и уходит с подругой
+  mood: kaif
+  kaif_lines: []
+  anchors:
+  - finale
+  strike_by_villain: false
+  strike_by_heroine: false
+  reveals_secret: false
+  threat_to_heroine: false
+  villains_introduced: []
+  hook_type: visual_sting
+  cliffhanger: Тёмный театр. Дежурный свет зажигается сам. На вахте дымится кружка
+  acts_on: []
+  knowledge_mode: mystery
+  threat_seen_by_viewer: false
+  threat_known_to_hero: false
+  irreversible: false
+  question_turn: false
+  personal_stake: ''
+  strongest_twist: false
+  arc: truth
+deviations: []
